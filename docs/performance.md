@@ -65,3 +65,33 @@ The expanded editor passes 19 frontend tests and 10 Rust tests. Added coverage e
 Browser interaction checks exercised active formatting buttons, reversible free-indent presentation across schema changes, structural list indent/outdent, nested checkboxes, table cell navigation and row/column undo, URL insertion, and find/replace with undo.
 
 The production Windows build was then opened against isolated fixtures in `output/editor-smoke`, edited through the UI, closed normally, and restarted. The reread showed preserved checkbox state, a four-row table, external link target, nested outline text, two-step paragraph indentation, centered alignment, blue text, bold/italic/underline/highlight, and correct active toolbar state. No console errors or workspace warnings appeared. Test notes were separate from the user's workspace.
+
+## Component editor comparison — October 25, 2026
+
+Two implementations were built: a focused component layer within the existing Tiptap document, and GrapesJS core with a real custom Tiptap rich-text integration. The focused implementation is retained in the app. GrapesJS remains only in the isolated development experiment. The [comparison report](../experiments/editor-comparison/RESULTS.md) contains workloads, measurements, repetition counts, fairness limits and the decision rationale; the [harness instructions](../experiments/editor-comparison/README.md) reproduce it.
+
+The comparison uses 3,600-word and 36,000-word text documents plus 100 panels containing 14,400 words and ten tiny fixture images. It measures editor lifecycle and serialization, not SQLite search across a collection or cold app startup. Programmatic text transactions and animation-frame callbacks are reported separately from actual input testing. The GrapesJS experiment is not included in the production bundle.
+
+Functional coverage includes exact content/mark/ID preservation through wrapping, properties, movement and undo; cross-panel text selection; non-destructive image insertion; async imports completing after navigation; pointer-resize previews committing one transaction; viewport-deferred image reads; native asset save/read and ownership; malformed content/attributes; and actual Windows junction rejection. Static image byte/dimension limits are validated before decoding in the UI, with independent native header checks.
+
+The reproducible Playwright CLI smoke function `scripts/component-smoke.js` passed in Edge and the release WebView2 application against disposable workspaces: create two paragraphs, wrap, change width/appearance, undo/redo, drag-resize, undo/redo, import a local PNG, save and reload with preserved words, width and decoded image. Native testing exposed and fixed AllSelection handling and inspector activation after Ctrl+A. Image import no longer replaces selected text, and asset bytes are resolved near the viewport rather than for every image on mount. The native run had zero console errors/warnings and only app resources/local IPC requests in the observed network log.
+
+Asset garbage collection, cross-note image copying, animated media and long-session image-cache growth remain outside this slice. Loaded image URLs remain cached for the active note and are revoked on switching notes. These results do not certify inexpensive hardware, sustained FPS, cold startup, or arbitrary large-media performance.
+
+### Native keyboard/frame observations
+
+The retained release build was measured separately from the comparison and compilation. Environment: Windows 11 Home 10.0.26200, Ryzen 9 8945HS, approximately 31.3 GiB RAM, WebView2/Edge 155, 1200×800 CSS-pixel viewport at device pixel ratio 2. The window reported visible. The GPU was not constrained.
+
+Three generated workloads were cycled three times. Each run typed through Playwright keyboard events at a requested 20 ms interval, captured 57 `beforeinput`-to-next-animation-frame samples, and included an explicit save. Timing starts inside the page, excluding physical keyboard and OS input latency; an animation-frame callback is not a confirmed pixel-paint timestamp. These native numbers cannot be directly compared with the harness's double-frame programmatic proxy.
+
+| Workload | Median of three per-run input-to-frame p95 | Largest input-to-frame sample | Median per-run frame-interval p95 |
+| --- | ---: | ---: | ---: |
+| 100 paragraphs | 7.6 ms | 8.4 ms | 8.5 ms |
+| 1,000 paragraphs | 8.7 ms | 10.1 ms | 8.5 ms |
+| 100 panels + 10 tiny images | 8.2 ms | 8.5 ms | 8.5 ms |
+
+No long tasks were recorded during the nine input sample intervals. This does not cover initial note loading, long-running sessions or cold startup. The same generated text remains in the disposable workspace after saves. Raw observations are in ignored `output/playwright/native-input-results.json`; regenerate fixtures with `scripts/create-native-benchmark.mjs` and run `scripts/native-input-benchmark.js` through Playwright CLI against that workspace.
+
+One process-tree snapshot during the native run counted seven processes, 425.6 MiB summed private memory and 698.4 MiB summed working sets. Summed working sets can double-count shared pages; this is an observation with WebView2/debugging attached, not a peak, a baseline subtraction, or a low-end memory acceptance result. Cold-start and long-session memory budgets remain unresolved.
+
+Final automated verification: 33 frontend tests, 16 Rust tests, both application and experiment TypeScript checks, and the Windows release build pass. The final executable passed the component smoke test again, and an earlier note retained its exact text, panel width/appearance and decoded image after full native process shutdown and restart. Rust tests requiring atomic replacement in disposable temporary directories were run outside the restricted filesystem sandbox. No user workspace was used.

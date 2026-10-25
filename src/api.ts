@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { Folder, Note, NoteSummary, WorkspaceStatus } from './model';
+import type { Folder, ImageAsset, ImageAssetData, Note, NoteSummary, WorkspaceStatus } from './model';
+import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets';
 
 export const browserPreview = !isTauri();
 const key = 'noted-browser-preview-v1';
@@ -63,7 +64,70 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
   return structuredClone(result) as T;
 }
 const call = <T>(command: string, args?: Record<string, unknown>): Promise<T> => browserPreview ? preview<T>(command, args) : invoke<T>(command, args);
+
+// Images live in a separate IndexedDB store so typing never serializes image bytes.
+interface PreviewImage extends ImageAsset { key: string; bytes: Uint8Array }
+async function imageDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('noted-preview-images-v1', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('images', { keyPath: 'key' });
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+function imageKey(noteId: string, assetId: string) {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (!uuid.test(noteId) || !uuid.test(assetId)) throw new Error('Invalid asset identifier.');
+  if (!read().notes.some(note => note.id === noteId)) throw new Error('Image owner note is missing.');
+  return `${noteId}/${assetId}`;
+}
+async function putPreviewImage(record: PreviewImage) {
+  const db = await imageDatabase();
+  try { await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('images', 'readwrite');
+    transaction.objectStore('images').put(record);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error ?? new Error('Image import was interrupted.'));
+  }); } finally { db.close(); }
+}
+async function getPreviewImage(key: string): Promise<PreviewImage> {
+  const db = await imageDatabase();
+  try { return await new Promise((resolve, reject) => {
+    const request = db.transaction('images', 'readonly').objectStore('images').get(key);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => request.result ? resolve(request.result) : reject(new Error('This local image is missing.'));
+  }); } finally { db.close(); }
+}
+async function importAsset(noteId: string, file: File): Promise<ImageAsset> {
+  if (!file.size || file.size > MAX_IMAGE_BYTES) throw new Error('Images must be between 1 byte and 10 MiB.');
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = rasterMime(bytes);
+  rasterDimensions(bytes, mime);
+  // Decode once on import, not on each edit. Files that only imitate a header fail here.
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: mime }));
+  const { width, height } = bitmap;
+  bitmap.close();
+  validateImageDimensions(width, height);
+  if (!browserPreview) return invoke<ImageAsset>('import_image', { noteId, bytes: Array.from(bytes), mime });
+  const info = { id: crypto.randomUUID(), mime, byteLength: bytes.length, width, height };
+  await putPreviewImage({ ...info, key: imageKey(noteId, info.id), bytes });
+  return info;
+}
+/** Caller owns the returned blob URL and must revoke it on editor disposal. */
+async function assetUrl(noteId: string, assetId: string): Promise<string> {
+  const data = browserPreview ? await getPreviewImage(imageKey(noteId, assetId))
+    : await invoke<ImageAssetData>('read_image', { noteId, assetId });
+  const bytes = new Uint8Array(data.bytes);
+  const mime = rasterMime(bytes);
+  rasterDimensions(bytes, mime);
+  validateImageDimensions(data.width, data.height);
+  if (mime !== data.mime) throw new Error('Image metadata does not match its bytes.');
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
 export const api = {
+  importAsset,
+  assetUrl,
   notes: () => call<NoteSummary[]>('list_notes'),
   folders: () => call<Folder[]>('list_folders'),
   createFolder: (name: string, parentId: string | null) => call<Folder>('create_folder', { name, parentId }),

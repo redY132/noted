@@ -51,6 +51,21 @@ The formatting toolbar reflects the caret or selection, including mixed formatti
 
 See the [editor audit](docs/editor-feature-audit.md) for the source-backed comparison, delivered scope, tests and remaining gaps. This is not full Logseq/Obsidian feature parity or a complete configurable schema engine.
 
+**Editable components:** select paragraphs and choose **Text panel**, then change width, alignment and appearance. Panels remain directly editable. **Local image** imports a copied static PNG/JPEG/WebP; select it to edit its description and layout. Use the corner resize handle or numeric width control, and the up/down controls to reorder within document flow. Layout changes and text share undo/redo. Images are limited to 10 MiB and 32 megapixels; animation and free canvas positioning remain future work.
+
+## Editor comparison and integration checks
+
+Two non-React implementations were built and measured. The [results](experiments/editor-comparison/RESULTS.md) explain why the focused Tiptap layer is retained. GrapesJS is only used in the isolated experiment, not the app bundle.
+
+```powershell
+npm run bench:editor:build
+npm run bench:editor
+```
+
+The comparison runs at `http://127.0.0.1:1421/`. Its [README](experiments/editor-comparison/README.md) describes workloads and timing limits. For a real-browser component integration check, use an isolated Playwright CLI session at the local app URL, then run `playwright-cli run-code --filename scripts/component-smoke.js` from the repository root. It creates a disposable note and checks resize, undo/redo, import and save/reload. Never point this test at a personal workspace.
+
+`node --experimental-strip-types scripts/create-native-benchmark.mjs` generates a new disposable native workspace under `output/` and prints its path. Set `NOTED_WORKSPACE` to that path before launching the release executable. `scripts/native-input-benchmark.js` is a Playwright CLI function for the generated notes; its input-to-frame readings are scheduling proxies, not physical keyboard-to-paint measurements.
+
 ## Data and privacy
 
 The desktop prototype stores a local workspace in the Tauri application data directory. The interface reports the actual path. To use disposable data during development, set an absolute path before launching:

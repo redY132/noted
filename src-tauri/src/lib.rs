@@ -1,3 +1,4 @@
+mod assets;
 pub mod store;
 
 #[cfg(feature = "desktop")]
@@ -52,6 +53,23 @@ mod desktop {
         work(state, move |s| s.load_note(&id)).await
     }
     #[tauri::command]
+    pub async fn import_image(
+        state: State<'_, SharedStore>,
+        note_id: String,
+        bytes: Vec<u8>,
+        mime: String,
+    ) -> Result<crate::assets::ImageInfo, String> {
+        work(state, move |s| s.import_image(&note_id, &bytes, &mime)).await
+    }
+    #[tauri::command]
+    pub async fn read_image(
+        state: State<'_, SharedStore>,
+        note_id: String,
+        asset_id: String,
+    ) -> Result<crate::assets::ImageData, String> {
+        work(state, move |s| s.read_image(&note_id, &asset_id)).await
+    }
+    #[tauri::command]
     pub async fn save_note(
         state: State<'_, SharedStore>,
         note: Note,
@@ -98,6 +116,8 @@ mod desktop {
                 create_folder,
                 create_note,
                 load_note,
+                import_image,
+                read_image,
                 save_note,
                 search_notes,
                 workspace_status,

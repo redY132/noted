@@ -1,6 +1,8 @@
 # Existing visual-editor options
 
-Research date: 2026-10-25. Planning only; no packages installed or prototype code replaced.
+Initial research date: 2026-10-25. The original assessment was planning-only; implementation status is recorded below.
+
+**Implementation update:** the user subsequently requested both non-React approaches be implemented and measured. [The comparison and decision](../experiments/editor-comparison/RESULTS.md) retain the focused Tiptap component layer in the application. GrapesJS/Tiptap is implemented only in the development experiment. The planning assessment below is preserved as the rationale for the candidates, not the current implementation status.
 
 The user approved JavaScript-defined components with explicit programmatic editing interfaces. This does not require inventing all visual-editor machinery. The references below cover different parts of that machinery, not the whole Noted application or an untrusted-code sandbox.
 

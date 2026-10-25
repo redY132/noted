@@ -11,6 +11,8 @@ export interface Note extends NoteSummary {
   presentation: { schemaId: SchemaId };
 }
 export interface WorkspaceStatus { path: string; warnings: string[] }
+export interface ImageAsset { id: string; mime: string; byteLength: number; width: number; height: number }
+export interface ImageAssetData extends ImageAsset { bytes: number[] }
 
 /** Serializes writes and preserves edits made while a previous revision is saving. */
 export class NoteSession {

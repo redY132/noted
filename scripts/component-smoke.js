@@ -1,0 +1,45 @@
+async page => {
+  // Run with Playwright CLI run-code --filename from the repository root.
+  // Use an isolated browser profile or a disposable NOTED_WORKSPACE.
+  await page.getByRole('button', { name: 'New note', exact: false }).click();
+  await page.getByRole('textbox', { name: 'Note title', exact: true }).fill('Component integration check');
+  const content = page.getByRole('textbox', { name: 'Note content', exact: true });
+  await content.fill('Alpha original words.');
+  await content.press('End');
+  await content.press('Enter');
+  await page.keyboard.type('Beta retained words.');
+  await content.press('Control+a');
+  await page.getByRole('button', { name: 'Text panel', exact: false }).click();
+  if (await page.locator('.note-panel').count() !== 1) throw new Error('Panel not created');
+  await page.getByRole('spinbutton', { name: 'Component width' }).fill('360');
+  await page.getByRole('spinbutton', { name: 'Component width' }).press('Tab');
+  await page.getByRole('combobox', { name: 'Panel appearance' }).selectOption('accent');
+  if (await page.locator('.note-panel').getAttribute('data-tone') !== 'accent') throw new Error('Panel tone not applied');
+  await page.getByRole('button', {name:'Undo', exact:true}).click();
+  if (await page.locator('.note-panel').getAttribute('data-tone') === 'accent') throw new Error('Tone undo failed');
+  await page.getByRole('button', {name:'Redo', exact:true}).click();
+  const handle = page.locator('.note-panel .component-resize');
+  await handle.scrollIntoViewIfNeeded();
+  const box = await handle.boundingBox();
+  if (!box) throw new Error('Resize handle missing');
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 80, box.y + 10, {steps:8});
+  await page.mouse.up();
+  const width = await page.locator('.note-panel').evaluate(el => el.style.width);
+  if (width !== '430px') throw new Error('Pointer resize unexpected: ' + width);
+  await page.getByRole('button', {name:'Undo', exact:true}).click();
+  if (await page.locator('.note-panel').evaluate(el => el.style.width) !== '360px') throw new Error('Resize undo failed');
+  await page.getByRole('button', {name:'Redo', exact:true}).click();
+  await page.locator('#image-file').setInputFiles('src-tauri/icons/icon.png');
+  await page.waitForFunction(() => document.querySelector('.local-image img')?.naturalWidth > 0);
+  if (!(await content.innerText()).includes('Alpha original words.') || !(await content.innerText()).includes('Beta retained words.')) throw new Error('Import lost text');
+  await page.keyboard.press('Control+s');
+  await page.waitForFunction(() => document.querySelector('#save-state')?.textContent?.includes('Saved'));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('.local-image img')?.naturalWidth > 0);
+  if (await page.locator('.note-panel').count() !== 1) throw new Error('Panel missing after reload');
+  if (!(await content.innerText()).includes('Alpha original words.') || !(await content.innerText()).includes('Beta retained words.')) throw new Error('Reload lost text');
+  if (await page.locator('.note-panel').evaluate(el => el.style.width) !== '430px') throw new Error('Width not persisted');
+  console.log(JSON.stringify({passed:true, width, imageDecoded:true, textPreserved:true, saveReopen:true}));
+}

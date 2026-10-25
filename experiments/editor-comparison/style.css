@@ -1,0 +1,8 @@
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f5f4f0; color: #252a29; }
+header { padding: 14px 24px; background: white; border-bottom: 1px solid #ddd; }
+h1 { margin: 0; font-size: 22px; } p { margin: 8px 0; }
+button { margin: 3px; padding: 7px 12px; border: 1px solid #abb9af; border-radius: 5px; background: #fafdfb; cursor: pointer; }
+#status { margin-left: 12px; } #host { height: 650px; overflow: auto; background: white; }
+#host > .tiptap { margin: 20px auto; padding: 12px; max-width: 900px; outline: none; }
+#results { white-space: pre-wrap; padding: 20px; font-size: 12px; }
+[data-note-panel], .note-panel { box-sizing: border-box; max-width: 100%; margin-block: 12px; border: 1px solid #cbd7d0; padding: 14px; }

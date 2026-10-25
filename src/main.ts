@@ -4,8 +4,10 @@ import { editingMarkup, initializeEditingUI } from './editing-ui';
 import { api, browserPreview } from './api';
 import { NoteSession, type Folder, type Note, type NoteSummary, type SchemaId } from './model';
 import { installMetrics } from './metrics';
+import { componentMarkup, initializeComponentUI } from './component-ui';
 import './style.css';
 import './editing.css';
+import './components.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -31,6 +33,7 @@ $('#app').innerHTML = `
     <section id="empty-state" class="empty-state"><span class="empty-emblem">n.</span><span class="eyebrow">MAKE ROOM FOR YOUR THOUGHTS</span><h2>Your next idea<br>starts here.</h2><p>A small observation. A big question.<br>Write it down, make it yours, come back to it.</p><button id="empty-new" class="primary">＋ Create your first note</button><span class="empty-footnote">Saved on this device. No account needed.</span></section>
     <section id="note-pane" class="note-pane" hidden>
       ${editingMarkup}
+      ${componentMarkup}
       <div class="document-scroll"><article class="document" data-schema="default"><div class="document-kicker"><span id="note-date"></span><span> / </span><span>PERSONAL NOTE</span></div><input id="note-title" class="note-title" aria-label="Note title" placeholder="Untitled" maxlength="300" /><div class="note-properties"><label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div><div class="writing-hint">A little structure, naturally. Try <code># heading</code>, <code>**bold**</code>, or <code>- a list</code> as you type.</div></article></div>
       <footer class="editor-footer"><span id="word-count">0 words</span><span>Markdown shortcuts <span class="footer-dot">·</span> <span id="revision-label"></span></span></footer>
     </section>
@@ -55,6 +58,8 @@ let linkSelection: { from: number; to: number } | null = null;
 let listLimit = 80;
 const editorExtensions = () => createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default');
 const editingUI = initializeEditingUI({ getEditor: () => editor, getSchema: () => session?.note.presentation.schemaId ?? 'default', error });
+const componentUI = initializeComponentUI({ getEditor: () => editor, getNoteId: () => session?.note.id ?? null, importAsset: (id, file) => api.importAsset(id, file), error });
+let releaseAssets = () => {};
 const documentSchema = getSchema(editorExtensions());
 function validateEditorDocument(note: Note) {
   const checkAttributes = (node: import('@tiptap/core').JSONContent) => {
@@ -189,6 +194,15 @@ function wordCount() {
 function showNote(note: Note) {
   validateEditorDocument(note);
   editor?.destroy();
+  releaseAssets();
+  const assetURLs = new Map<string, Promise<string>>();
+  let disposed = false;
+  releaseAssets = () => { disposed = true; for (const url of assetURLs.values()) void url.then(value => URL.revokeObjectURL(value), () => {}); assetURLs.clear(); };
+  const resolveAsset = (assetId: string) => {
+    let url = assetURLs.get(assetId);
+    if (!url) { url = api.assetUrl(note.id, assetId).then(value => { if (disposed) URL.revokeObjectURL(value); return value; }); assetURLs.set(assetId, url); }
+    return url;
+  };
   session = new NoteSession(note, api.save, updateSaveState, n => { if (editor) n.content = editor.getJSON(); });
   saveError = false;
   $('#empty-state').hidden = true;
@@ -196,13 +210,13 @@ function showNote(note: Note) {
   refreshMetadata();
   editor = new Editor({
     element: $('#editor'), content: note.content,
-    extensions: editorExtensions(), editable: !navigating,
+    extensions: createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default', { resolveAsset }), editable: !navigating,
     editorProps: { attributes: { 'aria-label': 'Note content', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' } },
-    onSelectionUpdate: ({ editor: current }) => editingUI.sync(current),
-    onTransaction: ({ editor: current, transaction }) => editingUI.sync(current, transaction.docChanged),
+    onSelectionUpdate: ({ editor: current }) => { editingUI.sync(current); componentUI.sync(); },
+    onTransaction: ({ editor: current, transaction }) => { editingUI.sync(current, transaction.docChanged); componentUI.sync(); },
     onUpdate: () => { edit(() => {}); clearTimeout(countTimer); countTimer = setTimeout(wordCount, 500); },
   });
-  wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); void renderList();
+  wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); componentUI.sync(); void renderList();
 }
 async function navigate(action: () => Promise<Note>) {
   if (navigating) return;
@@ -211,7 +225,7 @@ async function navigate(action: () => Promise<Note>) {
   editor?.setEditable(false, false);
   try { await flush(); const note = await action(); upsertSummary(note); showNote(note); }
   catch (reason) { error(reason); }
-  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); }
+  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); }
 }
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
 async function newNote() { await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
@@ -323,7 +337,7 @@ async function start() {
         if (navigating) { error('Please wait for the note to finish opening before closing.'); return; }
         navigating = true; $('#note-pane').inert = true; editor?.setEditable(false, false);
         try { await flush(); await window.destroy(); }
-        catch (reason) { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); error(reason); }
+        catch (reason) { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); error(reason); }
       });
     }
   } catch (reason) { error(reason); }

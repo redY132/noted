@@ -123,7 +123,7 @@ fn check_file(path: &Path) -> Result<()> {
 /// tempfile::persist replaces an existing target atomically on Windows too.
 /// Sync bytes before replacement. The old complete file or new complete file
 /// survives process interruption; power-loss durability depends on the OS/FS.
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     check_file(path)?;
     let parent = path.parent().ok_or("Missing parent directory")?;
     let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(err)?;
@@ -314,6 +314,24 @@ impl Store {
             &fs::read(&path).map_err(err)?,
         )?;
         self.commit(note)
+    }
+
+    pub fn import_image(
+        &self,
+        note_id: &str,
+        bytes: &[u8],
+        mime: &str,
+    ) -> Result<crate::assets::ImageInfo> {
+        self.load_note(note_id)?;
+        crate::assets::import(&self.root, note_id, bytes, mime)
+    }
+
+    pub fn read_image(&self, note_id: &str, asset_id: &str) -> Result<crate::assets::ImageData> {
+        // Validate the note identity without parsing its whole document per image.
+        if !self.path("notes", note_id)?.is_file() {
+            return Err("Image owner note is missing".into());
+        }
+        crate::assets::read(&self.root, note_id, asset_id)
     }
 
     fn commit(&mut self, mut note: Note) -> Result<Note> {
@@ -508,6 +526,8 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
         "horizontalRule",
         "hardBreak",
         "text",
+        "notePanel",
+        "localImage",
     ]
     .contains(&kind)
     {
@@ -553,9 +573,26 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                             }))
                 }
                 "checked" => kind == "taskItem" && value.is_boolean(),
+                "width" => {
+                    ["notePanel", "localImage"].contains(&kind)
+                        && value.as_u64().is_some_and(|n| (160..=1200).contains(&n))
+                }
+                "tone" => {
+                    kind == "notePanel"
+                        && value
+                            .as_str()
+                            .is_some_and(|s| ["plain", "soft", "accent"].contains(&s))
+                }
+                "assetId" => {
+                    kind == "localImage" && value.as_str().is_some_and(|s| valid_id(s).is_ok())
+                }
+                "alt" => {
+                    kind == "localImage"
+                        && value.as_str().is_some_and(|s| s.chars().count() <= 2000)
+                }
                 "align" => {
-                    ["tableCell", "tableHeader"].contains(&kind)
-                        && (value.is_null()
+                    ["tableCell", "tableHeader", "notePanel", "localImage"].contains(&kind)
+                        && ((value.is_null() && ["tableCell", "tableHeader"].contains(&kind))
                             || value
                                 .as_str()
                                 .is_some_and(|s| ["left", "center", "right"].contains(&s)))
@@ -604,6 +641,14 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                 return Err("Column widths must match the cell's colspan".into());
             }
         }
+    }
+    if kind == "localImage"
+        && !node
+            .pointer("/attrs/assetId")
+            .and_then(Value::as_str)
+            .is_some_and(|s| valid_id(s).is_ok())
+    {
+        return Err("Local images require a valid asset identifier".into());
     }
     if let Some(id) = node.pointer("/attrs/id").and_then(Value::as_str) {
         if id.len() > 128 || id.is_empty() || !ids.insert(id.to_owned()) {
@@ -700,6 +745,7 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
         "table",
         "tableCell",
         "tableHeader",
+        "notePanel",
     ]
     .contains(&kind)
         && children.is_empty()
@@ -721,7 +767,8 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
             .and_then(Value::as_str)
             .ok_or("Missing child type")?;
         let allowed = match kind {
-            "doc" | "blockquote" | "listItem" | "taskItem" | "tableCell" | "tableHeader" => [
+            "doc" | "blockquote" | "listItem" | "taskItem" | "tableCell" | "tableHeader"
+            | "notePanel" => [
                 "paragraph",
                 "heading",
                 "bulletList",
@@ -731,6 +778,8 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                 "horizontalRule",
                 "taskList",
                 "table",
+                "notePanel",
+                "localImage",
             ]
             .contains(&child_kind),
             "paragraph" | "heading" => ["text", "hardBreak"].contains(&child_kind),
@@ -757,6 +806,159 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_assets_are_copied_note_owned_and_survive_reopen() {
+        let temp = tempfile::tempdir().unwrap();
+        let bytes = include_bytes!("../icons/icon.png");
+        let (note_id, other_id, asset_id);
+        {
+            let mut store = Store::open(temp.path()).unwrap();
+            let mut note = store
+                .create_note("Illustrated memory".into(), None)
+                .unwrap();
+            let other = store.create_note("Other note".into(), None).unwrap();
+            note_id = note.id.clone();
+            other_id = other.id;
+            let imported = store.import_image(&note_id, bytes, "image/png").unwrap();
+            asset_id = imported.id;
+            assert_eq!(
+                store.load_note(&note_id).unwrap().revision,
+                1,
+                "Import does not silently edit note content"
+            );
+            assert_eq!(store.read_image(&note_id, &asset_id).unwrap().bytes, bytes);
+            assert!(
+                store.read_image(&other_id, &asset_id).is_err(),
+                "No cross-note asset alias"
+            );
+            note.content = json!({"type":"doc","content":[
+                {"type":"notePanel","attrs":{"id":"panel","width":640,"align":"center","tone":"accent"},"content":[
+                    {"type":"paragraph","content":[{"type":"text","text":"A memorable aurora"}]},
+                    {"type":"localImage","attrs":{"id":"image","assetId":asset_id,"alt":"Green sky","width":480,"align":"right"}}
+                ]}
+            ]});
+            let original_content = note.content.clone();
+            let saved = store.save_note(note, 1).unwrap();
+            assert_eq!(saved.content, original_content);
+            assert_eq!(store.search_notes("aurora").unwrap()[0].id, note_id);
+            assert_eq!(store.load_note(&other_id).unwrap().revision, 1);
+        }
+        let store = Store::open(temp.path()).unwrap();
+        assert_eq!(store.read_image(&note_id, &asset_id).unwrap().bytes, bytes);
+        assert_eq!(store.search_notes("aurora").unwrap()[0].id, note_id);
+        assert_eq!(
+            store
+                .load_note(&note_id)
+                .unwrap()
+                .content
+                .pointer("/content/0/attrs/tone"),
+            Some(&json!("accent"))
+        );
+    }
+
+    #[test]
+    fn unsafe_component_properties_cannot_replace_saved_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let original = store.create_note("Protected".into(), None).unwrap();
+        let valid =
+            json!({"type":"doc","content":[{"type":"notePanel","content":[{"type":"paragraph"}]}]});
+        let mut note = original.clone();
+        note.content = valid.clone();
+        let saved = store.save_note(note, 1).unwrap(); // omitted optional attributes use editor defaults
+        for attrs in [
+            json!({"width":0}),
+            json!({"width":1201}),
+            json!({"width":640.5}),
+            json!({"align":"justify"}),
+            json!({"tone":"url(https://host)"}),
+            json!({"style":"display:none"}),
+        ] {
+            let mut invalid = saved.clone();
+            invalid.content["content"][0]["attrs"] = attrs;
+            assert!(store.save_note(invalid, 2).is_err());
+        }
+        for attrs in [
+            json!({}),
+            json!({"assetId":"../secret"}),
+            json!({"assetId":Uuid::new_v4().to_string(),"src":"https://host/image"}),
+            json!({"assetId":Uuid::new_v4().to_string(),"alt":"x".repeat(2001)}),
+        ] {
+            let mut invalid = saved.clone();
+            invalid.content = json!({"type":"doc","content":[{"type":"localImage","attrs":attrs}]});
+            assert!(store.save_note(invalid, 2).is_err());
+        }
+        assert_eq!(store.load_note(&saved.id).unwrap().content, valid);
+    }
+
+    #[test]
+    fn unsafe_or_missing_assets_are_rejected_without_note_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let note = store.create_note("Asset owner".into(), None).unwrap();
+        let bytes = include_bytes!("../icons/icon.png");
+        assert!(store
+            .import_image("../outside", bytes, "image/png")
+            .is_err());
+        assert!(store
+            .import_image(&Uuid::new_v4().to_string(), bytes, "image/png")
+            .is_err());
+        assert!(store.import_image(&note.id, bytes, "image/jpeg").is_err());
+        assert!(store
+            .import_image(&note.id, b"<svg onload='alert(1)'/>", "image/svg+xml")
+            .is_err());
+        assert!(store.read_image(&note.id, "../../outside").is_err());
+        let asset = store.import_image(&note.id, bytes, "image/png").unwrap();
+        let asset_path = store
+            .root
+            .join("assets")
+            .join(&note.id)
+            .join(format!("{}.image", asset.id));
+        fs::write(asset_path, b"<script>bad()</script>").unwrap();
+        assert!(store.read_image(&note.id, &asset.id).is_err());
+        assert_eq!(store.load_note(&note.id).unwrap().revision, 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn redirected_asset_directories_are_rejected_on_windows() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path().join("workspace")).unwrap();
+        let note = store.create_note("Owner".into(), None).unwrap();
+        let outside = temp.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        let make_junction = |link: &Path| {
+            let result = std::process::Command::new("powershell.exe")
+                .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction -Path $env:NOTED_TEST_LINK -Target $env:NOTED_TEST_TARGET | Out-Null"])
+                .env("NOTED_TEST_LINK", link).env("NOTED_TEST_TARGET", &outside).output().unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        };
+        let base = store.root.join("assets");
+        make_junction(&base);
+        assert!(store
+            .import_image(&note.id, include_bytes!("../icons/icon.png"), "image/png")
+            .unwrap_err()
+            .contains("redirected"));
+        fs::remove_dir(&base).unwrap(); // remove the junction itself, never its target
+        fs::create_dir(&base).unwrap();
+        let owner = base.join(&note.id);
+        make_junction(&owner);
+        assert!(store
+            .import_image(&note.id, include_bytes!("../icons/icon.png"), "image/png")
+            .unwrap_err()
+            .contains("redirected"));
+        assert!(store
+            .read_image(&note.id, &Uuid::new_v4().to_string())
+            .unwrap_err()
+            .contains("redirected"));
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+        fs::remove_dir(owner).unwrap();
+    }
 
     fn expanded_editor_document() -> Value {
         json!({"type":"doc","content":[

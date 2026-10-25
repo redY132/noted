@@ -24,7 +24,17 @@ The editor applies Markdown input shortcuts. It does not keep an independently e
 
 On 2026-10-25 the user approved predictable JavaScript-defined components with explicit editable properties and operations, backed by persisted content and layout state. The visual editor and AI authoring should use a common validated editing contract. Ordinary edits must not require AI or rewriting arbitrary JavaScript; generated code is not trusted component implementation code.
 
-Existing visual-editor frameworks will be evaluated before rebuilding their machinery. Following the user's preference to avoid React, [GrapesJS core is the leading non-React research candidate](visual-editor-options.md), to compare with retaining Tiptap and adding a focused component/layout layer. Puck and Craft.js are deprioritized; no candidate is an adopted dependency or a proven performance winner. The current frontend remains TypeScript/Tiptap without React, and no component-format migration or generated-code runtime has been implemented.
+The requested implementation comparison retained Tiptap with a focused component layer. A separate GrapesJS core/Tiptap custom-RTE integration is implemented under `experiments/editor-comparison`; it is a development dependency, excluded from the app bundle. [Results and limitations](../experiments/editor-comparison/RESULTS.md) explain the lifecycle-cost and editing-complexity tradeoffs. No React or generated-code execution runtime was introduced.
+
+## Editable components and local images
+
+`notePanel` contains ordinary rich-text blocks; `localImage` stores a note-owned asset UUID and description. Both expose bounded width (160–1200 px) and left/center/right alignment; panels also expose plain/soft/accent appearance. Text, component properties, flow reorder and resizing use one ProseMirror document/history. Pointer resizing previews locally and commits one transaction on release. These operations preserve text, but are trusted editor helpers rather than an authorization boundary for AI.
+
+The document stays in logical flow. Free canvas positioning, arbitrary components/scripts, animation and quality controls remain future work. Existing version-1 notes still load without migration; newly supported node types require this editor version, and older validators reject them rather than silently dropping them.
+
+Imported static PNG/JPEG/WebP bytes are copied to `assets/<note-id>/<asset-id>.image`. Paths are derived from UUIDs, note ownership is enforced on reads, and redirected asset directories are rejected. The frontend checks dimensions before decoding and validates the decoded image during import; Rust independently checks byte limits, format headers and dimensions. The maximum is 10 MiB, 32 megapixels, and 16384 pixels per dimension. Native header validation is not a complete image decoder. Animated formats and SVG are not supported in this slice.
+
+Images resolve near the viewport, through narrow IPC and blob URLs; image bytes never enter note JSON or typing autosaves. Browser preview uses a separate IndexedDB image store. URLs are cached for the active note and revoked on switching notes, including late async results. Imported assets are retained through undo/recovery; garbage collection and copying image references between notes remain future work. Loading many distinct images while scrolling can still accumulate memory during that note session; byte-array IPC also has transient overhead.
 
 ## Persistence and conflicts
 

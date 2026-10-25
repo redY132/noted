@@ -1,0 +1,27 @@
+.component-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 20px; border-bottom: 1px solid var(--line, #ddd); font-size: 12px; }
+.component-toolbar button { padding: 5px 8px; border: 1px solid #d9dfd2; border-radius: 5px; background: #fff; font: inherit; cursor: pointer; }
+.component-toolbar button:disabled { opacity: .45; cursor: default; }
+.component-toolbar button:hover:not(:disabled) { background: #edf2e9; }
+.component-hint { color: #777; font-size: 11px; }
+.component-properties { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.component-properties[hidden], .component-toolbar [hidden] { display: none; }
+.component-properties label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.component-properties input, .component-properties select { border: 1px solid #d9dfd2; background: #fff; border-radius: 4px; padding: 4px; font: inherit; }
+#component-width { width: 65px; } #component-alt { width: 130px; }
+.note-component { position: relative; max-width: 100%; box-sizing: border-box; margin-block: 16px; }
+.note-component[data-align="left"] { margin-inline: 0 auto; }
+.note-component[data-align="center"] { margin-inline: auto; }
+.note-component[data-align="right"] { margin-inline: auto 0; }
+.note-panel { padding: 16px 20px; border: 1px solid #dce1d4; border-radius: 9px; background: #f4f6ee; }
+.note-panel[data-tone="plain"] { background: transparent; }
+.note-panel[data-tone="accent"] { background: #e9f0df; border-inline-start: 4px solid #66824b; }
+.note-panel-content > :first-child { margin-top: 0; }
+.note-panel-content > :last-child { margin-bottom: 0; }
+.note-component.ProseMirror-selectednode { outline: 2px solid #66824b; outline-offset: 3px; }
+.component-resize { position: absolute; inset-inline-end: 0; bottom: 0; border: 0; border-radius: 5px 0 6px 0; background: #e1e9d7; color: #45603a; font: 16px/1 sans-serif; width: 26px; height: 22px; cursor: ew-resize; touch-action: none; opacity: 0; }
+.note-component:hover > .component-resize, .note-component:focus-within > .component-resize, .note-component.ProseMirror-selectednode > .component-resize { opacity: 1; }
+.local-image { min-height: 32px; }
+.local-image img { display: block; width: 100%; height: auto; border-radius: 5px; }
+.local-image img:not([src]) { display: none; }
+.image-status { display: block; padding: 20px; background: #f4f6ee; font-size: 12px; color: #666; }
+.image-status[hidden] { display: none; }
