@@ -18,11 +18,11 @@ GrapesJS documents telemetry with an explicit opt-out (`telemetry: false`); any 
 
 ## Recommendation
 
-Evaluate Puck first because its documented component-field contract is close to the approved approach, and its rich-text field uses Tiptap, which Noted already uses. This is a fit assessment based on documentation, not a benchmark. Shared use of Tiptap does not guarantee compatible serialization, extensions, undo, or migrations.
+The user subsequently expressed a preference to avoid React because it adds complexity to the existing frontend. This supersedes the earlier recommendation to evaluate Puck first. JavaScript-defined components do not require React. Puck and Craft.js are deprioritized under this preference, without claiming that React inherently makes an editor slow.
 
-Craft.js is the alternative if Puck's interaction model requires too much adaptation. GrapesJS core merits consideration if detailed website-style editing proves more important than a component-first React approach. No implementation has been selected.
+Evaluate GrapesJS core as the leading non-React candidate from this shortlist, alongside a baseline that retains Tiptap and adds a focused component/layout layer using reusable tools where appropriate. GrapesJS offers substantial visual web-authoring machinery, but its built-in rich-text editor is deliberately minimal. Its documented custom-RTE interface permits replacement; preserving Noted's Tiptap behavior would require an integration, not merely enabling a setting. Validate selection across regions, Markdown shortcuts, unified undo, content preservation, and save/reopen before adopting it. No implementation has been selected.
 
-Puck and Craft.js would introduce React into the existing TypeScript frontend. Rust/Tauri storage can remain behind an adapter, but state synchronization, rendering cost, and validation require real integration work. Avoid selecting the permanent note format solely by copying an editor's internal state shape.
+There is no measured performance ranking between these options for Noted. Removing a React dependency does not prove GrapesJS will use less CPU or memory: it has its own component models, views, and editor lifecycle. Retaining the existing text editor minimizes replacement work, but a custom layout layer also has implementation and maintenance costs. Rust/Tauri storage can remain behind an adapter; state synchronization, rendering cost, and validation still require real integration work. Avoid selecting the permanent note format solely by copying an editor's internal state shape.
 
 None of these references establishes turnkey infinite-canvas support with Noted's exact behavior. Their use of a page-editor "canvas" must not be confused with unbounded free positioning, zoom/pan, layering, and mixed flow/canvas views. Validate those separately.
 
@@ -40,6 +40,8 @@ Use disposable notes to test text editing and selection across components, Markd
 
 Measure both a long note and a page with many components in a packaged Windows build: typing latency, frame pacing, initial load, memory, and serialization cost. A 50,000-note collection should never mean mounting 50,000 editors; collection indexing and active-document rendering are separate workloads. Check offline operation and network silence, and verify scoped formatting cannot alter content even when invoked outside the UI.
 
+Use the same note content, media, and interactions for comparisons on a representative inexpensive Windows laptop. Include typing within a long text region, selecting across component boundaries, dragging an image, and undoing mixed text/layout edits. Keep typing updates local where possible, defer expensive indexing work, and pause offscreen animation. Do not assume one editor instance per paragraph or whole-document serialization on every keystroke will scale. Measure before choosing rendering and persistence optimizations.
+
 ## Primary sources
 
 - [Puck introduction and core licensing](https://puckeditor.com/docs)
@@ -48,6 +50,7 @@ Measure both a long note and a page with many components in a packaged Windows b
 - [Craft.js overview and serialization](https://craft.js.org/docs/overview)
 - [Craft.js repository and license](https://github.com/prevwong/craft.js)
 - [GrapesJS components](https://grapesjs.com/docs/modules/Components.html)
+- [GrapesJS custom rich-text editor integration](https://grapesjs.com/docs/guides/Replace-Rich-Text-Editor.html)
 - [GrapesJS project storage](https://grapesjs.com/docs/modules/Storage.html)
 - [GrapesJS core license](https://github.com/GrapesJS/grapesjs/blob/dev/packages/core/LICENSE)
 - [GrapesJS telemetry controls](https://grapesjs.com/docs/guides/Telemetry.html)

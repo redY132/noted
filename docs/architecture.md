@@ -24,7 +24,7 @@ The editor applies Markdown input shortcuts. It does not keep an independently e
 
 On 2026-10-25 the user approved predictable JavaScript-defined components with explicit editable properties and operations, backed by persisted content and layout state. The visual editor and AI authoring should use a common validated editing contract. Ordinary edits must not require AI or rewriting arbitrary JavaScript; generated code is not trusted component implementation code.
 
-Existing visual-editor frameworks will be evaluated before rebuilding their machinery. [Puck, Craft.js, and GrapesJS core are research candidates](visual-editor-options.md); Puck is the first recommended evaluation, not an adopted dependency. The current frontend remains TypeScript/Tiptap without React, and no component-format migration or generated-code runtime has been implemented.
+Existing visual-editor frameworks will be evaluated before rebuilding their machinery. Following the user's preference to avoid React, [GrapesJS core is the leading non-React research candidate](visual-editor-options.md), to compare with retaining Tiptap and adding a focused component/layout layer. Puck and Craft.js are deprioritized; no candidate is an adopted dependency or a proven performance winner. The current frontend remains TypeScript/Tiptap without React, and no component-format migration or generated-code runtime has been implemented.
 
 ## Persistence and conflicts
 
