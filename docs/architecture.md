@@ -20,6 +20,12 @@ Tiptap's structured document is the prototype content representation. Blocks car
 
 The editor applies Markdown input shortcuts. It does not keep an independently editable Markdown copy alongside the JSON. Presentation presets change rendering independently of wording.
 
+## Agreed direction beyond the prototype
+
+On 2026-10-25 the user approved predictable JavaScript-defined components with explicit editable properties and operations, backed by persisted content and layout state. The visual editor and AI authoring should use a common validated editing contract. Ordinary edits must not require AI or rewriting arbitrary JavaScript; generated code is not trusted component implementation code.
+
+Existing visual-editor frameworks will be evaluated before rebuilding their machinery. [Puck, Craft.js, and GrapesJS core are research candidates](visual-editor-options.md); Puck is the first recommended evaluation, not an adopted dependency. The current frontend remains TypeScript/Tiptap without React, and no component-format migration or generated-code runtime has been implemented.
+
 ## Persistence and conflicts
 
 The native store serializes access and locks a workspace against a second native writer. Note changes require a matching revision and file fingerprint. External edits that do not increment revisions are still detected. Conflicts retain the in-memory draft and require an explicit recovery action.

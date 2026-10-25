@@ -204,9 +204,9 @@ The user supports the overall direction. Concrete serialization, editor selectio
 - The concrete format and handling of schema versions, inline formatting ranges, external edits, and migrations must be designed before commitment.
 - Imported assets are copied into the local workspace, as agreed on 2026-10-25; notes must not depend on the original external file remaining at its original path. Store asset bytes separately and reference them by stable IDs. Asset edits must respect the current-note-only editing boundary; any deduplication, versioning, and cleanup design must preserve other notes and retained revisions.
 
-### JavaScript authoring option — under evaluation
+### Agreed component-based JavaScript authoring direction
 
-The user favors JavaScript authoring because of AI coding capability and the intended webpage-like freedom of notes, while requiring an easy graphical editing interface. The execution model, editing contract, and authoritative format remain proposals; this is not approval to execute note scripts or replace the current canonical format.
+On 2026-10-25 the user approved predictable components implemented in JavaScript that expose programmatic editing interfaces. Human UI operations and AI-authored changes should use defined component properties and operations over persisted editable data. The concrete API, execution isolation, serialization, and dependency selection remain proposals; agreement does not authorize arbitrary note-script execution or immediate replacement of the current prototype.
 
 - Evaluate JavaScript as a layout/template authoring language separately from the authoritative content model. Plain Markdown does not express the full asset, positioning, animation, and layout requirements; a richer data model is still required even if JavaScript authors its presentation.
 - Proposed initial design: a restricted JavaScript authoring API produces typed layout/presentation data referencing existing content and asset IDs. A separately isolated, bounded executor proposes output; the trusted core validates scope, current revision, protected content/references, and resource limits before committing. Persist accepted layout data so normal opening, searching, and editing do not require executing the authoring script again.
@@ -216,7 +216,7 @@ The user favors JavaScript authoring because of AI coding capability and the int
 - GUI edits must update authoritative data predictably. Making arbitrary JavaScript the sole source of truth would require solving how direct manipulation and text edits map back into code; this remains unresolved and is a reason to evaluate data plus authoring code.
 - Distinguish one-time layout generation from continuously executing interactive note widgets. Long-lived scripts, arbitrary third-party libraries, and executable imported documents are separate future decisions; declarative animation/media support does not by itself authorize general script execution.
 
-### Proposed visual editing contract — pending agreement
+### Visual editing contract — agreed direction, details pending validation
 
 - Provide direct rich-text editing with Markdown shortcuts as the ordinary interaction. Optional arrangement controls select, move, resize, and layer content without intercepting ordinary text selection; a contextual inspector exposes appearance and supported component properties. Exact interaction design is not finalized.
 - JavaScript authoring should produce elements with stable internal identities and explicit bindings to note-owned text and assets. Those identities serve editing/layout operations, not user-facing passage connections. Formatting code references protected content instead of embedding replacement strings.
@@ -225,6 +225,7 @@ The user favors JavaScript authoring because of AI coding capability and the int
 - Flow layouts should use order, spacing, and size constraints; free canvas layouts can use coordinates. Dragging a flow item changes its ordered placement rather than silently converting every element to absolute positioning. Preserve logical reading order separately from canvas placement.
 - Extensible components must declare editable properties, accessible content representation, and serialization behavior. Unrestricted custom JavaScript/DOM output is not automatically fully editable or safely resource-bounded. Continuous interactive components remain a separate decision.
 - Suggested first validation: type into an AI-arranged note, move/resize an imported image, change an exposed property, undo, save/reopen, and regenerate a layout without silently losing manual edits or changing another note. Existing editor behavior and note migrations must be preserved. Referenced page-editor systems are architectural examples, not selected dependencies.
+- Evaluate existing editor frameworks before implementing equivalent component selection, dragging, property editing, and serialization from scratch. The [visual-editor framework comparison](docs/visual-editor-options.md) recommends evaluating Puck first, with Craft.js and GrapesJS core as alternatives. This is a research recommendation, not an approved dependency or proof of performance, privacy, or unrestricted canvas support.
 
 ### Storage and search
 
