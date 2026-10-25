@@ -123,6 +123,17 @@ Planning direction clarified by the user on 2026-10-25; this section records int
 - Related notes serve the user's current writing or reading context. Flashbacks serve deliberate rediscovery and review over time; the two experiences may share retrieval infrastructure but need different selection policies.
 - The user is interested in local semantic matching for discovering meaning beyond shared wording, with compute cost a major concern. No embedding model, runtime, hardware requirement, or accuracy claim is approved yet.
 
+### Connection scope and editing boundaries
+
+Agreed on 2026-10-25.
+
+- A manually created connection is between whole notes and must not require inserting linked text into the document. Existing inline navigation links can remain available, but are not the required representation of a connection.
+- Plan a dedicated section for viewing note connections; its UI implementation is deferred. Current work remains planning the document and note-connection foundations.
+- Passage/block connections are outside the current product scope. Users should not need to define or maintain passage boundaries to connect notes.
+- Internal text segmentation may still be evaluated for semantic indexing of long notes. Such segments are rebuildable implementation details, not user-facing connection targets; results and accepted connections resolve to whole-note IDs.
+- Editing changes only the currently open note. Do not implement shared editable blocks or live content embeds through which editing one note changes the content of another. To edit another note, navigate to it. Ordinary copied content belongs independently to its destination note.
+- Derived backlinks and recommendation indexes can reflect a connection without modifying the target note's authored content. Authoritative connection storage and removal semantics still need a concrete design consistent with this editing boundary.
+
 ### Manual connection strength
 
 Direction agreed on 2026-10-25.
@@ -138,7 +149,7 @@ Direction agreed on 2026-10-25.
 ### Proposed retrieval design — pending validation
 
 - Combine indexed text matching and shared-tag evidence with optional local semantic candidates. Untagged notes must remain eligible. Semantic retrieval should be able to contribute candidates independently of keyword matching so different wording does not exclude them before ranking.
-- Keep suggested connections distinct from saved links. Proposed interaction: show a small set of candidates with a relevant passage, allow opening without linking, and provide explicit acceptance and dismissal. Exact link insertion or note-level relationship behavior remains to be designed.
+- Keep suggested connections distinct from saved links. Proposed interaction: show a small set of note candidates, optionally with a read-only contextual excerpt, allow opening without connecting, and provide explicit acceptance and dismissal. Acceptance creates a note-level connection without requiring inserted text. Detailed connection-section interactions remain to be designed.
 - Treat semantic similarity as a relevance estimate, not proof of a relationship or a calibrated confidence percentage. Do not generate unsupported explanations for why notes are connected.
 - For local semantic matching, cache embeddings of text sections, tied to content fingerprints and model version. Recompute changed text in bounded background work; presentation-only edits should not require re-embedding. Initial indexing and model changes require separate resource budgeting.
 - Reuse cached embeddings when opening unchanged notes. Coalesce pending updates while typing; tolerate delayed suggestions rather than blocking editing. CPU concurrency, memory use, battery behavior, cancellation, and indexing pause controls need measurement and explicit limits.
@@ -191,6 +202,7 @@ The user supports the overall direction. Concrete serialization, editor selectio
 - Recommend a versioned structured JSON representation as the canonical note format, with local media stored separately and referenced by ID. Markdown input and Markdown import/export are interfaces to this model, not a second authoritative copy.
 - This trades direct plain-Markdown compatibility for explicit identity, rich layouts, and enforceable editing scopes. Basic text should export cleanly; advanced layouts and animations cannot be assumed to survive Markdown export.
 - The concrete format and handling of schema versions, inline formatting ranges, external edits, and migrations must be designed before commitment.
+- Imported assets are copied into the local workspace, as agreed on 2026-10-25; notes must not depend on the original external file remaining at its original path. Store asset bytes separately and reference them by stable IDs. Asset edits must respect the current-note-only editing boundary; any deduplication, versioning, and cleanup design must preserve other notes and retained revisions.
 
 ### Storage and search
 
@@ -204,8 +216,8 @@ The user supports the overall direction. Concrete serialization, editor selectio
 
 ### Proposed development sequence — pending agreement
 
-- First specify and validate the shared document contracts: note/block identity, behavior when blocks are split/merged/copied/moved, typed note/block/asset references, asset ownership and recovery, content versus presentation boundaries, revision checks, and format migrations. Keep existing notes readable and avoid replacing the editor solely to introduce this contract.
-- Establish whether a manually confirmed connection can exist as note-level metadata without inserting text, in addition to existing inline navigation links. Recommended starting direction: support both with one derived backlink/connection index, explicit source provenance, and defined deduplication behavior. Exact authoritative serialization remains undecided.
+- First specify and validate the shared document contracts: note identity, internal content identity for editing/layout/AI operations, typed note/asset references, asset ownership and recovery, content versus presentation boundaries, revision checks, and format migrations. Cross-note block/passage addressing is outside current scope. Keep existing notes readable and avoid replacing the editor solely to introduce this contract.
+- Define the authoritative serialization for approved note-level connections without inserted text, alongside existing inline navigation links. Recommended starting direction: one derived backlink/connection index with explicit source provenance and defined deduplication/removal behavior. The dedicated connection section remains deferred UI work.
 - Define a minimal asset reference and import lifecycle before depending on it: files stored outside note JSON, stable IDs, locally owned copies by default, and recovery that does not remove assets still referenced by notes or retained revisions. Full artistic rendering and media analysis need not precede manual linking.
 - Validate the model with a small end-to-end slice: save/reopen an asset reference, preserve a link through rename/move, migrate an existing note, and deterministically reject a presentation-only operation that changes protected words or references. This validates foundations without requiring a live AI integration.
 - Then implement the manual connection experience and incremental derived indexing: explicit links, backlinks, tagging, and candidate retrieval interfaces. Recommendation scores must not change stored user intent. Do not require the full canvas, schema, plugin, or AI feature set before this milestone.
@@ -267,7 +279,7 @@ The user previously used Logseq and reports performance problems, bugs, disappea
 
 The sections above capture the intended product direction, with technical proposals explicitly labeled. The first release is deliberately limited to basic note-taking; performance budgets have not yet been agreed.
 
-1. Within the approved folder hierarchy, how should deletion, moves, and overview reassignment work? What are the minimal workflows for tags, links, and daily notes? Are backlinks and block-level references part of the first release?
+1. Within the approved folder hierarchy, how should deletion, moves, and overview reassignment work? What are the minimal workflows for tags, note-level connections, and daily notes? When should backlinks and the deferred connection section ship? Passage/block connections are outside current scope.
 2. Which Markdown constructs and schema rules belong in the initial editor? What exact behavior defines the optional Logseq-like preset?
 3. How should users move between document and canvas layouts, and how should content order and layout be preserved? Are drawing and handwriting in scope?
 4. What schema syntax and editing interface should be used, and how are schemas assigned, revised, and shared? At what scope and time does automatic enforcement apply, and how does it interact with manual overrides and undo?
@@ -294,6 +306,6 @@ The prototype does not yet implement the general schema engine, folder overview 
 
 The user requested established note-editor text functionality before further artistic or AI work. The implemented baseline now includes paragraph/H1–H6 styles; bold, italic, underline, strikethrough, highlight, inline code, subscript/superscript and bounded text colors; alignment; quotes, code blocks and dividers; bullet, numbered and nested checkbox lists; table editing; URL and note links; clear inline formatting; undo/redo; and literal current-note find/replace. Toolbar controls track active, mixed and unavailable states rather than appearing identical regardless of selection.
 
-Indentation is a schema policy, not one universal action. Paper and Compact allow independent paragraph/heading indentation from zero to eight steps. Lists use structural nesting in every schema. Outline disables free paragraph indentation: users create a bullet, numbered or task list and nest under a preceding sibling. Existing free offsets remain stored but are not displayed in Outline, so switching schemas does not erase information or silently reinterpret offsets as parent-child relationships. Full outliner behaviors such as folding, block movement and transclusion remain separate work.
+Indentation is a schema policy, not one universal action. Paper and Compact allow independent paragraph/heading indentation from zero to eight steps. Lists use structural nesting in every schema. Outline disables free paragraph indentation: users create a bullet, numbered or task list and nest under a preceding sibling. Existing free offsets remain stored but are not displayed in Outline, so switching schemas does not erase information or silently reinterpret offsets as parent-child relationships. Full outliner behaviors such as folding and block movement remain separate work. Shared editable content across notes is excluded by the current-note-only editing requirement.
 
 These features are offline and do not invoke AI. Text formatting and indentation preserve words; replacement, insertion and deletion are explicit human editing actions. This is the first implemented policy subset, not the general user-defined schema engine. The comparison with Obsidian, Logseq, Notion and Joplin and the precise remaining gaps are in [docs/editor-feature-audit.md](docs/editor-feature-audit.md).
