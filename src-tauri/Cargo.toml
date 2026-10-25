@@ -1,0 +1,33 @@
+[package]
+name = "noted"
+version = "0.1.0"
+edition = "2021"
+description = "Offline-first Noted desktop prototype"
+
+[lib]
+name = "noted_core"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "noted"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-build"]
+custom-protocol = ["desktop", "tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dependencies]
+tauri = { version = "2", features = [], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
+tempfile = "3"
+sha2 = "0.10"
+fs2 = "0.4"
