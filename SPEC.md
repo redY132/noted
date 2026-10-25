@@ -123,6 +123,18 @@ Planning direction clarified by the user on 2026-10-25; this section records int
 - Related notes serve the user's current writing or reading context. Flashbacks serve deliberate rediscovery and review over time; the two experiences may share retrieval infrastructure but need different selection policies.
 - The user is interested in local semantic matching for discovering meaning beyond shared wording, with compute cost a major concern. No embedding model, runtime, hardware requirement, or accuracy claim is approved yet.
 
+### Manual connection strength
+
+Direction agreed on 2026-10-25.
+
+- User-authored tags are strong evidence of intended organization. A manual link explicitly confirms a connection between its endpoints. Both should strongly influence discovery, while allowing other evidence and the current context to matter.
+- The user's "magnetic force" metaphor describes recommendation strength: manual connections attract relevant notes toward one another in suggestions, with bounded influence rather than an unconditional first-place result. This does not require a physics simulation or a visual graph.
+- Explicit links retain their separate navigation role: stable, directly followable references that do not disappear when a recommendation score changes. Suggestions must not replace, hide, or rewrite saved links based on ranking.
+- Manual connections should contribute candidates as well as ranking signals, so semantically distant but intentionally related notes can be found. Untagged and unlinked notes remain eligible through other retrieval methods.
+- A tag shared by many notes should not make every pair equally relevant in every context. Exact weighting, the relative influence of a shared tag versus a direct link, and saturation rules remain proposals to evaluate; no numerical scoring formula is approved.
+- Do not infer confirmed links transitively or treat a single accepted connection as a general rule connecting all notes on those topics. Explicit connections remain inspectable separately from the ranked suggestions.
+- Personalization should normally update tag/link lookups, candidate selection, and lightweight ranking while keeping the embedding model and its distance measure stable. Ordinary tagging or feedback must not require a full semantic-index rebuild.
+
 ### Proposed retrieval design — pending validation
 
 - Combine indexed text matching and shared-tag evidence with optional local semantic candidates. Untagged notes must remain eligible. Semantic retrieval should be able to contribute candidates independently of keyword matching so different wording does not exclude them before ranking.
