@@ -204,6 +204,18 @@ The user supports the overall direction. Concrete serialization, editor selectio
 - The concrete format and handling of schema versions, inline formatting ranges, external edits, and migrations must be designed before commitment.
 - Imported assets are copied into the local workspace, as agreed on 2026-10-25; notes must not depend on the original external file remaining at its original path. Store asset bytes separately and reference them by stable IDs. Asset edits must respect the current-note-only editing boundary; any deduplication, versioning, and cleanup design must preserve other notes and retained revisions.
 
+### JavaScript authoring option — under evaluation
+
+The user is considering JavaScript because of AI coding capability and the intended webpage-like freedom of notes. This is a candidate direction, not approval to execute note scripts or replace the current canonical format.
+
+- Evaluate JavaScript as a layout/template authoring language separately from the authoritative content model. Plain Markdown does not express the full asset, positioning, animation, and layout requirements; a richer data model is still required even if JavaScript authors its presentation.
+- Proposed initial design: a restricted JavaScript authoring API produces typed layout/presentation data referencing existing content and asset IDs. A separately isolated, bounded executor proposes output; the trusted core validates scope, current revision, protected content/references, and resource limits before committing. Persist accepted layout data so normal opening, searching, and editing do not require executing the authoring script again.
+- Library restrictions alone are insufficient. Execution must have no ambient access to app IPC, filesystem, shell, credentials, other notes, or networking. Allow only explicitly provided current-note inputs and narrowly mediated capabilities. Exact runtime isolation, resource enforcement, asset mediation, and dependency policy require design and testing; no claim of eliminated vulnerabilities is made.
+- Never evaluate generated note code inside the privileged editor context. Code review, source scanning, dependency allowlists, or an iframe/worker alone are not a complete security and resource-control boundary.
+- Validate rendered behavior as well as returned data: formatting must not change protected words/references or make them disappear through clipping, unsupported styling, arbitrary HTML, or executable callbacks. Rendering remains subject to the app's supported components and presentation rules.
+- GUI edits must update authoritative data predictably. Making arbitrary JavaScript the sole source of truth would require solving how direct manipulation and text edits map back into code; this remains unresolved and is a reason to evaluate data plus authoring code.
+- Distinguish one-time layout generation from continuously executing interactive note widgets. Long-lived scripts, arbitrary third-party libraries, and executable imported documents are separate future decisions; declarative animation/media support does not by itself authorize general script execution.
+
 ### Storage and search
 
 - Recommend individual text-based note files as the source of truth and a rebuildable local SQLite index for search, tags, links, and listings. Store media outside note JSON to avoid large embedded binary payloads.
