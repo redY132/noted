@@ -202,6 +202,15 @@ The user supports the overall direction. Concrete serialization, editor selectio
 - Validate externally edited files before accepting them. Preserve malformed files and surface conflicts rather than silently overwriting either version.
 - Database-authoritative storage with text import/export is an alternative offering simpler multi-record transactions, but less direct access for external text editing. This tradeoff remains open.
 
+### Proposed development sequence — pending agreement
+
+- First specify and validate the shared document contracts: note/block identity, behavior when blocks are split/merged/copied/moved, typed note/block/asset references, asset ownership and recovery, content versus presentation boundaries, revision checks, and format migrations. Keep existing notes readable and avoid replacing the editor solely to introduce this contract.
+- Establish whether a manually confirmed connection can exist as note-level metadata without inserting text, in addition to existing inline navigation links. Recommended starting direction: support both with one derived backlink/connection index, explicit source provenance, and defined deduplication behavior. Exact authoritative serialization remains undecided.
+- Define a minimal asset reference and import lifecycle before depending on it: files stored outside note JSON, stable IDs, locally owned copies by default, and recovery that does not remove assets still referenced by notes or retained revisions. Full artistic rendering and media analysis need not precede manual linking.
+- Validate the model with a small end-to-end slice: save/reopen an asset reference, preserve a link through rename/move, migrate an existing note, and deterministically reject a presentation-only operation that changes protected words or references. This validates foundations without requiring a live AI integration.
+- Then implement the manual connection experience and incremental derived indexing: explicit links, backlinks, tagging, and candidate retrieval interfaces. Recommendation scores must not change stored user intent. Do not require the full canvas, schema, plugin, or AI feature set before this milestone.
+- Finally benchmark keyword/tag retrieval and optional local semantic retrieval against representative workloads, then introduce bounded personalized ranking and separately scheduled flashbacks. ANN implementation, model, numeric weights, and resource defaults remain empirical choices rather than finalized decisions.
+
 ### Privacy, extensibility, and cost
 
 - Proposed defaults: local assets, no telemetry, and no note-related network requests until a user enables the relevant feature. Offline storage alone does not provide encryption at rest; that remains a separate decision.
