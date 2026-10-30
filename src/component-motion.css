@@ -1,0 +1,9 @@
+/* Presets keep text readable and avoid flashing. Positioning uses left/top;
+   translate is only a small decorative offset and never changes saved geometry. */
+[data-motion-active="true"][data-note-motion="fade"] { animation: noted-fade 5s ease-in-out infinite; }
+[data-motion-active="true"][data-note-motion="float"] { animation: noted-float 6s ease-in-out infinite; }
+[data-motion-active="true"][data-note-motion="pulse"] { animation: noted-pulse 5s ease-in-out infinite; }
+@keyframes noted-fade { 0%,100% { opacity: 1; } 50% { opacity: .8; } }
+@keyframes noted-float { 0%,100% { translate: 0 0; } 50% { translate: 0 -6px; } }
+@keyframes noted-pulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.12); } }
+@media (prefers-reduced-motion: reduce) { [data-note-motion] { animation: none !important; } }

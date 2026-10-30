@@ -101,6 +101,7 @@ mod desktop {
 
     pub fn run() {
         tauri::Builder::default()
+            .plugin(tauri_plugin_opener::init())
             .setup(|app| {
                 let root = match std::env::var_os("NOTED_WORKSPACE") {
                     Some(path) => std::path::PathBuf::from(path),

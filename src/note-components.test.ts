@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { AllSelection } from '@tiptap/pm/state';
 import { createEditorExtensions } from './editor-extensions.ts';
-import { moveComponent, panelFixture, selectedComponent, updateComponent, wrapInPanel, canWrapInPanel, unwrapPanel, insertLocalImage } from './note-components.ts';
+import { moveComponent, panelFixture, selectedComponent, updateComponent, wrapInPanel, canWrapInPanel, unwrapPanel, insertLocalImage, changeComponentLayer, insertPanel } from './note-components.ts';
 import { componentMarkup, initializeComponentUI } from './component-ui.ts';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true, url: 'http://localhost/' });
@@ -184,16 +184,16 @@ test('pointer resizing previews without document writes, commits once, and undoe
   } finally { editor.destroy(); }
 });
 test('offscreen images defer asset reads and disconnect visibility observers on disposal', async () => {
-  let callback!: IntersectionObserverCallback; let disconnects = 0; let reads = 0;
+  const callbacks: IntersectionObserverCallback[] = []; let disconnects = 0; let reads = 0;
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'IntersectionObserver');
   Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: class {
-    constructor(next: IntersectionObserverCallback) { callback = next; }
+    constructor(next: IntersectionObserverCallback) { callbacks.push(next); }
     observe() {} disconnect() { disconnects++; }
   } });
   const editor = make([{ type: 'localImage', attrs: { id: crypto.randomUUID(), assetId: crypto.randomUUID(), alt: 'Local', width: 480 } }], async () => { reads++; return 'blob:http://localhost/test'; });
   try {
     assert.equal(reads, 0);
-    callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    for (const callback of callbacks) callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
     await Promise.resolve(); assert.equal(reads, 1);
     editor.destroy(); assert.ok(disconnects >= 2);
   } finally {
@@ -201,4 +201,101 @@ test('offscreen images defer asset reads and disconnect visibility observers on 
     if (previous) Object.defineProperty(globalThis, 'IntersectionObserver', previous);
     else Reflect.deleteProperty(globalThis, 'IntersectionObserver');
   }
+});
+
+test('free placement preserves words, extends the scroll surface, persists and returns to guided flow', async () => {
+  const editor = make([panelFixture('Freely placed words', 'panel'), paragraph('Guided words')]);
+  try {
+    editor.commands.setNodeSelection(0); const before = editor.getJSON();
+    assert.equal(updateComponent(editor, { placement: 'free', x: 2400, y: 3600, z: 2, animation: 'float' }), true);
+    await Promise.resolve();
+    const panel = editor.view.dom.querySelector<HTMLElement>('.note-panel')!;
+    assert.equal(panel.dataset.placement, 'free'); assert.equal(panel.style.left, '2400px'); assert.equal(panel.style.top, '3600px');
+    assert.equal(editor.view.dom.style.getPropertyValue('--free-width'), '3120px');
+    assert.equal(editor.view.dom.style.getPropertyValue('--free-height'), '3840px');
+    assert.equal(editor.state.doc.textContent, 'Freely placed wordsGuided words');
+    const saved = editor.getJSON(); const reopened = make(saved.content!);
+    try { assert.deepEqual(reopened.getJSON(), saved); } finally { reopened.destroy(); }
+    assert.equal(changeComponentLayer(editor, 1), true); assert.equal(selectedComponent(editor)!.node.attrs.z, 3);
+    assert.equal(editor.commands.undo(), true); assert.equal(selectedComponent(editor)!.node.attrs.z, 2);
+    assert.equal(updateComponent(editor, { placement: 'flow' }), true); await Promise.resolve();
+    assert.equal(panel.dataset.placement, 'flow'); assert.equal(panel.style.left, '');
+    assert.equal(editor.view.dom.style.getPropertyValue('--free-height'), '0px');
+    editor.commands.undo(); editor.commands.undo(); assert.deepEqual(editor.getJSON(), before);
+  } finally { editor.destroy(); }
+});
+
+test('free placement extracts a nested image without losing panel words and undo restores exact nesting', () => {
+  const image = { type: 'localImage', attrs: { id: 'img', assetId: crypto.randomUUID(), alt: 'Diagram', width: 480 } };
+  const panel = panelFixture('Before image', 'panel'); panel.content!.push(image, paragraph('After image'));
+  const editor = make([panel, paragraph('Following panel')]);
+  try {
+    const before = editor.getJSON(); const words = editor.state.doc.textContent;
+    editor.commands.setNodeSelection(1 + editor.state.doc.firstChild!.child(0).nodeSize);
+    assert.equal(updateComponent(editor, { placement: 'free', x: 900, y: 500 }), true);
+    assert.equal(editor.state.doc.child(1).type.name, 'localImage');
+    assert.equal(editor.state.doc.textContent, words);
+    assert.equal(selectedComponent(editor)!.position, editor.state.doc.firstChild!.nodeSize);
+    editor.commands.undo(); assert.deepEqual(editor.getJSON(), before);
+  } finally { editor.destroy(); }
+});
+
+test('free dragging previews coordinates, commits once, supports keyboard and cancels cleanly', async () => {
+  const editor = make([panelFixture('Move without changing me', 'panel')]);
+  try {
+    editor.commands.setNodeSelection(0); updateComponent(editor, { placement: 'free', x: 40, y: 60 });
+    const before = editor.getJSON(); const panel = editor.view.dom.querySelector<HTMLElement>('.note-panel')!;
+    const handle = panel.querySelector<HTMLButtonElement>('.component-move')!;
+    handle.dispatchEvent(new dom.window.MouseEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }));
+    window.dispatchEvent(new dom.window.MouseEvent('pointermove', { clientX: 250, clientY: 300 }));
+    assert.deepEqual(editor.getJSON(), before); assert.equal(panel.style.left, '190px'); assert.equal(panel.style.top, '260px');
+    window.dispatchEvent(new dom.window.MouseEvent('pointerup', { clientX: 250, clientY: 300 }));
+    assert.equal(editor.state.doc.firstChild!.attrs.x, 190); assert.equal(editor.state.doc.firstChild!.attrs.y, 260);
+    editor.commands.undo(); assert.deepEqual(editor.getJSON(), before);
+    handle.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(editor.state.doc.firstChild!.attrs.x, 50);
+    handle.dispatchEvent(new dom.window.MouseEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }));
+    window.dispatchEvent(new dom.window.MouseEvent('pointermove', { clientX: 450, clientY: 300 }));
+    window.dispatchEvent(new dom.window.MouseEvent('pointercancel'));
+    assert.equal(panel.style.left, '50px'); assert.equal(editor.state.doc.firstChild!.attrs.x, 50);
+  } finally { editor.destroy(); }
+});
+
+test('component placement, motion and image-link properties reject malformed programmatic values', () => {
+  const editor = make([panelFixture('Protected words', 'panel')]);
+  try {
+    editor.commands.setNodeSelection(0); const before = editor.getJSON();
+    for (const value of [-1, 100001, NaN, Infinity, 1.5]) assert.equal(updateComponent(editor, { x: value }), false);
+    assert.equal(updateComponent(editor, { z: 10001 }), false);
+    assert.equal(updateComponent(editor, { animation: 'script' as 'none' }), false);
+    assert.equal(updateComponent(editor, { placement: 'fixed' as 'free' }), false);
+    assert.equal(updateComponent(editor, { href: 'https://example.com' }), false, 'links belong to images, not text panels');
+    assert.deepEqual(editor.getJSON(), before);
+    insertLocalImage(editor, crypto.randomUUID(), 'Link');
+    editor.commands.setNodeSelection(editor.state.doc.firstChild!.nodeSize);
+    assert.equal(updateComponent(editor, { href: 'javascript:alert(1)' }), false);
+    assert.equal(updateComponent(editor, { href: 'https://example.com/notes' }), true);
+    assert.equal(editor.view.dom.querySelector('a.image-link')!.getAttribute('href'), 'https://example.com/notes');
+    editor.commands.undo(); assert.equal(editor.view.dom.querySelector('a.image-link')!.getAttribute('href'), null);
+    assert.equal(updateComponent(editor, { href: ' HTTP://EXAMPLE.COM ' }), true);
+    assert.equal(selectedComponent(editor)!.node.attrs.href, 'http://example.com/');
+    assert.equal(updateComponent(editor, { href: ' HTTP://EXAMPLE.COM ' }), false, 'canonical-equivalent URL is a no-op');
+  } finally { editor.destroy(); }
+});
+
+test('new independent panels preserve words and inherit nearby free placement with shared undo', () => {
+  const editor = make([panelFixture('Original words', 'panel')]);
+  try {
+    editor.commands.setTextSelection(2);
+    updateComponent(editor, { placement: 'free', x: 100, y: 200, z: 2 });
+    const before = editor.getJSON();
+    assert.equal(insertPanel(editor), true);
+    assert.equal(editor.getJSON().content!.filter(node => node.type === 'notePanel').length, 2);
+    assert.equal(editor.state.doc.textContent, 'Original words');
+    assert.equal(selectedComponent(editor)!.node.attrs.placement, 'free');
+    assert.equal(selectedComponent(editor)!.node.attrs.x, 140);
+    assert.equal(selectedComponent(editor)!.node.attrs.y, 240);
+    assert.equal(selectedComponent(editor)!.node.attrs.z, 3);
+    editor.commands.undo(); assert.deepEqual(editor.getJSON(), before);
+  } finally { editor.destroy(); }
 });

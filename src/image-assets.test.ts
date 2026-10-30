@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets.ts';
+import { MAX_IMAGE_BYTES, inspectGif, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets.ts';
 
 const png = new Uint8Array(readFileSync(new URL('../src-tauri/icons/icon.png', import.meta.url)));
 test('local raster header dimensions match bundled PNG and reject oversized allocation', () => {
@@ -31,4 +31,24 @@ test('JPEG and WebP headers are bounded before decode', () => {
   webp[24] = 15; webp[27] = 23;
   assert.deepEqual(rasterDimensions(webp), { width: 16, height: 24 });
   webp[20] = 2; assert.throws(() => rasterMime(webp), /Animated/);
+});
+
+function gif(frames = 2, width = 1, height = 1) {
+  const header = [...new TextEncoder().encode('GIF89a'), width & 255, width >> 8, height & 255, height >> 8, 0x80, 0, 0, 0, 0, 0, 255, 255, 255];
+  const image = [0x21,0xf9,4,0,10,0,0,0, 0x2c,0,0,0,0,1,0,1,0,0,2,2,0x44,1,0];
+  return new Uint8Array([...header, ...Array.from({ length: frames }, () => image).flat(), 0x3b]);
+}
+test('GIF supports animation while bounding frame count, canvas work and all blocks', () => {
+  const valid = gif();
+  assert.equal(rasterMime(valid), 'image/gif');
+  assert.deepEqual(inspectGif(valid), { width: 1, height: 1, frames: 2 });
+  assert.deepEqual(rasterDimensions(valid), { width: 1, height: 1 });
+  assert.throws(() => inspectGif(gif(501)), /frame/);
+  assert.throws(() => inspectGif(gif(5, 8000, 4000)), /frame-pixel/);
+  assert.throws(() => inspectGif(valid.slice(0, -1)), /trailer/);
+  assert.throws(() => inspectGif(valid.slice(0, 23)), /Truncated/);
+  const outside = valid.slice(); outside[28] = 5;
+  assert.throws(() => inspectGif(outside), /canvas/);
+  const trailing = new Uint8Array([...valid, 0]);
+  assert.throws(() => inspectGif(trailing), /trailer/);
 });

@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 pub const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_PIXELS: u64 = 32_000_000;
+const MAX_GIF_FRAMES: u32 = 500;
+const MAX_GIF_FRAME_PIXELS: u64 = 128_000_000;
 type Result<T> = std::result::Result<T, String>;
 
 #[derive(Debug, Serialize)]
@@ -37,13 +39,111 @@ fn le24(b: &[u8]) -> u32 {
     b[0] as u32 | (b[1] as u32) << 8 | (b[2] as u32) << 16
 }
 
+fn inspect_gif(bytes: &[u8]) -> Result<(u32, u32)> {
+    if bytes.len() < 14 {
+        return Err("Invalid GIF header".into());
+    }
+    let read16 = |offset: usize| u16::from_le_bytes([bytes[offset], bytes[offset + 1]]) as u32;
+    let width = read16(6);
+    let height = read16(8);
+    if width == 0
+        || height == 0
+        || width > 16384
+        || height > 16384
+        || width as u64 * height as u64 > MAX_PIXELS
+    {
+        return Err("Image exceeds the 32 megapixel / 16384 pixel dimension limit".into());
+    }
+    let mut offset = 13usize;
+    let advance = |offset: &mut usize, count: usize| -> Result<()> {
+        if offset
+            .checked_add(count)
+            .is_none_or(|end| end > bytes.len())
+        {
+            return Err("Truncated GIF".into());
+        }
+        *offset += count;
+        Ok(())
+    };
+    if bytes[10] & 0x80 != 0 {
+        advance(&mut offset, 3 * (1usize << ((bytes[10] & 7) + 1)))?;
+    }
+    let blocks = |offset: &mut usize| -> Result<usize> {
+        let mut total = 0;
+        loop {
+            let size = *bytes.get(*offset).ok_or("Truncated GIF blocks")? as usize;
+            *offset += 1;
+            if size == 0 {
+                return Ok(total);
+            }
+            advance(offset, size)?;
+            total += size;
+        }
+    };
+    let mut frames = 0u32;
+    while offset < bytes.len() {
+        let tag = bytes[offset];
+        offset += 1;
+        if tag == 0x3b {
+            if frames == 0 || offset != bytes.len() {
+                return Err("Invalid GIF trailer".into());
+            }
+            return Ok((width, height));
+        }
+        if tag == 0x21 {
+            advance(&mut offset, 1)?;
+            blocks(&mut offset)?;
+            continue;
+        }
+        if tag != 0x2c || offset + 9 > bytes.len() {
+            return Err("Invalid GIF image block".into());
+        }
+        let left = read16(offset);
+        let top = read16(offset + 2);
+        let frame_width = read16(offset + 4);
+        let frame_height = read16(offset + 6);
+        let packed = bytes[offset + 8];
+        if frame_width == 0
+            || frame_height == 0
+            || left + frame_width > width
+            || top + frame_height > height
+        {
+            return Err("GIF frame exceeds its canvas".into());
+        }
+        advance(&mut offset, 9)?;
+        if packed & 0x80 != 0 {
+            advance(&mut offset, 3 * (1usize << ((packed & 7) + 1)))?;
+        }
+        if !bytes
+            .get(offset)
+            .is_some_and(|value| (2..=8).contains(value))
+        {
+            return Err("Invalid GIF code size".into());
+        }
+        advance(&mut offset, 1)?;
+        if blocks(&mut offset)? == 0 {
+            return Err("GIF image has no data".into());
+        }
+        frames += 1;
+        if frames > MAX_GIF_FRAMES
+            || width as u64 * height as u64 * frames as u64 > MAX_GIF_FRAME_PIXELS
+        {
+            return Err("GIF exceeds the 500-frame / 128-million frame-pixel limit".into());
+        }
+    }
+    Err("GIF is missing its trailer".into())
+}
+
 /// Header/size validation, not a full raster decoder. Browser decoding remains
-/// isolated from note markup. Animated formats are deferred until frame budgets exist.
+/// isolated from note markup. GIF block parsing additionally bounds frame work.
 pub fn inspect(bytes: &[u8]) -> Result<(&'static str, u32, u32)> {
     if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES {
         return Err("Images must be between 1 byte and 10 MiB".into());
     }
-    let result = if bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+    let result = if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        let (width, height) = inspect_gif(bytes)?;
+        ("image/gif", width, height)
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n")
         && bytes.len() >= 33
         && &bytes[12..16] == b"IHDR"
         && be32(&bytes[8..12]) == 13
@@ -148,7 +248,7 @@ pub fn inspect(bytes: &[u8]) -> Result<(&'static str, u32, u32)> {
             _ => return Err("Unsupported WebP header".into()),
         }
     } else {
-        return Err("Use a static PNG, JPEG, or WebP image".into());
+        return Err("Use PNG, JPEG, static WebP, or GIF images".into());
     };
     if result.1 == 0
         || result.2 == 0
@@ -260,5 +360,37 @@ mod tests {
         assert_eq!(inspect(&webp).unwrap(), ("image/webp", 16, 24));
         webp[20] = 2;
         assert!(inspect(&webp).unwrap_err().contains("Animated"));
+    }
+    fn gif(frames: usize, width: u16, height: u16) -> Vec<u8> {
+        let mut bytes = b"GIF89a".to_vec();
+        bytes.extend_from_slice(&width.to_le_bytes());
+        bytes.extend_from_slice(&height.to_le_bytes());
+        bytes.extend_from_slice(&[0x80, 0, 0, 0, 0, 0, 255, 255, 255]);
+        for _ in 0..frames {
+            bytes.extend_from_slice(&[
+                0x21, 0xf9, 4, 0, 10, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 1, 0,
+            ]);
+        }
+        bytes.push(0x3b);
+        bytes
+    }
+    #[test]
+    fn gif_animation_is_bounded_and_truncation_is_rejected() {
+        let valid = gif(2, 1, 1);
+        assert_eq!(inspect(&valid).unwrap(), ("image/gif", 1, 1));
+        assert!(inspect(&gif(501, 1, 1)).unwrap_err().contains("frame"));
+        assert!(inspect(&gif(5, 8000, 4000))
+            .unwrap_err()
+            .contains("frame-pixel"));
+        assert!(inspect(&valid[..valid.len() - 1])
+            .unwrap_err()
+            .contains("trailer"));
+        assert!(inspect(&valid[..23]).is_err());
+        let mut outside = valid.clone();
+        outside[28] = 5;
+        assert!(inspect(&outside).unwrap_err().contains("canvas"));
+        let mut trailing = valid;
+        trailing.push(0);
+        assert!(inspect(&trailing).unwrap_err().contains("trailer"));
     }
 }

@@ -30,7 +30,7 @@ Use `run({ repeats: 1, inputSamples: 5, propertySamples: 3 })` only as a quick s
 
 ## Method
 
-Three identical source workloads: one panel containing 100 paragraphs; one containing 1,000 paragraphs; 100 panels containing four paragraphs each plus ten tiny local images. Each paragraph contains the same text template, a bold span and stable IDs. Images are deliberately tiny: this isolates editor/component overhead, not expensive raster decoding. Ordinary notes outside panels are not represented by this component-focused comparison.
+Four identical source workloads: one panel containing 100 paragraphs; one containing 1,000 paragraphs; 100 panels containing four paragraphs each plus ten tiny local images; and a mixed free-placement version with GIFs and animation presets. Each paragraph contains the same text template, a bold span and stable IDs. Images are deliberately tiny: this isolates editor/component overhead, not expensive raster decoding. Ordinary notes outside panels are not represented by this component-focused comparison.
 
 Each workload warms both candidates once, then alternates candidate order between repeats. Each measured repetition creates a fresh editor and records:
 
@@ -43,7 +43,7 @@ Each workload warms both candidates once, then alternates candidate order betwee
 
 GrapesJS exports its full project state, including a rich-HTML representation and canonical text data; the focused editor exports its canonical JSON. Those sizes reflect the adapters' actual persistence strategies, not theoretical minimum format sizes. Both preserve the same words, rich marks and component properties. Dirty Tiptap regions in GrapesJS are captured during serialization/disable, not every keystroke.
 
-Correctness checks cover Unicode typing, text undo, resize without changing content, rich markup/property round trips, editing after reopen, reordering without dropping components/words, and undoing a layout change followed by text. Native asset durability and application lifecycle tests belong to the main application test suite.
+The twelve shared correctness checks also cover free coordinates/layers, horizontal and vertical scroll reachability, position/motion undo, GIF references and links surviving serialization, and return to guided flow. These checks do not establish parity with all GrapesJS features. Actual GIF playback, pause/resume and application persistence are checked separately by `scripts/artistic-smoke.js` in Edge and native WebView2; generate its GIF using the exported `gifBytes` fixture. The smoke function samples rendered screenshots because canvas drawing of an animated image does not reliably expose its currently displayed frame.
 
 ## Interpretation limits
 

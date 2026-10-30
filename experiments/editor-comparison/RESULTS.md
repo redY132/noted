@@ -1,6 +1,29 @@
-# Editor integration comparison — 2026-10-25
+# Editor integration comparison — October 25 and 29, 2026
 
-## Decision
+## Expanded artistic workload — October 29
+
+Keep the focused Tiptap component layer. Both adapters pass twelve shared checks, now including rendered free positioning/layers, two-axis scroll reachability, position/motion undo, GIF/link metadata round trips and return to guided flow. The production implementation also passes separate Edge and native WebView2 integration checks for actual GIF animation, pause/resume and persistence. This establishes the tested feature slice, not parity with every GrapesJS capability or extension.
+
+The expanded harness uses four workloads, with one warmup per candidate/workload and five measured repeats in alternating candidate order (40 runs). Each run performs 40 programmatic text insertions, 20 width changes and ten serializations. The fourth workload contains 100 panels, four paragraphs each, ten tiny images (five PNGs and five GIFs), mixed flow/free placement and motion presets. Both adapters use the same motion controller and fixture data. Collection completed October 29 at 20:31 EDT (October 30 00:31 UTC), after native compilation finished. Edge 156 headless, 1280×720, DPR 1, 16 reported logical processors; motion enabled. No CPU/GPU constraint. The test machine remains the development laptop described below. Raw samples: ignored `output/playwright/editor-comparison-expanded.json`.
+
+Milliseconds, median of five per-run measurements; serialization is the median of per-run medians. Frame values are the median of per-run p95 values.
+
+| Workload | Candidate | Mount | Activate | Serialize | Reopen | Dispatch-to-frame p95 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 100 paragraphs | Focused Tiptap | 16.8 | 16.7 | 0.2 | 13.6 | 17.0 |
+| 100 paragraphs | GrapesJS + Tiptap | 39.8 | 25.0 | 4.4 | 60.7 | 17.0 |
+| 1,000 paragraphs | Focused Tiptap | 74.5 | 16.7 | 2.6 | 20.0 | 17.0 |
+| 1,000 paragraphs | GrapesJS + Tiptap | 96.1 | 355.5 | 40.1 | 447.4 | 259.1 |
+| 100 panels + static media | Focused Tiptap | 44.8 | 13.6 | 0.8 | 13.0 | 16.9 |
+| 100 panels + static media | GrapesJS + Tiptap | 144.7 | 15.8 | 8.7 | 98.1 | 17.0 |
+| 100 panels + free placement/GIFs | Focused Tiptap | 68.9 | 14.4 | 0.8 | 12.5 | 16.9 |
+| 100 panels + free placement/GIFs | GrapesJS + Tiptap | 146.4 | 22.8 | 8.7 | 107.0 | 16.9 |
+
+These results support the retained integration for these workloads. They do not prove 60 FPS, compare arbitrary JavaScript, measure real photographic GIF decode costs, certify inexpensive hardware or isolate memory use. The GrapesJS adapter's partial history bridge and canonical-data/display-HTML duplication remain limitations. A GIF reference roundtrip is not a playback test; playback is covered by the separate application smoke check. Historical numbers below use the earlier implementation and should not be treated as a controlled before/after speed regression measurement.
+
+## Original flow-layout decision
+
+This October 25 measurement covers flow layouts and static images only. The October 29 extension below adds a matched free-placement/GIF workload. The original results alone do not establish artistic-feature parity with GrapesJS.
 
 Keep the focused Tiptap component layer in the application. On the tested workloads it has lower mounting, serialization, reopening, and component-property costs. Both implementations have small synchronous text-transaction costs, but the GrapesJS adapter also shows substantial deferred frame delays on the long single-panel workload. The focused implementation keeps text/layout operations in one document history without an adapter-specific history bridge.
 

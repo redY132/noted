@@ -577,6 +577,46 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                     ["notePanel", "localImage"].contains(&kind)
                         && value.as_u64().is_some_and(|n| (160..=1200).contains(&n))
                 }
+                "placement" => {
+                    ["notePanel", "localImage"].contains(&kind)
+                        && value
+                            .as_str()
+                            .is_some_and(|s| s == "flow" || (s == "free" && depth == 1))
+                }
+                "x" | "y" => {
+                    ["notePanel", "localImage"].contains(&kind)
+                        && value.as_u64().is_some_and(|n| n <= 100_000)
+                }
+                "z" => {
+                    ["notePanel", "localImage"].contains(&kind)
+                        && value.as_u64().is_some_and(|n| n <= 10_000)
+                }
+                "animation" => {
+                    ["notePanel", "localImage"].contains(&kind)
+                        && value
+                            .as_str()
+                            .is_some_and(|s| ["none", "fade", "float", "pulse"].contains(&s))
+                }
+                "href" => {
+                    kind == "localImage"
+                        && (value.is_null()
+                            || value.as_str().is_some_and(|s| {
+                                if s.len() > 2048
+                                    || s.chars().any(char::is_whitespace)
+                                    || s.chars().any(char::is_control)
+                                {
+                                    return false;
+                                }
+                                if let Some(id) = s.strip_prefix("noted://note/") {
+                                    return valid_id(id).is_ok();
+                                }
+                                s.strip_prefix("https://")
+                                    .or_else(|| s.strip_prefix("http://"))
+                                    .is_some_and(|tail| {
+                                        !tail.split(['/', '?', '#']).next().unwrap_or("").is_empty()
+                                    })
+                            }))
+                }
                 "tone" => {
                     kind == "notePanel"
                         && value
@@ -874,6 +914,11 @@ mod tests {
             json!({"align":"justify"}),
             json!({"tone":"url(https://host)"}),
             json!({"style":"display:none"}),
+            json!({"placement":"fixed"}),
+            json!({"x":-1}),
+            json!({"y":100001}),
+            json!({"z":10001}),
+            json!({"animation":"script(alert(1))"}),
         ] {
             let mut invalid = saved.clone();
             invalid.content["content"][0]["attrs"] = attrs;
@@ -884,12 +929,36 @@ mod tests {
             json!({"assetId":"../secret"}),
             json!({"assetId":Uuid::new_v4().to_string(),"src":"https://host/image"}),
             json!({"assetId":Uuid::new_v4().to_string(),"alt":"x".repeat(2001)}),
+            json!({"assetId":Uuid::new_v4().to_string(),"href":"javascript:alert(1)"}),
+            json!({"assetId":Uuid::new_v4().to_string(),"href":"file:///private"}),
+            json!({"assetId":Uuid::new_v4().to_string(),"href":"noted://note/invalid"}),
         ] {
             let mut invalid = saved.clone();
             invalid.content = json!({"type":"doc","content":[{"type":"localImage","attrs":attrs}]});
             assert!(store.save_note(invalid, 2).is_err());
         }
         assert_eq!(store.load_note(&saved.id).unwrap().content, valid);
+    }
+
+    #[test]
+    fn free_component_geometry_animation_and_links_survive_reopen() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let mut note = store.create_note("Free layout".into(), None).unwrap();
+        let image = store
+            .import_image(&note.id, include_bytes!("../icons/icon.png"), "image/png")
+            .unwrap();
+        note.content = json!({"type":"doc","content":[
+            {"type":"notePanel","attrs":{"id":"panel","placement":"free","x":1200,"y":900,"z":3,"animation":"float"},"content":[{"type":"paragraph","content":[{"type":"text","text":"Preserve all words"}]}]},
+            {"type":"localImage","attrs":{"id":"image","assetId":image.id,"placement":"free","x":1500,"y":1300,"z":4,"animation":"pulse","href":"https://example.com/notes"}}
+        ]});
+        let saved = store.save_note(note, 1).unwrap();
+        let mut nested = saved.clone();
+        nested.content = json!({"type":"doc","content":[{"type":"notePanel","content":[{"type":"notePanel","attrs":{"placement":"free"},"content":[{"type":"paragraph"}]}]}]});
+        assert!(store.save_note(nested, saved.revision).is_err());
+        drop(store);
+        let store = Store::open(temp.path()).unwrap();
+        assert_eq!(store.load_note(&saved.id).unwrap().content, saved.content);
     }
 
     #[test]

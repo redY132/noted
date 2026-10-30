@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { Folder, ImageAsset, ImageAssetData, Note, NoteSummary, WorkspaceStatus } from './model';
 import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets';
+import { registerImageSource, unregisterImageSource } from './component-motion';
 
 export const browserPreview = !isTauri();
 const key = 'noted-browser-preview-v1';
@@ -123,11 +124,15 @@ async function assetUrl(noteId: string, assetId: string): Promise<string> {
   rasterDimensions(bytes, mime);
   validateImageDimensions(data.width, data.height);
   if (mime !== data.mime) throw new Error('Image metadata does not match its bytes.');
-  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  registerImageSource(url, mime);
+  return url;
 }
+function releaseAssetUrl(url: string) { unregisterImageSource(url); URL.revokeObjectURL(url); }
 export const api = {
   importAsset,
   assetUrl,
+  releaseAssetUrl,
   notes: () => call<NoteSummary[]>('list_notes'),
   folders: () => call<Folder[]>('list_folders'),
   createFolder: (name: string, parentId: string | null) => call<Folder>('create_folder', { name, parentId }),

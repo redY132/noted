@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { fixture, workloads, imageData, imageId } from '../experiments/editor-comparison/fixtures.ts';
+import { fixture, workloads, imageData, imageId, gifBytes, gifId } from '../experiments/editor-comparison/fixtures.ts';
 
 const root = fileURLToPath(new URL(`../output/native-component-benchmark-${Date.now()}/`, import.meta.url));
 await mkdir(path.join(root, 'notes'), { recursive: true });
@@ -18,6 +18,7 @@ for (const workload of workloads) {
     const folder = path.join(root, 'assets', id);
     await mkdir(folder, { recursive: true });
     await writeFile(path.join(folder, `${imageId}.image`), Buffer.from(imageData, 'base64'), { flag: 'wx' });
+    if (workload.animated) await writeFile(path.join(folder, `${gifId}.image`), gifBytes, { flag: 'wx' });
   }
   manifest.push({ id, workload });
 }

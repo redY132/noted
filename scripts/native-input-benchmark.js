@@ -1,12 +1,15 @@
 async page => {
   // Use only the disposable workspace made by create-native-benchmark.mjs.
-  const workloads = ['ordinary-100-paragraphs', 'long-1000-paragraphs', 'artistic-100-panels'];
+  const workloads = ['ordinary-100-paragraphs', 'long-1000-paragraphs', 'artistic-100-panels', 'mixed-free-media-100-panels'];
   const results = [];
   for (let repeat = 0; repeat < 3; repeat++) {
     for (const name of workloads) {
       await page.getByRole('button', { name: new RegExp('^' + name) }).click();
       await page.waitForFunction(name => document.querySelector('#note-title')?.value === name, name);
-      await page.locator('.note-panel-content p').first().click();
+      // Intentionally animated panels never satisfy Playwright's stability wait.
+      const paragraph = page.locator('.note-panel-content p').first();
+      await paragraph.evaluate(el => el.scrollIntoView({block:'center'}));
+      await paragraph.click({force:true});
       await page.keyboard.press('Home');
       await page.evaluate(() => {
         const samples = [], intervals = [], longTasks = [];

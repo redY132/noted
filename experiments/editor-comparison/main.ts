@@ -1,5 +1,7 @@
 import 'grapesjs/dist/css/grapes.min.css';
 import '../../src/components.css';
+import '../../src/component-motion.css';
+import { initializeMotionControl, motionEnabled } from '../../src/component-motion';
 import './style.css';
 import { mount, frames, type Adapter, type Candidate } from './adapters';
 import { fixture, textOf, fingerprint, workloads, type Workload } from './fixtures';
@@ -22,7 +24,7 @@ async function check() {
   const checks = [];
   for (const kind of candidates) {
     status.textContent = `Checking ${kind}`;
-    const editor = await replace(kind, { name: 'correctness', panels: 3, paragraphs: 3, images: 1 });
+    const editor = await replace(kind, { name: 'correctness', panels: 3, paragraphs: 3, images: 2, freePlacement: true, animated: true });
     const initial = editor.canonical();
     const initialText = textOf(initial);
     const serialized = editor.serialize();
@@ -54,7 +56,24 @@ async function check() {
     assert(textOf(editor.canonical()).includes('Mixed edit. '), `${kind}: layout undo discarded text`);
     editor.undoText();
     assert(textOf(editor.canonical()) === initialText, `${kind}: mixed text undo failed`);
-    checks.push({ candidate: kind, passed: true, assertions: ['Unicode typing', 'text undo', 'resize preserves words', 'rich-content/property round trip', 'typing after reopen', 'component reorder preserves content', 'mixed text/layout undo'],
+    const beforePlacement = editor.canonical();
+    editor.properties({ placement: 'free', x: 1400, y: 1600, z: 9, animation: 'pulse' });
+    const positioned = editor.canonical();
+    assert(textOf(positioned) === initialText, `${kind}: placement changed words`);
+    assert(positioned.content?.[0].attrs?.x === 1400 && positioned.content?.[0].attrs?.y === 1600 && positioned.content?.[0].attrs?.z === 9, `${kind}: position/layer not stored`);
+    const reach = await editor.reach(1400, 1600);
+    assert(reach.left > 500 && reach.top > 1000, `${kind}: freely placed component cannot be reached by scrolling (${JSON.stringify(reach)})`);
+    const style = editor.firstStyle();
+    assert(style.position === 'absolute' && style.left === '1400px' && style.top === '1600px' && style.z === '9' && style.animation === 'pulse', `${kind}: free placement/preset not rendered (${JSON.stringify(style)})`);
+    editor.undoLayout();
+    assert(fingerprint(editor.canonical()) === fingerprint(beforePlacement), `${kind}: placement undo changed content or metadata`);
+    editor.properties({ placement: 'free', x: 1400, y: 1600, z: 9, animation: 'pulse' });
+    await editor.restore(editor.serialize());
+    assert(fingerprint(editor.canonical()) === fingerprint(positioned), `${kind}: positioned media/link/motion round trip failed`);
+    editor.properties({ placement: 'flow' });
+    await frames();
+    assert(editor.firstStyle().position !== 'absolute', `${kind}: return to guided flow failed`);
+    checks.push({ candidate: kind, passed: true, assertions: ['Unicode typing', 'text undo', 'resize preserves words', 'rich-content/property round trip', 'typing after reopen', 'component reorder preserves content', 'mixed text/layout undo', 'free positioning and layer rendering', 'horizontal and vertical scroll reachability', 'position/layer/motion undo', 'GIF references and link marks round trip', 'return to guided flow'],
       unifiedHistory: kind === 'focused-tiptap' ? 'one ProseMirror history' : 'experimental bridge for tested text/property/reorder operations; generic GrapesJS actions are not covered' });
   }
   status.textContent = 'Correctness checks passed';
@@ -112,7 +131,7 @@ async function run(options: RunOptions = {}) {
   }
   observer.disconnect();
   const result = { timestamp: new Date().toISOString(), userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency,
-    viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+    viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio }, motionEnabled: motionEnabled(),
     limitations: ['Programmatic transactions are not physical keyboard-to-paint measurements.', 'Double requestAnimationFrame is a frame-opportunity proxy, not a paint timestamp.', 'Mount excludes module download/evaluation; both candidates are bundled in the test page.', 'No forced GC or per-candidate process-memory attribution.', 'Synthetic local images are tiny and do not measure large image decode cost.', 'WebView2/low-end device acceptance is separate.', 'GrapesJS mixed undo bridge covers tested text/property/reorder operations, not all generic builder actions.'], correctness, longTasks, runs };
   output.textContent = JSON.stringify(result, null, 2); status.textContent = 'Comparison complete';
   return result;
@@ -123,7 +142,7 @@ async function guard<T>(action: () => Promise<T>) {
   try { return await action(); } catch (error) { status.textContent = String(error); throw error; } finally { busy = false; }
 }
 const api = { check: () => guard(check), run: (options?: RunOptions) => guard(() => run(options)),
-  inspect: (kind: Candidate) => guard(async () => { const editor = await replace(kind, { name: 'interactive', panels: 6, paragraphs: 3, images: 2 }); await editor.activate(); return kind; }),
+  inspect: (kind: Candidate) => guard(async () => { const editor = await replace(kind, { name: 'interactive', panels: 6, paragraphs: 3, images: 2, freePlacement: true, animated: true }); await editor.activate(); return kind; }),
   get current() { return current; }, workloads };
 Object.assign(window, { editorComparison: api });
 document.querySelector('#check')!.addEventListener('click', () => void api.check().then(value => output.textContent = JSON.stringify(value, null, 2)));
@@ -136,3 +155,7 @@ document.querySelector('#move')!.addEventListener('click', () => current?.move()
 document.querySelector('#undo')!.addEventListener('click', () => current?.undoText());
 document.querySelector('#layout-undo')!.addEventListener('click', () => current?.undoLayout());
 document.querySelector('#save')!.addEventListener('click', () => { if (current) void current.restore(current.serialize()); });
+document.querySelector('#free')!.addEventListener('click', () => current?.properties({ placement: 'free', x: 600, y: 300, z: 3 }));
+document.querySelector('#flow')!.addEventListener('click', () => current?.properties({ placement: 'flow' }));
+document.querySelector('#pulse')!.addEventListener('click', () => current?.properties({ animation: 'pulse' }));
+initializeMotionControl(document.querySelector<HTMLButtonElement>('#motion')!);

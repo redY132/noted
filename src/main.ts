@@ -4,10 +4,13 @@ import { editingMarkup, initializeEditingUI } from './editing-ui';
 import { api, browserPreview } from './api';
 import { NoteSession, type Folder, type Note, type NoteSummary, type SchemaId } from './model';
 import { installMetrics } from './metrics';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { noteLinkTarget } from './note-links';
 import { componentMarkup, initializeComponentUI } from './component-ui';
 import './style.css';
 import './editing.css';
 import './components.css';
+import './component-motion.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -197,10 +200,10 @@ function showNote(note: Note) {
   releaseAssets();
   const assetURLs = new Map<string, Promise<string>>();
   let disposed = false;
-  releaseAssets = () => { disposed = true; for (const url of assetURLs.values()) void url.then(value => URL.revokeObjectURL(value), () => {}); assetURLs.clear(); };
+  releaseAssets = () => { disposed = true; for (const url of assetURLs.values()) void url.then(value => api.releaseAssetUrl(value), () => {}); assetURLs.clear(); };
   const resolveAsset = (assetId: string) => {
     let url = assetURLs.get(assetId);
-    if (!url) { url = api.assetUrl(note.id, assetId).then(value => { if (disposed) URL.revokeObjectURL(value); return value; }); assetURLs.set(assetId, url); }
+    if (!url) { url = api.assetUrl(note.id, assetId).then(value => { if (disposed) api.releaseAssetUrl(value); return value; }); assetURLs.set(assetId, url); }
     return url;
   };
   session = new NoteSession(note, api.save, updateSaveState, n => { if (editor) n.content = editor.getJSON(); });
@@ -255,12 +258,16 @@ function interceptEditorLink(event: MouseEvent) {
   const anchor = (event.target instanceof Element ? event.target : null)?.closest('a');
   if (!anchor || !$('#editor').contains(anchor)) return;
   event.preventDefault();
+  // Clicking an image selects it for editing; Ctrl/Cmd-click follows its link.
+  if (anchor.closest('.local-image') && !event.ctrlKey && !event.metaKey) return;
   event.stopPropagation();
   if (event.type !== 'click' || event.button !== 0 || event.shiftKey || navigating) return;
   if (window.getSelection()?.isCollapsed === false) return;
-  const href = anchor.getAttribute('href') ?? '';
-  if (href.startsWith('noted://note/')) void openNote(href.slice('noted://note/'.length));
-  else error('External links are not opened by this offline prototype. You can copy the address from the note.');
+  const target = noteLinkTarget(anchor.getAttribute('href'));
+  if (!target) { error('This link is not a supported note or web address.'); return; }
+  if (target.kind === 'note') void openNote(target.destination);
+  else if (browserPreview) window.open(target.destination, '_blank', 'noopener,noreferrer');
+  else void openUrl(target.destination).catch(error);
 }
 $('#editor').addEventListener('click', interceptEditorLink, { capture: true });
 $('#editor').addEventListener('auxclick', interceptEditorLink, { capture: true });
