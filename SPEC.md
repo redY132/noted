@@ -29,6 +29,14 @@ Additional features may support note-taking, memory retention, and reflection on
 
 ## Expressive notes and app customization
 
+### Approved minimal app shell — October 30, 2026
+
+The user approved a unified UI pass with a small System/Light/Dark and accent-color picker, neutral gray default interface and graphite accent. Theme colors affect chrome and default note colors while explicit document formatting, schemas, component appearance and geometry remain authored data. Remove the upper-left logo/name/tagline, decorative slogans, oversized empty branding and permanent writing hints; interface typography uses system sans-serif while document typography is preserved.
+
+Initial layout shows the note list and editor. Folder navigation, formatting tools, component tools/inspector, note details (including schema), footer and connections are independently collapsible and start closed. Collapsed left columns occupy zero width. A 36 px persistent top bar keeps navigation/list/format toggles, View and Appearance, note identity, connection handle and save status recoverable. View exposes New note, Workspace details, every visibility control, Reset layout and Focus mode. F8 toggles focus mode, hiding optional UI and restoring the prior layout on exit. Errors/recovery remain visible. The existing connection drawer/docking behavior works with every left-panel combination.
+
+Versioned local appearance/layout preferences are applied before app DOM construction, are independent of note content, and have separate reset actions. A single layout controller owns all panel visibility. Collapse without recreating editor/controls, preserve selection/undo/content/free positions, expose ARIA toggle state and remove hidden controls from tab order. Search reveals the note list before focusing; Find and URL dialogs remain usable with formatting collapsed. Use brief, fluid transitions for panels, menus, dialogs and controls, respecting system reduced motion and keeping typing immediate. This animation direction was approved later in the same UI pass; no continuous shell animation is needed. Validation covers persistence, theme/system changes, contrast, focus restoration, all panel combinations, free placement/scrolling, and 800/1200/1600 px widths using disposable workspaces and ports 1430/1431. Full palette editing, typography customization and resizing panels remain separate work.
+
 - A note can be a scrolling document or an infinite canvas. The intended starting experience is a scrolling document, with a path to progressively arranging it as an infinite canvas for greater creative freedom.
 - The exact transition mechanics and whether users can switch back without losing layout information remain open.
 - Each note should offer webpage-like expressive possibilities, including animations, GIFs, and free positioning of content.

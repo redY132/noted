@@ -37,6 +37,16 @@ npm run dev
 
 Open the localhost URL printed by Vite. The explicitly labeled browser preview uses its own browser storage, separate from native desktop notes. It is useful for UI development, but does not exercise Rust persistence or represent WebView2 performance. Preview data can disappear if browser storage is cleared; use disposable notes.
 
+## Appearance and layout
+
+The default view shows the note list and editor. The 36 px top bar keeps navigation, the note list, formatting, **View**, **Appearance**, connections and save status within reach. **View** independently shows layout tools, note details, the footer and connections; it also contains New note and Workspace details.
+
+**F8** toggles Focus mode, hiding optional panels and restoring their previous arrangement when you exit. **/** reveals workspace search. **Ctrl+F** opens Find even with formatting hidden. Hiding controls keeps the current editor, selection and undo history intact.
+
+**Appearance** offers System, Light and Dark, accent swatches and a custom color picker. Appearance and panel choices are saved on this device separately from notes, with independent **Reset appearance** and **Reset layout** actions. Explicit note colors and component styles remain authored content. Brief fluid transitions follow the system reduced-motion preference; typing does not wait for animations.
+
+`playwright-cli run-code --filename scripts/minimal-shell-smoke.js` checks appearance, panel persistence, focus recovery, selection, undo/redo and free-placement scrolling. Use an isolated browser profile on port 1430/1431 or a disposable native workspace; it creates notes and changes device preferences.
+
 ## Editing
 
 The formatting toolbar reflects the caret or selection, including mixed formatting and unavailable commands. It offers paragraph/H1–H6 styles, bold/italic/underline/strike, highlight, inline code, subscript/superscript, text colors, alignment, quotes, code blocks, dividers, lists and checklists, links, tables, undo/redo, and current-note find/replace.

@@ -30,7 +30,7 @@ export function targetNote(element: Element | null): string | null {
   return link?.kind === 'note' ? link.destination : null;
 }
 
-export function initializeConnectionsUI(options: { api: ConnectionAPI; current: () => NoteSummary | null; open: (id: string) => Promise<void>; folder: (id: string | null) => string; error: (reason: unknown) => void }) {
+export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boolean;setOpen:(open:boolean)=>void;subscribe:(fn:()=>void)=>()=>void}; api: ConnectionAPI; current: () => NoteSummary | null; open: (id: string) => Promise<void>; folder: (id: string | null) => string; error: (reason: unknown) => void }) {
   const {api} = options;
   const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
   const panel = $('#connections-panel'), picker = $('#connection-picker'), results = $('#connection-picker-results'), ray = $('#connection-ray');
@@ -40,7 +40,7 @@ export function initializeConnectionsUI(options: { api: ConnectionAPI; current: 
   let dragging: { id: number; source: string; title: string; startX: number; startY: number; x: number; y: number; handle: HTMLElement; active: boolean; target: Element | null; frame: number } | null = null;
   let suppressedDragClick: {handle:HTMLElement;until:number}|null=null;
   const busyPairs = new Set<string>();
-  try { panel.hidden = localStorage.getItem('noted-connections-open') !== 'true'; } catch { /* session only */ }
+  panel.hidden = !(options.visibility?.isOpen() ?? false);
   function announce(message: string) { $('#connection-announcement').textContent = message; }
   function row(note: NoteSummary | null, id: string, actions: string, detail = '') {
     return `<div class="connection-entry" data-note-target="${esc(id)}" ${note ? '' : 'data-note-unavailable'}><button type="button" class="connection-open" data-open-note="${esc(id)}" ${note ? '' : 'disabled'}><strong>${esc(note?.title || (note ? 'Untitled' : 'Unavailable note'))}</strong><small>${esc(note ? options.folder(note.folderId) : id)}</small>${detail ? `<small>${esc(detail)}</small>` : ''}</button><div class="connection-actions">${actions}</div></div>`;
@@ -52,9 +52,9 @@ export function initializeConnectionsUI(options: { api: ConnectionAPI; current: 
   }
   function closePicker(restore = true) { picker.hidden = true; source = null; searchGeneration++; if(restore)restoreFocus?.focus({preventScroll:true}); }
   function setPanel(open: boolean) {
+    if(options.visibility){options.visibility.setOpen(open);return;}
     panel.hidden = !open; document.querySelector('#app')?.classList.toggle('connections-visible', open);
     $('#connections-toggle').setAttribute('aria-expanded', String(open));
-    try { localStorage.setItem('noted-connections-open', String(open)); } catch { /* session only */ }
     if (open) void refresh();
   }
   async function search(cursor = 0) {
@@ -194,7 +194,8 @@ export function initializeConnectionsUI(options: { api: ConnectionAPI; current: 
   $('#connections-restore').onclick=()=>{const note=options.current();if(note)void api.restoreDismissed(note.id).then(()=>{announce('Dismissed suggestions restored');void refresh();}).catch(options.error);};
   $('#connection-undo').onclick=()=>{const action=undo;if(!action)return;undo=null;void mutate(action.state.a,action.state.b,action.previous.connected,action.previous.dismissed,action.state.revision);};
   window.addEventListener('resize',positionPicker);
-  setPanel(!panel.hidden);
+  if(options.visibility)options.visibility.subscribe(()=>{panel.hidden=!options.visibility!.isOpen();if(!panel.hidden)void refresh();});
+  else setPanel(!panel.hidden);
   return {refresh, isDragging:()=>Boolean(dragging), committed(){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>void refresh(),2000);}, changed(){panelGeneration++;void refresh();}, closePicker};
 }
 

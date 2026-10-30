@@ -1,0 +1,129 @@
+/* Interface motion stays separate from note content and never runs continuously. */
+:root {
+  --shell-motion: 190ms;
+  --shell-ease: cubic-bezier(.2,.8,.2,1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #app { transition: grid-template-columns var(--shell-motion) var(--shell-ease); }
+  .sidebar, .note-list-panel {
+    min-width: 0;
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 150ms ease, transform var(--shell-motion) var(--shell-ease),
+      display var(--shell-motion) allow-discrete;
+  }
+  .sidebar[hidden], .note-list-panel[hidden] {
+    opacity: 0;
+    transform: translateX(-12px);
+    pointer-events: none;
+  }
+  @starting-style {
+    .sidebar:not([hidden]), .note-list-panel:not([hidden]) {
+      opacity: 0;
+      transform: translateX(-12px);
+    }
+  }
+
+  .shell-icon, .shell-popover button, .accent-swatches button,
+  .nav-item, .folder-row, .note-card, .connection-handle,
+  .connection-actions button, .formatbar button, .component-toolbar button {
+    transition: background-color 130ms ease, color 130ms ease,
+      border-color 130ms ease, box-shadow 130ms ease, transform 130ms var(--shell-ease);
+  }
+  .shell-icon:active, .accent-swatches button:active { transform: scale(.94); }
+
+  .shell-popover, .connection-picker {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transform-origin: top left;
+    transition: opacity 150ms ease, transform var(--shell-motion) var(--shell-ease),
+      display var(--shell-motion) allow-discrete;
+  }
+  .shell-popover[hidden], .connection-picker[hidden] {
+    opacity: 0;
+    transform: translateY(-6px) scale(.985);
+    pointer-events: none;
+  }
+  @starting-style {
+    .shell-popover:not([hidden]), .connection-picker:not([hidden]) {
+      opacity: 0;
+      transform: translateY(-6px) scale(.985);
+    }
+  }
+
+  .connections-panel {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 160ms ease, transform var(--shell-motion) var(--shell-ease),
+      display var(--shell-motion) allow-discrete;
+  }
+  .connections-panel[hidden] {
+    opacity: 0;
+    transform: translateX(18px);
+    pointer-events: none;
+  }
+  @starting-style {
+    .connections-panel:not([hidden]) { opacity: 0; transform: translateX(18px); }
+  }
+
+  dialog {
+    opacity: 0;
+    transform: translateY(10px) scale(.985);
+    transition: opacity 160ms ease, transform 210ms var(--shell-ease),
+      display 210ms allow-discrete, overlay 210ms allow-discrete;
+  }
+  dialog[open] { opacity: 1; transform: translateY(0) scale(1); }
+  dialog::backdrop {
+    opacity: 0;
+    transition: opacity 160ms ease, display 210ms allow-discrete,
+      overlay 210ms allow-discrete;
+  }
+  dialog[open]::backdrop { opacity: 1; }
+  @starting-style {
+    dialog[open] { opacity: 0; transform: translateY(10px) scale(.985); }
+    dialog[open]::backdrop { opacity: 0; }
+  }
+
+  /* Intrinsic sizing keeps wrapped toolbars and note details at their real height. */
+  @supports (interpolate-size: allow-keywords) {
+    #formatting-tools, #layout-tools, #note-details, #note-kicker, #note-footer {
+      interpolate-size: allow-keywords;
+      transition: height var(--shell-motion) var(--shell-ease),
+        min-height var(--shell-motion) var(--shell-ease),
+        padding-block var(--shell-motion) var(--shell-ease),
+        margin-block var(--shell-motion) var(--shell-ease),
+        opacity 150ms ease, display var(--shell-motion) allow-discrete;
+      height: auto;
+      overflow: clip;
+      opacity: 1;
+    }
+    #formatting-tools { min-height: 53px; }
+    #layout-tools:not([hidden]) { overflow: auto; }
+    #formatting-tools[hidden], #layout-tools[hidden], #note-details[hidden],
+    #note-kicker[hidden], #note-footer[hidden] {
+      height: 0;
+      min-height: 0;
+      padding-block: 0;
+      margin-block: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    @starting-style {
+      #formatting-tools:not([hidden]), #layout-tools:not([hidden]),
+      #note-details:not([hidden]), #note-kicker:not([hidden]), #note-footer:not([hidden]) {
+        height: 0;
+        min-height: 0;
+        padding-block: 0;
+        margin-block: 0;
+        opacity: 0;
+      }
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app, .sidebar, .note-list-panel, .shell-popover, .connection-picker, .connections-panel, dialog,
+  dialog::backdrop, #formatting-tools, #layout-tools, #note-details,
+  #note-kicker, #note-footer { transition: none; animation: none; }
+}

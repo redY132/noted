@@ -19,6 +19,23 @@ function make(content: JSONContent[], resolveAsset?: (assetId: string) => Promis
   const element = document.createElement('div'); document.body.append(element);
   return new Editor({ element, content: { type: 'doc', content }, extensions: createEditorExtensions(() => 'default', { resolveAsset }) });
 }
+
+test('resizing the note surface updates flow bounds without changing content or history', async () => {
+  const callbacks=new Map<Element,()=>void>();let disconnects=0;
+  const original=globalThis.ResizeObserver;
+  Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {callback:()=>void; constructor(callback:()=>void){this.callback=callback;} observe(element:Element){callbacks.set(element,this.callback);} disconnect(){disconnects++;}}});
+  const editor=make([panelFixture('Unchanged words','resize-panel')]);
+  try {
+    const surface=editor.view.dom.parentElement!;let width=400;
+    Object.defineProperty(surface,'clientWidth',{configurable:true,get:()=>width});
+    await Promise.resolve();const before=editor.getJSON();
+    assert.equal(editor.view.dom.style.getPropertyValue('--flow-width'),'400px');
+    width=900;callbacks.get(surface)!();await Promise.resolve();
+    assert.equal(editor.view.dom.style.getPropertyValue('--flow-width'),'900px');
+    assert.deepEqual(editor.getJSON(),before);assert.equal(editor.can().undo(),false);
+  } finally {editor.destroy();Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:original});}
+  assert.ok(disconnects>=2);
+});
 test('wrapping paragraphs preserves exact words, marks and IDs; properties and movement undo independently', () => {
   const editor = make([paragraph('First'), { ...paragraph('Second'), content: [{ type: 'text', text: 'Second', marks: [{ type: 'bold' }] }] }, paragraph('Third')]);
   try {

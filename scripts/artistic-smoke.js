@@ -1,7 +1,13 @@
 async page => {
+  await page.locator('#view-toggle').click();
+  await page.locator('[data-panel-choice=formatting]').setChecked(true);
+  await page.locator('[data-panel-choice=components]').setChecked(true);
+  await page.keyboard.press('Escape');
   // Run in an isolated browser profile or a disposable native workspace only.
   // Generate output/playwright/two-frame.gif from the experiment fixture first.
-  await page.getByRole('button', { name: 'New note', exact: false }).click();
+  const previous = await page.locator('#header-connection-handle button').count() ? await page.locator('#header-connection-handle button').getAttribute('data-connect-source') : null;
+  await page.keyboard.press('Control+n');
+  await page.waitForFunction(previous => !document.querySelector('#note-pane').inert && document.querySelector('#header-connection-handle button')?.dataset.connectSource !== previous, previous);
   await page.getByRole('textbox', { name: 'Note title', exact: true }).fill('Artistic integration check');
   const content = page.getByRole('textbox', { name: 'Note content', exact: true });
   await content.fill('Long scrolling text remains editable. '.repeat(400));
@@ -66,4 +72,3 @@ async page => {
   if (await page.locator('.note-panel').evaluate(el=>parseFloat(el.style.left)) !== 40) throw new Error('X not saved');
   if (!(await content.innerText()).includes('Every original word stays')) throw new Error('Reload lost text');
 }
-

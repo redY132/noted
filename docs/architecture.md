@@ -12,6 +12,12 @@ Validate Markdown-assisted editing, local persistence, stable links, and inexpen
 
 The prototype deliberately uses debounced document snapshots instead of implementing a new incremental editing protocol prematurely. This is a deviation from the long-term small-operation proposal. Long-document serialization and IPC cost must be measured; replace snapshots with typed incremental operations if they exceed the budget. Cloud AI must never receive the unrestricted save command.
 
+## Local shell preferences
+
+`appearance.ts` applies versioned device preferences before constructing the app shell. Semantic CSS tokens theme interface surfaces, default document colors, focus/selection states and dialogs; authored inline colors, document typography and component tones remain document properties. Invalid or unavailable local storage falls back to defaults. System mode follows OS changes without reloading.
+
+`shell-ui.ts` owns normal panel visibility, including the connections panel, in one versioned local record. Focus mode temporarily hides optional regions without overwriting that record. Existing editor and toolbar nodes stay mounted, with hidden or exiting controls removed from keyboard interaction and focused panels returning focus to the editor. Find and dialogs sit outside collapsible formatting regions. Short CSS transitions provide panel/menu motion and bypass animations under reduced motion. Free-placement extent tracking observes the editor container as well as components, so closing navigation reclaims width while preserving document coordinates and scroll bounds. Preferences never enter note JSON or revisions.
+
 ## Document and identity
 
 Each note has `formatVersion`, a UUID `id`, title, optional `folderId`, tags, revision, timestamps, structured editor content, and presentation metadata. `revisionToken` is a returned fingerprint used for optimistic concurrency, not authored note content. Internal links use `noted://note/<uuid>` so renaming or moving a note does not change its link target.

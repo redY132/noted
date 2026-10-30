@@ -1,7 +1,13 @@
 async page => {
+  await page.locator('#view-toggle').click();
+  await page.locator('[data-panel-choice=formatting]').setChecked(true);
+  await page.locator('[data-panel-choice=components]').setChecked(true);
+  await page.keyboard.press('Escape');
   // Run with Playwright CLI run-code --filename from the repository root.
   // Use an isolated browser profile or a disposable NOTED_WORKSPACE.
-  await page.getByRole('button', { name: 'New note', exact: false }).click();
+  const previous = await page.locator('#header-connection-handle button').count() ? await page.locator('#header-connection-handle button').getAttribute('data-connect-source') : null;
+  await page.keyboard.press('Control+n');
+  await page.waitForFunction(previous => !document.querySelector('#note-pane').inert && document.querySelector('#header-connection-handle button')?.dataset.connectSource !== previous, previous);
   await page.getByRole('textbox', { name: 'Note title', exact: true }).fill('Component integration check');
   const content = page.getByRole('textbox', { name: 'Note content', exact: true });
   await content.fill('Alpha original words.');

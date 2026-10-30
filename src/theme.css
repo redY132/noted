@@ -1,0 +1,176 @@
+/* Shared interface colors. Authored inline colors, component tones and document
+   typography remain document properties and are deliberately not reset here. */
+:root {
+  color-scheme: light;
+  --ui-background: #f7f7f8;
+  --ui-surface: #ffffff;
+  --ui-subtle: #f1f1f3;
+  --ui-hover: #e9e9ed;
+  --ui-text: #242429;
+  --ui-muted: #62626c;
+  --ui-faint: #757580;
+  --ui-border: #dedee4;
+  --ui-strong-border: #b7b7c2;
+  --ui-danger: #a12a2a;
+  --ui-danger-surface: #fff0f0;
+  --ui-warning: #735014;
+  --ui-warning-surface: #fff5dd;
+  --ui-shadow: #00000014;
+  --ui-backdrop: #00000040;
+  --note-highlight: #f6e999;
+  --accent: #52525b;
+  --accent-foreground: #ffffff;
+  --accent-text: #52525b;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--ui-surface));
+  --accent-selection: color-mix(in srgb, var(--accent) 24%, transparent);
+  --paper: var(--ui-surface);
+  --line: var(--ui-border);
+  --muted: var(--ui-muted);
+  --text: var(--ui-text);
+  --hover: var(--ui-hover);
+  --green: var(--accent);
+  color: var(--ui-text);
+  background: var(--ui-background);
+}
+:root[data-theme=dark] {
+  color-scheme: dark;
+  --ui-background: #18181b;
+  --ui-surface: #202024;
+  --ui-subtle: #27272c;
+  --ui-hover: #323238;
+  --ui-text: #ececf0;
+  --ui-muted: #b3b3bf;
+  --ui-faint: #a0a0ac;
+  --ui-border: #3c3c44;
+  --ui-strong-border: #727280;
+  --ui-danger: #ffb4b4;
+  --ui-danger-surface: #3f2226;
+  --ui-warning: #edcf96;
+  --ui-warning-surface: #372e20;
+  --ui-shadow: #00000033;
+  --ui-backdrop: #00000070;
+  --note-highlight: #745e23;
+}
+/* Initial system fallback before the application module applies preferences. */
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --ui-background:#18181b; --ui-surface:#202024; --ui-subtle:#27272c;
+    --ui-hover:#323238; --ui-text:#ececf0; --ui-muted:#b3b3bf;
+    --ui-faint:#a0a0ac; --ui-border:#3c3c44; --ui-strong-border:#727280;
+    --ui-danger:#ffb4b4; --ui-danger-surface:#3f2226;
+    --ui-warning:#edcf96; --ui-warning-surface:#372e20;
+    --ui-shadow:#00000033; --ui-backdrop:#00000070; --accent-text:#c3c3cd; --note-highlight:#745e23;
+  }
+}
+body, #app { color:var(--ui-text); background:var(--ui-background); }
+button { color:inherit; }
+button:hover { background:var(--ui-hover); }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible,
+summary:focus-visible { outline:2px solid var(--accent-text); outline-offset:3px; }
+input, select, textarea { color:var(--ui-text); caret-color:var(--ui-text); }
+input::placeholder, textarea::placeholder { color:var(--ui-faint); }
+.tag-field input::placeholder { color:var(--ui-faint); }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color:var(--accent); }
+kbd { border-color:var(--ui-strong-border); color:var(--ui-muted); }
+.primary, button.primary { background:var(--accent); color:var(--accent-foreground); }
+.primary:hover, button.primary:hover { background:var(--accent); color:var(--accent-foreground); filter:brightness(.94); }
+.sidebar, .note-list-panel { background:var(--ui-background); border-color:var(--ui-border); }
+.workspace, .editor-topbar { background:var(--ui-surface); }
+.editor-topbar, .editor-footer, .sidebar-bottom, .list-footer, .note-properties,
+.formatbar, .component-toolbar, .indent-policy { border-color:var(--ui-border); }
+.footer-dot { color:var(--ui-faint); }
+.toolbar-divider { background:var(--ui-border); }
+.nav-item, .folder-row, .sidebar-bottom, .section-label, .section-label button,
+.nav-item>span, .folder-row span:first-child, .nav-item small, .folder-row small,
+.folder-hint, .list-subheading, .eyebrow, .count-pill, .note-card-location,
+.note-card-bottom, .list-footer, .editor-topbar, #breadcrumb, #save-state,
+.document-kicker, .note-properties label>span, .editor-footer, .empty-state p,
+.empty-footnote, .list-empty, .list-empty>span, .link-results small, .dialog-description,
+.component-hint, .schema-control, .formatbar .schema-control, .indent-policy,
+#find-count, .connection-empty, #connections-current, .connection-open small,
+.connections-body h3, #semantic-controls p, #connection-source-title { color:var(--ui-muted); }
+.selected { color:var(--ui-text)!important; background:var(--accent-soft)!important; }
+.count-pill, .note-card:hover, .note-properties select, .workspace-path { background:var(--ui-subtle); }
+.note-card-title, .list-heading h1, .empty-state h2 { color:var(--ui-text); }
+.list-heading h1, .empty-state h2, dialog h2, .connections-panel h2,
+.connection-picker h2 { font-family:"Segoe UI",system-ui,sans-serif; font-weight:500; letter-spacing:0; }
+.note-card.active { background:var(--accent-soft); border-color:var(--ui-border); }
+.search-box { background:var(--ui-subtle); color:var(--ui-muted); border-color:var(--ui-border); }
+.search-box input { color:var(--ui-text); background:transparent; }
+.search-box input::placeholder { color:var(--ui-faint); }
+.search-box:focus-within { border-color:var(--accent-text); }
+#save-state.save-error { color:var(--ui-danger); }
+#preview-badge { color:var(--ui-warning); background:var(--ui-warning-surface); }
+.local-dot { background:var(--accent-text); }
+#new-note kbd { color:inherit; border-color:currentColor; opacity:.8; }
+.formatbar, .component-toolbar { background:var(--ui-background); }
+.formatbar button, .component-toolbar button, .find-panel button,
+.formatbar .format-select select, .formatbar .schema-control select,
+.component-properties input, .component-properties select,
+.note-properties select, .tag-field input, dialog form input, dialog form select,
+.connection-query, #connection-query { color:var(--ui-text); }
+.formatbar button:hover:not(:disabled), .component-toolbar button:hover:not(:disabled) {
+  color:var(--ui-text); background:var(--ui-hover); border-color:var(--ui-border);
+}
+.formatbar button[aria-pressed=true] {
+  color:var(--accent-foreground); background:var(--accent); border-color:var(--accent); box-shadow:none;
+}
+.formatbar button[aria-pressed=mixed] {
+  color:var(--ui-text); background:var(--accent-soft); border-color:var(--accent-text);
+}
+.formatbar .format-select select, .formatbar .schema-control select,
+.component-toolbar button, .component-properties input, .component-properties select,
+.find-panel input:not([type=checkbox]), .find-panel button, dialog form input,
+dialog form select, #connection-query { background:var(--ui-surface); border-color:var(--ui-border); }
+.find-panel { background:var(--ui-subtle); border-color:var(--ui-border); }
+.highlight-icon { background:#f5dc78; color:#29210a; }
+.document-scroll, .connections-body, #connection-picker-results, .folders, .note-list {
+  scrollbar-color:var(--ui-strong-border) transparent;
+}
+.note-title, .tiptap { color:var(--ui-text); }
+.note-title::placeholder { color:var(--ui-faint); }
+.tiptap h1, .tiptap h2, .tiptap h3, .tiptap h4, .tiptap h5, .tiptap h6 { color:inherit; }
+.tiptap blockquote { border-color:var(--ui-strong-border); color:inherit; }
+.tiptap a { color:var(--accent-text); text-decoration-color:currentColor; }
+.tiptap pre, .tiptap code { background:var(--ui-subtle); }
+.tiptap pre code { background:transparent; }
+.tiptap hr, .tiptap td, .tiptap th { border-color:var(--ui-strong-border); }
+.tiptap th { background:var(--ui-subtle); }
+.tiptap .selectedCell:after, .tiptap ::selection { background:var(--accent-selection); }
+.tiptap li[data-checked]>label input { accent-color:var(--accent); }
+.tiptap li[data-checked=true]>div>p { color:inherit; opacity:.7; }
+.tiptap mark { background:var(--note-highlight); color:inherit; }
+.document[data-schema=outline] .tiptap h2 { border-color:var(--ui-border); }
+.tiptap.has-free-components {
+  background-image:radial-gradient(color-mix(in srgb,var(--ui-muted) 22%,transparent) .8px,transparent .8px);
+}
+/* Component appearance stays authored: only editor affordances use app colors. */
+.note-panel[data-tone=soft], .note-panel[data-tone=accent] { color:#302f2a; }
+.note-panel[data-tone=soft] a, .note-panel[data-tone=accent] a { color:#334155; }
+.note-panel[data-tone=soft] mark, .note-panel[data-tone=accent] mark { background:#f6e999; }
+.note-component.ProseMirror-selectednode { outline-color:var(--accent-text); }
+.component-resize, .component-move { color:var(--accent-foreground); background:var(--accent); }
+.image-status { background:var(--ui-subtle); color:var(--ui-muted); }
+dialog, .connection-picker, .connections-panel, .shell-popover {
+  color:var(--ui-text); background:var(--ui-surface); border-color:var(--ui-border);
+  box-shadow:0 8px 24px var(--ui-shadow);
+}
+dialog::backdrop { background:var(--ui-backdrop); }
+dialog h2, .connections-panel h2, .connection-picker h2 { color:var(--ui-text); }
+.connections-panel h2, .connection-picker h2 { font-size:16px; }
+.component-hint { display:none; }
+dialog form>label { color:var(--ui-muted); }
+.connection-handle, .connections-toggle, .connection-actions button,
+#connections-restore, [data-panel-more], [data-picker-more], #semantic-controls button {
+  background:var(--ui-surface); color:var(--ui-text); border-color:var(--ui-border);
+}
+.connection-handle:hover, .connection-actions button:hover, #connections-restore:hover,
+[data-panel-more]:hover, [data-picker-more]:hover, #semantic-controls button:hover { background:var(--ui-hover); }
+.connections-panel header, .connection-picker header, .connections-body section { border-color:var(--ui-border); }
+.connection-ray { color:var(--accent-text); }
+.connection-drop-target { outline-color:var(--accent-text)!important; background-color:var(--accent-soft)!important; }
+.connection-toast { background:var(--ui-text); color:var(--ui-surface); box-shadow:0 4px 16px var(--ui-shadow); }
+.connection-toast button { color:inherit; }
+.error-banner { background:var(--ui-danger-surface); border-color:var(--ui-danger); color:var(--ui-danger); }
+.error-banner button { color:inherit; border-color:var(--ui-danger); }

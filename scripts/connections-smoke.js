@@ -3,7 +3,7 @@ async page => {
   for(const title of ['Alpha connection check','Beta connection check','Gamma connection check']) {
     const headerHandle=page.locator('#header-connection-handle button');
     const previous=await headerHandle.count()?await headerHandle.getAttribute('data-connect-source'):null;
-    await page.getByRole('button',{name:'New note',exact:false}).click();
+    await page.keyboard.press('Control+n');
     await page.waitForFunction(previous=>!document.querySelector('#note-pane').inert&&document.querySelector('#header-connection-handle button')?.dataset.connectSource!==previous,previous);
     await page.locator('#note-title').fill(title);
     await page.keyboard.press('Control+s');

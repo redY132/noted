@@ -14,40 +14,49 @@ import './component-motion.css';
 import { connectionHandle, connectionsMarkup, initializeConnectionsUI } from './connections-ui';
 import './connections-ui.css';
 import { initializeSemanticControls } from './semantic-controls';
+import { initializeAppearance } from './appearance';
+import { applyLayoutPreferences, initializeShell, readLayout, shellTopbar, shellPopovers } from './shell-ui';
+import './shell-ui.css';
+import './shell-motion.css';
+import './theme.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+const appearance = initializeAppearance();
+const initialLayout = readLayout();
+applyLayoutPreferences(initialLayout);
+const schemaControl = editingMarkup.match(/<label class="schema-control">[\s\S]*?<\/label>/)?.[0] ?? '';
+const formattingMarkup = editingMarkup.replace(schemaControl,'').replace('<div class="formatbar"','<div id="formatting-tools" class="formatbar"');
 $('#app').innerHTML = `
-  <aside class="sidebar" aria-label="Workspace navigation">
-    <div class="brand"><span class="brand-mark">n.</span><span>noted<span class="brand-caption">A little space to think.</span></span></div>
+  <aside id="navigation-panel" class="sidebar" aria-label="Workspace navigation">
     <button class="primary" id="new-note"><span>＋</span> New note <kbd>Ctrl N</kbd></button>
     <nav class="navigation"><button class="nav-item selected" id="all-notes"><span>▤</span> All notes <small id="total-count">0</small></button><button class="nav-item" id="daily-note"><span>◷</span> Today’s note</button></nav>
     <div class="section-label">YOUR FOLDERS<button id="add-folder" aria-label="Create folder" title="Create folder">＋</button></div>
     <div id="folders" class="folders"></div>
     <div class="sidebar-bottom"><span class="local-dot"></span><span id="workspace-label">Local workspace</span><button id="workspace-info" aria-label="Workspace details" title="Workspace details">ⓘ</button></div>
   </aside>
-  <section class="note-list-panel" aria-label="Notes">
-    <header class="list-heading"><div><span class="eyebrow">YOUR COLLECTION</span><h1 id="collection-title">All notes</h1></div><span class="count-pill" id="list-count">0</span></header>
+  <section id="notes-panel" class="note-list-panel" aria-label="Notes">
+    <header class="list-heading"><div><h1 id="collection-title">All notes</h1></div><span class="count-pill" id="list-count">0</span></header>
     <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search your notes…" aria-label="Search notes" /><kbd>/</kbd></label>
-    <div class="list-subheading"><span id="list-description">A place for every thought</span><span>↓</span></div>
+    <div class="list-subheading"><span id="list-description">Recently written</span><span>↓</span></div>
     <div id="note-list" class="note-list"></div>
-    <footer class="list-footer">PRIVATE BY DESIGN · OFFLINE FIRST</footer>
   </section>
   <main class="workspace">
-    <header class="editor-topbar"><span id="breadcrumb">Your workspace</span><div class="topbar-right"><span id="preview-badge" hidden>Browser preview</span><span id="header-connection-handle"></span><button type="button" id="connections-toggle" class="connections-toggle" aria-expanded="false">Connections</button><span id="save-state" role="status">Ready</span></div></header>
+    ${shellTopbar}
     <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
-    <section id="empty-state" class="empty-state"><span class="empty-emblem">n.</span><span class="eyebrow">MAKE ROOM FOR YOUR THOUGHTS</span><h2>Your next idea<br>starts here.</h2><p>A small observation. A big question.<br>Write it down, make it yours, come back to it.</p><button id="empty-new" class="primary">＋ Create your first note</button><span class="empty-footnote">Saved on this device. No account needed.</span></section>
+    <section id="empty-state" class="empty-state"><h2>No note open</h2><p>Create a note or choose one from the list.</p><button id="empty-new" class="primary">Create note</button></section>
     <section id="note-pane" class="note-pane" hidden>
-      ${editingMarkup}
-      ${componentMarkup}
-      <div class="document-scroll"><article class="document" data-schema="default"><div class="document-kicker"><span id="note-date"></span><span> / </span><span>PERSONAL NOTE</span></div><input id="note-title" class="note-title" aria-label="Note title" placeholder="Untitled" maxlength="300" /><div class="note-properties"><label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div><div class="writing-hint">A little structure, naturally. Try <code># heading</code>, <code>**bold**</code>, or <code>- a list</code> as you type.</div></article></div>
-      <footer class="editor-footer"><span id="word-count">0 words</span><span>Markdown shortcuts <span class="footer-dot">·</span> <span id="revision-label"></span></span></footer>
+      ${formattingMarkup}
+      ${componentMarkup.replace('<div class="component-toolbar"','<div id="layout-tools" class="component-toolbar"')}
+      <div class="document-scroll"><article class="document" data-schema="default"><div id="note-kicker" class="document-kicker"><span id="note-date"></span></div><input id="note-title" class="note-title" aria-label="Note title" placeholder="Untitled" maxlength="300" /><div id="note-details" class="note-properties">${schemaControl}<label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div></article></div>
+      <footer id="note-footer" class="editor-footer"><span id="word-count">0 words</span><span id="revision-label"></span></footer>
     </section>
   </main>
   ${connectionsMarkup}
-  <dialog id="folder-dialog"><form id="folder-form"><span class="eyebrow">A PLACE FOR RELATED IDEAS</span><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
-  <dialog id="link-dialog"><span class="eyebrow">CONNECT YOUR THOUGHTS</span><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
-  <dialog id="workspace-dialog"><span class="eyebrow">YOUR DATA STAYS WITH YOU</span><h2>Workspace</h2><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
+  ${shellPopovers}
+  <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
+  <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
+  <dialog id="workspace-dialog"><h2>Workspace</h2><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
 
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
@@ -73,7 +82,8 @@ let inlineSearchGeneration = 0;
 const editorExtensions = () => createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default');
 const editingUI = initializeEditingUI({ getEditor: () => editor, getSchema: () => session?.note.presentation.schemaId ?? 'default', error });
 const componentUI = initializeComponentUI({ getEditor: () => editor, getNoteId: () => session?.note.id ?? null, importAsset: (id, file) => api.importAsset(id, file), error });
-const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:openNote,folder:folderPath,error});
+const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal()},initialLayout);
+const connectionsUI = initializeConnectionsUI({visibility:shell.connections,api,current:()=>session?.note ?? null,open:openNote,folder:folderPath,error});
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
 const documentSchema = getSchema(editorExtensions());
@@ -216,7 +226,7 @@ async function renderList(reset = true) {
   $('#list-count').textContent = String(page.total);
   $('#collection-title').textContent = selectedFolder === 'all' ? 'All notes' : selectedFolder === null ? 'Unfiled' : folders.find(f => f.id === selectedFolder)?.name ?? 'Folder';
   $('#list-description').textContent = query ? 'Matching notes' : 'Recently written';
-  $('#note-list').innerHTML = loadedList.map(n => `<div class="note-card-shell" data-note-target="${escape(n.id)}"><button type="button" class="note-card ${session?.note.id === n.id ? 'active' : ''}" data-note="${escape(n.id)}"><span class="note-card-title">${escape(n.title || 'Untitled')}</span><span class="note-card-location">${escape(folderPath(n.folderId))}</span><span class="note-card-bottom"><time>${new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time><span>${n.tags.slice(0, 2).map(t => `#${escape(t)}`).join(' ')}</span></span></button>${connectionHandle(n.id,n.title)}</div>`).join('') || `<div class="list-empty"><span>∴</span><p>${query ? 'No matching notes.' : 'Nothing here just yet.'}</p><small>${query ? 'Try a different word or folder.' : 'Your next thought could go here.'}</small></div>`;
+  $('#note-list').innerHTML = loadedList.map(n => `<div class="note-card-shell" data-note-target="${escape(n.id)}"><button type="button" class="note-card ${session?.note.id === n.id ? 'active' : ''}" data-note="${escape(n.id)}"><span class="note-card-title">${escape(n.title || 'Untitled')}</span><span class="note-card-location">${escape(folderPath(n.folderId))}</span><span class="note-card-bottom"><time>${new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time><span>${n.tags.slice(0, 2).map(t => `#${escape(t)}`).join(' ')}</span></span></button>${connectionHandle(n.id,n.title)}</div>`).join('') || `<div class="list-empty"><p>${query ? 'No matching notes.' : 'No notes.'}</p><small>${query ? 'Try a different word or folder.' : 'Create a note from the View menu.'}</small></div>`;
   if (listCursor !== null) $('#note-list').insertAdjacentHTML('beforeend', `<button class="show-more" id="show-more">Show more notes</button>`);
 }
 function refreshMetadata() {
@@ -390,7 +400,7 @@ $('#rebuild-index').onclick = async () => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void flush().catch(() => {}); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); if (!document.querySelector('dialog[open]')) void newNote(); }
-  if (event.key === '/' && !(event.target as HTMLElement).closest('input,textarea,[contenteditable],dialog')) { event.preventDefault(); $('#search').focus(); }
+  if (event.key === '/' && !(event.target as HTMLElement).closest('input,textarea,[contenteditable],dialog')) { event.preventDefault(); shell.setPanel('notes',true); $('#search').focus(); }
 });
 window.addEventListener('beforeunload', event => { if (session?.dirty || session?.saving) { event.preventDefault(); event.returnValue = ''; } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) void flush().catch(() => {}); });

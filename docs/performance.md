@@ -1,5 +1,13 @@
 # Performance validation
 
+## Minimal shell and appearance verification — October 30, 2026
+
+The minimal shell pass adds no dependencies or continuous shell animation. Panel layout transitions last 190 ms, menu/dialog motion is brief, and system reduced motion bypasses it. Input and note transactions remain immediate; hiding panels leaves the same editor/history mounted. A shared surface observer updates free-placement scroll bounds as the editor width changes.
+
+Verification passed: 64 frontend tests, TypeScript checks, the production frontend build and Windows release build. The checked-in `scripts/minimal-shell-smoke.js` passed in an isolated browser preview and release WebView2 with disposable native notes. It checks theme/system changes, resets and persistence, F8 restoration, editor identity, selection/formatting, undo/redo, free coordinates, scrolling and reduced motion. Existing native component and connection smoke scripts also passed, including image import, resize, connection Undo, drag linking and save/reload.
+
+Light/dark views were inspected at 800, 1200 and 1600 CSS pixels. Additional preview checks covered all four left-panel combinations at each width with connections open, appearance menus, dialogs, picker results, and an injected storage failure followed by successful Retry. Recovery controls remained available in Focus mode. The narrow connections drawer starts below the top bar so recovery toggles stay reachable. These are functional/visual checks on the development machine, not reference-laptop frame-rate or memory acceptance measurements. Test profiles, notes and screenshots remain under ignored `output/`.
+
 ## Acceptance intent
 
 Connection/discovery implementation measurements are in [connection performance](connection-performance.md) and [local semantics](local-semantics.md). These distinguish keyword/tag workloads from real local inference and ANN workloads; neither establishes acceptance on the agreed 8 GB reference laptop. Semantic discovery remains experimental and opt-in pending reference-hardware and human-labeled relevance evaluation.

@@ -33,7 +33,7 @@ function applyLayout(element: HTMLElement, node: DocumentNode) {
 }
 
 type ExtentEntry = { dom: HTMLElement; node: () => DocumentNode };
-const extentManagers = new WeakMap<Editor, { entries: Set<ExtentEntry>; schedule: () => void }>();
+const extentManagers = new WeakMap<Editor, { entries: Set<ExtentEntry>; schedule: () => void; layoutObserver?: ResizeObserver }>();
 /** Only free components participate; ordinary text edits never scan the document. */
 function trackExtent(editor: Editor, dom: HTMLElement, node: () => DocumentNode) {
   let manager = extentManagers.get(editor);
@@ -60,13 +60,21 @@ function trackExtent(editor: Editor, dom: HTMLElement, node: () => DocumentNode)
         editor.view.dom.classList.toggle('has-free-components', width > 0);
       });
     } };
+    // Sidebar/tool visibility changes resize the note surface even when a
+    // fixed-width component itself does not resize. Observe that surface once.
+    const currentManager = manager;
+    queueMicrotask(() => {
+      if(editor.isDestroyed || extentManagers.get(editor)!==currentManager || typeof ResizeObserver==='undefined')return;
+      const surface=editor.view.dom.parentElement;
+      if(surface){currentManager.layoutObserver=new ResizeObserver(currentManager.schedule);currentManager.layoutObserver.observe(surface);}
+    });
     extentManagers.set(editor, manager);
   }
   const entry = { dom, node }; manager.entries.add(entry);
   const schedule = manager.schedule;
   const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
   observer?.observe(dom); schedule();
-  return { update: schedule, destroy() { observer?.disconnect(); manager!.entries.delete(entry); schedule(); } };
+  return { update: schedule, destroy() { observer?.disconnect(); manager!.entries.delete(entry); if(!manager!.entries.size){manager!.layoutObserver?.disconnect();extentManagers.delete(editor);} schedule(); } };
 }
 
 /** All changes use the active editor's transaction/history, including programmatic callers. */
