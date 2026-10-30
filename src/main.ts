@@ -11,6 +11,9 @@ import './style.css';
 import './editing.css';
 import './components.css';
 import './component-motion.css';
+import { connectionHandle, connectionsMarkup, initializeConnectionsUI } from './connections-ui';
+import './connections-ui.css';
+import { initializeSemanticControls } from './semantic-controls';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -31,7 +34,7 @@ $('#app').innerHTML = `
     <footer class="list-footer">PRIVATE BY DESIGN · OFFLINE FIRST</footer>
   </section>
   <main class="workspace">
-    <header class="editor-topbar"><span id="breadcrumb">Your workspace</span><div class="topbar-right"><span id="preview-badge" hidden>Browser preview</span><span id="save-state" role="status">Ready</span></div></header>
+    <header class="editor-topbar"><span id="breadcrumb">Your workspace</span><div class="topbar-right"><span id="preview-badge" hidden>Browser preview</span><span id="header-connection-handle"></span><button type="button" id="connections-toggle" class="connections-toggle" aria-expanded="false">Connections</button><span id="save-state" role="status">Ready</span></div></header>
     <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
     <section id="empty-state" class="empty-state"><span class="empty-emblem">n.</span><span class="eyebrow">MAKE ROOM FOR YOUR THOUGHTS</span><h2>Your next idea<br>starts here.</h2><p>A small observation. A big question.<br>Write it down, make it yours, come back to it.</p><button id="empty-new" class="primary">＋ Create your first note</button><span class="empty-footnote">Saved on this device. No account needed.</span></section>
     <section id="note-pane" class="note-pane" hidden>
@@ -41,12 +44,14 @@ $('#app').innerHTML = `
       <footer class="editor-footer"><span id="word-count">0 words</span><span>Markdown shortcuts <span class="footer-dot">·</span> <span id="revision-label"></span></span></footer>
     </section>
   </main>
+  ${connectionsMarkup}
   <dialog id="folder-dialog"><form id="folder-form"><span class="eyebrow">A PLACE FOR RELATED IDEAS</span><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><span class="eyebrow">CONNECT YOUR THOUGHTS</span><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog"><span class="eyebrow">YOUR DATA STAYS WITH YOU</span><h2>Workspace</h2><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
 
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
+let workspaceTotal = 0;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
@@ -58,10 +63,18 @@ let searchGeneration = 0;
 let saveError = false;
 let workspaceWarningKey = '';
 let linkSelection: { from: number; to: number } | null = null;
-let listLimit = 80;
+let listCursor: number | null = null;
+let loadedList: NoteSummary[] = [];
+let listRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+let deferredListReset = false;
+let indexPollTimer: ReturnType<typeof setTimeout> | undefined;
+let inlineLinkNotes = new Map<string, NoteSummary>();
+let inlineSearchGeneration = 0;
 const editorExtensions = () => createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default');
 const editingUI = initializeEditingUI({ getEditor: () => editor, getSchema: () => session?.note.presentation.schemaId ?? 'default', error });
 const componentUI = initializeComponentUI({ getEditor: () => editor, getNoteId: () => session?.note.id ?? null, importAsset: (id, file) => api.importAsset(id, file), error });
+const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:openNote,folder:folderPath,error});
+initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
 const documentSchema = getSchema(editorExtensions());
 function validateEditorDocument(note: Note) {
@@ -114,7 +127,7 @@ async function flush() {
   } catch (reason) { error(reason, true); throw reason; }
   // A committed note remains saved if derived-index work or diagnostics fail.
   // Status is cheap metadata, and is fetched only after an actual save.
-  if (wroteChanges) await refreshWorkspaceWarnings();
+  if (wroteChanges) { connectionsUI.committed(); await refreshWorkspaceWarnings(); }
 }
 async function refreshWorkspaceWarnings() {
   try {
@@ -126,6 +139,23 @@ async function refreshWorkspaceWarnings() {
   } catch (reason) {
     error(`Your note was saved, but workspace diagnostics could not be refreshed: ${String(reason instanceof Error ? reason.message : reason)}`);
   }
+}
+function watchIndex() {
+  clearTimeout(indexPollTimer);
+  indexPollTimer = setTimeout(async () => {
+    try {
+      const status=await api.status();
+      await renderList();
+      if (!session && !navigating && loadedList.length) await openNote(loadedList[0].id);
+      if (status.indexing) {
+        $('#list-description').textContent='Indexing saved notes…';
+        watchIndex();
+      } else {
+        $('#rebuild-index').textContent='Rebuild search index';
+        connectionsUI.changed();
+      }
+    } catch (reason) { error(reason); }
+  },1000);
 }
 function edit(update: (note: Note) => void) {
   if (!session || navigating) return;
@@ -139,7 +169,6 @@ function upsertSummary(note: NoteSummary) {
   const previous = notes[index];
   const changed = !previous || previous.title !== title || previous.folderId !== folderId || previous.tags.join('\0') !== tags.join('\0');
   if (index < 0) notes.push(summary); else notes[index] = summary;
-  $('#total-count').textContent = String(notes.length);
   return changed;
 }
 function folderPath(id: string | null): string {
@@ -157,26 +186,38 @@ function renderFolders() {
   const seen = new Set<string>();
   const row = (folder: Folder, depth: number): string => {
     if (seen.has(folder.id)) return ''; seen.add(folder.id);
-    return `<button class="folder-row ${selectedFolder === folder.id ? 'selected' : ''}" data-folder="${escape(folder.id)}" style="--depth:${Math.min(depth, 8)}"><span aria-hidden="true">▱</span><span>${escape(folder.name)}</span><small>${notes.filter(n => n.folderId === folder.id).length || ''}</small></button>${folders.filter(f => f.parentId === folder.id).map(f => row(f, depth + 1)).join('')}`;
+    return `<button class="folder-row ${selectedFolder === folder.id ? 'selected' : ''}" data-folder="${escape(folder.id)}" style="--depth:${Math.min(depth, 8)}"><span aria-hidden="true">▱</span><span>${escape(folder.name)}</span></button>${folders.filter(f => f.parentId === folder.id).map(f => row(f, depth + 1)).join('')}`;
   };
   $('#folders').innerHTML = `<button class="folder-row ${selectedFolder === null ? 'selected' : ''}" data-folder=""><span>▱</span><span>Unfiled</span></button>${roots.map(f => row(f, 0)).join('')}${folders.length === 0 ? '<p class="folder-hint">Give your ideas a home.<br>Create your first folder above.</p>' : ''}`;
   $('#note-folder').innerHTML = folderOptions();
   if (session) $<HTMLSelectElement>('#note-folder').value = session.note.folderId ?? '';
 }
-async function renderList() {
+async function renderList(reset = true) {
+  if (connectionsUI.isDragging()) {
+    deferredListReset ||= reset;
+    clearTimeout(listRefreshTimer);
+    listRefreshTimer = setTimeout(() => { const pendingReset=deferredListReset; deferredListReset=false; void renderList(pendingReset); },100);
+    return;
+  }
   const generation = ++searchGeneration;
   const query = $<HTMLInputElement>('#search').value.trim();
-  let items: NoteSummary[];
-  try { items = query ? await api.search(query) : [...notes]; }
+  let page;
+  try {
+    page = await api.pageNotes(query, selectedFolder === 'all' ? undefined : selectedFolder ?? '', reset ? 0 : listCursor ?? 0, 80);
+    const countPage = !query && selectedFolder === 'all' ? page : await api.pageNotes('',undefined,0,1);
+    if(generation===searchGeneration) {workspaceTotal=countPage.total;$('#total-count').textContent=String(workspaceTotal);}
+  }
   catch (reason) { if (generation === searchGeneration) error(reason); return; }
   if (generation !== searchGeneration) return;
-  if (selectedFolder !== 'all') items = items.filter(n => n.folderId === selectedFolder);
-  items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  $('#list-count').textContent = String(items.length);
+  if (connectionsUI.isDragging()) { void renderList(reset); return; }
+  loadedList = reset ? page.items : [...loadedList, ...page.items];
+  listCursor = page.nextCursor;
+  for (const note of page.items) upsertSummary(note);
+  $('#list-count').textContent = String(page.total);
   $('#collection-title').textContent = selectedFolder === 'all' ? 'All notes' : selectedFolder === null ? 'Unfiled' : folders.find(f => f.id === selectedFolder)?.name ?? 'Folder';
   $('#list-description').textContent = query ? 'Matching notes' : 'Recently written';
-  $('#note-list').innerHTML = items.slice(0, listLimit).map(n => `<button class="note-card ${session?.note.id === n.id ? 'active' : ''}" data-note="${escape(n.id)}"><span class="note-card-title">${escape(n.title || 'Untitled')}</span><span class="note-card-location">${escape(folderPath(n.folderId))}</span><span class="note-card-bottom"><time>${new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time><span>${n.tags.slice(0, 2).map(t => `#${escape(t)}`).join(' ')}</span></span></button>`).join('') || `<div class="list-empty"><span>∴</span><p>${query ? 'No matching notes.' : 'Nothing here just yet.'}</p><small>${query ? 'Try a different word or folder.' : 'Your next thought could go here.'}</small></div>`;
-  if (items.length > listLimit) $('#note-list').insertAdjacentHTML('beforeend', `<button class="show-more" id="show-more">Show 80 more · ${items.length - listLimit} remaining</button>`);
+  $('#note-list').innerHTML = loadedList.map(n => `<div class="note-card-shell" data-note-target="${escape(n.id)}"><button type="button" class="note-card ${session?.note.id === n.id ? 'active' : ''}" data-note="${escape(n.id)}"><span class="note-card-title">${escape(n.title || 'Untitled')}</span><span class="note-card-location">${escape(folderPath(n.folderId))}</span><span class="note-card-bottom"><time>${new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time><span>${n.tags.slice(0, 2).map(t => `#${escape(t)}`).join(' ')}</span></span></button>${connectionHandle(n.id,n.title)}</div>`).join('') || `<div class="list-empty"><span>∴</span><p>${query ? 'No matching notes.' : 'Nothing here just yet.'}</p><small>${query ? 'Try a different word or folder.' : 'Your next thought could go here.'}</small></div>`;
+  if (listCursor !== null) $('#note-list').insertAdjacentHTML('beforeend', `<button class="show-more" id="show-more">Show more notes</button>`);
 }
 function refreshMetadata() {
   if (!session) return;
@@ -186,7 +227,10 @@ function refreshMetadata() {
   $<HTMLSelectElement>('#note-folder').value = note.folderId ?? '';
   $<HTMLSelectElement>('#schema').value = note.presentation.schemaId;
   $('.document').dataset.schema = note.presentation.schemaId;
+  $('.document').dataset.noteTarget = note.id;
   $('#breadcrumb').textContent = `${folderPath(note.folderId)}  /  ${note.title || 'Untitled'}`;
+  $('#header-connection-handle').innerHTML = connectionHandle(note.id,note.title);
+  $('#breadcrumb').dataset.noteTarget = note.id;
   $('#note-date').textContent = new Date(note.createdAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
 }
 function wordCount() {
@@ -219,7 +263,7 @@ function showNote(note: Note) {
     onTransaction: ({ editor: current, transaction }) => { editingUI.sync(current, transaction.docChanged); componentUI.sync(); },
     onUpdate: () => { edit(() => {}); clearTimeout(countTimer); countTimer = setTimeout(wordCount, 500); },
   });
-  wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); componentUI.sync(); void renderList();
+  wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); componentUI.sync(); connectionsUI.changed(); void renderList();
 }
 async function navigate(action: () => Promise<Note>) {
   if (navigating) return;
@@ -234,7 +278,16 @@ async function openNote(id: string) { if (session?.note.id === id) return; await
 async function newNote() { await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
 async function dailyNote() {
   const now = new Date(); const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const existing = notes.find(n => n.tags.includes(`daily:${date}`));
+  // Reconciliation can still be discovering an externally imported daily note.
+  const status = await api.status();
+  if (status.indexing) { error('Notes are still being indexed. Try opening today’s note again when indexing completes.'); return; }
+  let existing: NoteSummary | undefined;
+  let cursor: number | null = 0;
+  do {
+    const page = await api.pageNotes(`daily:${date}`,undefined,cursor,40);
+    existing = page.items.find(note=>note.tags.includes(`daily:${date}`));
+    cursor=page.nextCursor;
+  } while (!existing && cursor!==null);
   if (existing) { await openNote(existing.id); return; }
   await navigate(async () => {
     let folder = folders.find(f => f.name === 'Daily notes' && f.parentId === null);
@@ -244,10 +297,15 @@ async function dailyNote() {
     return api.save(note, note.revision);
   });
 }
-function linkResults() {
-  const query = $<HTMLInputElement>('#link-search').value.toLocaleLowerCase();
-  const matches = notes.filter(n => n.id !== session?.note.id && n.title.toLocaleLowerCase().includes(query));
-  $('#link-results').innerHTML = matches.map(n => `<button data-link="${escape(n.id)}"><span>${escape(n.title || 'Untitled')}</span><small>${escape(folderPath(n.folderId))}</small></button>`).join('') || '<p class="dialog-description">No other notes found. Create another note to connect your ideas.</p>';
+async function linkResults() {
+  const note = session?.note; if (!note) return;
+  const generation = ++inlineSearchGeneration;
+  try {
+    const page = await api.picker(note.id, $<HTMLInputElement>('#link-search').value, 0, 40);
+    if (generation !== inlineSearchGeneration || session?.note.id !== note.id) return;
+    inlineLinkNotes = new Map(page.items.map(entry=>[entry.note.id,entry.note]));
+    $('#link-results').innerHTML = page.items.map(({note:n}) => `<button data-link="${escape(n.id)}" data-note-target="${escape(n.id)}"><span>${escape(n.title || 'Untitled')}</span><small>${escape(folderPath(n.folderId))}</small></button>`).join('') || '<p class="dialog-description">No other notes found. Try another title, folder, or tag.</p>';
+  } catch(reason) { if(generation===inlineSearchGeneration)error(reason); }
 }
 
 // ProseMirror's handleClick can run from its mouseup processing, before the
@@ -274,12 +332,12 @@ $('#editor').addEventListener('auxclick', interceptEditorLink, { capture: true }
 
 $('#new-note').onclick = () => { void newNote(); };
 $('#empty-new').onclick = () => { void newNote(); };
-$('#daily-note').onclick = () => { void dailyNote(); };
+$('#daily-note').onclick = () => { void dailyNote().catch(error); };
 $('#all-notes').onclick = () => { selectedFolder = 'all'; $('#all-notes').classList.add('selected'); renderFolders(); void renderList(); };
 $('#folders').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-folder]'); if (!button) return; selectedFolder = button.dataset.folder || null; $('#all-notes').classList.remove('selected'); renderFolders(); void renderList(); };
-$('#note-list').onclick = event => { if ((event.target as HTMLElement).closest('#show-more')) { listLimit += 80; void renderList(); return; } const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-note]'); if (button) void openNote(button.dataset.note!); };
-$('#search').oninput = () => { listLimit = 80; clearTimeout(searchTimer); searchGeneration++; searchTimer = setTimeout(() => { void renderList(); }, 180); };
-$('#note-title').oninput = () => { const title = $<HTMLInputElement>('#note-title').value; edit(n => { n.title = title; }); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
+$('#note-list').onclick = event => { if ((event.target as HTMLElement).closest('#show-more')) { void renderList(false); return; } const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-note]'); if (button) void openNote(button.dataset.note!); };
+$('#search').oninput = () => { clearTimeout(searchTimer); searchGeneration++; searchTimer = setTimeout(() => { void renderList(); }, 180); };
+$('#note-title').oninput = () => { const title = $<HTMLInputElement>('#note-title').value; edit(n => { n.title = title; }); const handle=$<HTMLButtonElement>('#header-connection-handle [data-connect-source]'); handle.dataset.sourceTitle=title || 'Untitled'; handle.setAttribute('aria-label','Connect '+(title || 'Untitled')+' to another note'); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
 $('#note-tags').oninput = () => { const tags = [...new Set($<HTMLInputElement>('#note-tags').value.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))]; edit(n => { n.tags = tags; }); };
 $('#note-folder').onchange = () => { edit(n => { n.folderId = $<HTMLSelectElement>('#note-folder').value || null; }); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${session!.note.title || 'Untitled'}`; };
 $('#schema').onchange = () => { const schemaId = $<HTMLSelectElement>('#schema').value as SchemaId; edit(n => { n.presentation.schemaId = schemaId; }); $('.document').dataset.schema = schemaId; editingUI.sync(); };
@@ -295,7 +353,7 @@ $('#insert-link').onclick = () => { if (!editor) return; linkSelection = { from:
 $('#link-search').oninput = linkResults;
 $('#link-results').onclick = event => {
   const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-link]');
-  const note = notes.find(n => n.id === target?.dataset.link);
+  const note = inlineLinkNotes.get(target?.dataset.link ?? '');
   if (!note || !editor || !linkSelection) return;
   const href = `noted://note/${note.id}`;
   if (linkSelection.from === linkSelection.to) editor.chain().focus().insertContentAt(linkSelection, { type: 'text', text: note.title || 'Untitled', marks: [{ type: 'link', attrs: { href } }] }).run();
@@ -312,9 +370,20 @@ $('#download-draft').onclick = () => {
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${session.note.id}.draft.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 $('#workspace-info').onclick = () => { $<HTMLDialogElement>('#workspace-dialog').showModal(); };
+const exportConnectionsButton=document.createElement('button');
+exportConnectionsButton.type='button';exportConnectionsButton.id='export-connections';exportConnectionsButton.textContent='Export connections';
+$('#workspace-dialog .dialog-actions').prepend(exportConnectionsButton);
+exportConnectionsButton.onclick=async()=>{
+  exportConnectionsButton.disabled=true;
+  try {
+    const snapshot=await api.exportRelations();
+    const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='noted-connections.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  } catch(reason) {error(reason);} finally {exportConnectionsButton.disabled=false;}
+};
 $('#rebuild-index').onclick = async () => {
   const button = $<HTMLButtonElement>('#rebuild-index'); button.disabled = true; button.textContent = 'Rebuilding…';
-  try { const status = await api.rebuild(); $('#workspace-path').textContent = status.path; notes = await api.notes(); renderFolders(); await renderList(); button.textContent = 'Index rebuilt'; }
+  try { const status = await api.rebuild(); $('#workspace-path').textContent = status.path; const page=await api.pageNotes('',undefined,0,80); notes=page.items;workspaceTotal=page.total;$('#total-count').textContent=String(workspaceTotal); renderFolders(); await renderList(); button.textContent = status.indexing ? 'Indexing in background…' : 'Index rebuilt'; if(status.indexing)watchIndex(); }
   catch (reason) { error(reason); button.textContent = 'Retry rebuild'; }
   finally { button.disabled = false; }
 };
@@ -328,11 +397,12 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) void 
 
 async function start() {
   try {
-    const result = await Promise.all([api.notes(), api.folders(), api.status()]);
-    notes = result[0]; folders = result[1];
+    const result = await Promise.all([api.pageNotes('',undefined,0,80), api.folders(), api.status()]);
+    notes = result[0].items; workspaceTotal=result[0].total; folders = result[1];
     $('#workspace-path').textContent = result[2].path;
-    $('#total-count').textContent = String(notes.length);
+    $('#total-count').textContent = String(workspaceTotal);
     renderFolders(); await renderList();
+    if (result[2].indexing) watchIndex();
     workspaceWarningKey = result[2].warnings.join('\n');
     if (workspaceWarningKey) error(workspaceWarningKey);
     if (notes.length) await openNote([...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0].id);

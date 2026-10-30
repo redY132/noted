@@ -2,6 +2,8 @@
 
 ## Acceptance intent
 
+Connection/discovery implementation measurements are in [connection performance](connection-performance.md) and [local semantics](local-semantics.md). These distinguish keyword/tag workloads from real local inference and ANN workloads; neither establishes acceptance on the agreed 8 GB reference laptop. Semantic discovery remains experimental and opt-in pending reference-hardware and human-labeled relevance evaluation.
+
 Ordinary writing, selection, scrolling, and navigation must remain smooth on an inexpensive Windows laptop with integrated graphics. The exact reference CPU, RAM, SSD, and display refresh rate still need selection. Development-machine measurements do not establish low-end acceptance.
 
 Provisional targets from the spec:

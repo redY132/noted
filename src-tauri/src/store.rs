@@ -1,4 +1,5 @@
-//! Prototype local store. JSON files are authoritative; SQLite is disposable.
+//! Local note store. JSON files are authoritative for notes; index.sqlite3 is
+//! disposable. relations.sqlite3 separately preserves authored connections.
 //! Writes are serialized by the desktop wrapper and a lifetime workspace lock.
 //! External tools must close the app or use its API: arbitrary concurrent file
 //! writes cannot be made transactional by this process's advisory lock.
@@ -81,11 +82,15 @@ pub struct Folder {
 pub struct WorkspaceStatus {
     pub path: String,
     pub warnings: Vec<String>,
+    pub indexing: bool,
 }
 
 pub struct Store {
-    root: PathBuf,
-    db: Connection,
+    pub(crate) root: PathBuf,
+    pub(crate) db: Connection,
+    pub(crate) relations: Connection,
+    reconcile: std::collections::VecDeque<PathBuf>,
+    reconciling: bool,
     warnings: Vec<String>,
     _lock: File,
 }
@@ -96,7 +101,7 @@ fn err(e: impl std::fmt::Display) -> String {
 fn token(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
-fn valid_id(id: &str) -> Result<()> {
+pub(crate) fn valid_id(id: &str) -> Result<()> {
     let parsed = Uuid::parse_str(id).map_err(|_| "Invalid identifier".to_string())?;
     if parsed.to_string() != id {
         return Err("Identifier must be a canonical UUID".into());
@@ -137,6 +142,12 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 
 impl Store {
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        let mut store = Self::open_cached(root)?;
+        store.rebuild_index()?;
+        Ok(store)
+    }
+
+    pub fn open_cached(root: impl AsRef<Path>) -> Result<Self> {
         fs::create_dir_all(root.as_ref()).map_err(err)?;
         let root = root.as_ref().canonicalize().map_err(err)?;
         for name in ["notes", "folders"] {
@@ -161,13 +172,21 @@ impl Store {
         check_file(&db_path)?;
         let db = Connection::open(db_path).map_err(err)?;
         db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY, summary TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS note_search USING fts5(id UNINDEXED, title, body, tags, tokenize='unicode61');").map_err(err)?;
-        let mut store = Self {
+        crate::relations::init(&db)?;
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS folder_search(id TEXT PRIMARY KEY,name TEXT NOT NULL);",
+        )
+        .map_err(err)?;
+        let relations = crate::relations::open(&root)?;
+        let store = Self {
             root,
             db,
+            relations,
+            reconcile: std::collections::VecDeque::new(),
+            reconciling: false,
             warnings: Vec::new(),
             _lock: lock,
         };
-        store.rebuild_index()?;
         Ok(store)
     }
 
@@ -175,10 +194,11 @@ impl Store {
         WorkspaceStatus {
             path: self.root.display().to_string(),
             warnings: self.warnings.clone(),
+            indexing: self.reconciling,
         }
     }
 
-    fn path(&self, collection: &str, id: &str) -> Result<PathBuf> {
+    pub(crate) fn path(&self, collection: &str, id: &str) -> Result<PathBuf> {
         valid_id(id)?;
         let parent = self.root.join(collection);
         if parent.canonicalize().map_err(err)? != parent {
@@ -258,6 +278,12 @@ impl Store {
             &self.path("folders", &folder.id)?,
             &serde_json::to_vec_pretty(&folder).map_err(err)?,
         )?;
+        self.db
+            .execute(
+                "INSERT OR REPLACE INTO folder_search VALUES(?1,?2)",
+                params![folder.id, folder.name],
+            )
+            .map_err(err)?;
         Ok(folder)
     }
 
@@ -377,6 +403,8 @@ impl Store {
     fn index_note(&mut self, note: &Note) -> Result<()> {
         let tx = self.db.transaction().map_err(err)?;
         insert_index(&tx, note)?;
+        let signature = file_signature(&self.root.join("notes").join(format!("{}.json", note.id)))?;
+        tx.execute("INSERT INTO note_files VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET signature=excluded.signature",params![note.id,signature]).map_err(err)?;
         tx.commit().map_err(err)
     }
 
@@ -384,8 +412,9 @@ impl Store {
         // Stream one note at a time: collection size must not determine content
         // memory usage. A failed rebuild rolls the previous index back.
         self.warnings.clear();
+        self.start_reconcile()?;
         let tx = self.db.unchecked_transaction().map_err(err)?;
-        tx.execute_batch("DELETE FROM notes; DELETE FROM note_search;")
+        tx.execute_batch("DELETE FROM notes; DELETE FROM note_search; DELETE FROM note_refs; DELETE FROM note_tags; DELETE FROM note_files; DELETE FROM picker_search;")
             .map_err(err)?;
         for entry in fs::read_dir(self.root.join("notes")).map_err(err)? {
             let path = entry.map_err(err)?.path();
@@ -394,13 +423,24 @@ impl Store {
             }
             let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             match self.load_note(id) {
-                Ok(note) => insert_index(&tx, &note)?,
+                Ok(note) => {
+                    insert_index(&tx, &note)?;
+                    let signature = file_signature(&path)?;
+                    tx.execute(
+                        "INSERT INTO note_files VALUES(?1,?2)",
+                        params![note.id, signature],
+                    )
+                    .map_err(err)?;
+                }
                 Err(e) => self
                     .warnings
                     .push(format!("Skipped {}: {e}", path.display())),
             }
         }
-        tx.commit().map_err(err)
+        tx.commit().map_err(err)?;
+        self.reconcile.clear();
+        self.reconciling = false;
+        Ok(())
     }
 
     pub fn list_notes(&self) -> Result<Vec<NoteSummary>> {
@@ -434,6 +474,126 @@ impl Store {
     }
 }
 
+fn file_signature(path: &Path) -> Result<String> {
+    let m = fs::symlink_metadata(path).map_err(err)?;
+    if !m.is_file() || m.file_type().is_symlink() {
+        return Err("Note must be an ordinary file".into());
+    }
+    Ok(format!(
+        "{}:{}",
+        m.len(),
+        m.modified()
+            .map_err(err)?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(err)?
+            .as_nanos()
+    ))
+}
+
+impl Store {
+    pub fn start_reconcile(&mut self) -> Result<()> {
+        self.reconciling = true;
+        self.reconcile = fs::read_dir(self.root.join("notes"))
+            .map_err(err)?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
+            .collect();
+        let mut queued = self.reconcile.iter().cloned().collect::<HashSet<_>>();
+        let mut stmt = self.db.prepare("SELECT id FROM notes").map_err(err)?;
+        for row in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
+            let id = row.map_err(err)?;
+            if valid_id(&id).is_ok() {
+                let path = self.root.join("notes").join(format!("{id}.json"));
+                if queued.insert(path.clone()) {
+                    self.reconcile.push_back(path);
+                }
+            }
+        }
+        drop(stmt);
+        self.db
+            .execute("DELETE FROM folder_search", [])
+            .map_err(err)?;
+        for f in self.list_folders()? {
+            self.db
+                .execute(
+                    "INSERT INTO folder_search VALUES(?1,?2)",
+                    params![f.id, f.name],
+                )
+                .map_err(err)?;
+        }
+        Ok(())
+    }
+    fn remove_indexed_note(&mut self, id: &str) -> Result<()> {
+        let tx = self.db.transaction().map_err(err)?;
+        tx.execute(
+            "DELETE FROM note_search WHERE rowid=(SELECT rowid FROM notes WHERE id=?1)",
+            [id],
+        )
+        .map_err(err)?;
+        tx.execute(
+            "DELETE FROM picker_search WHERE rowid=(SELECT rowid FROM notes WHERE id=?1)",
+            [id],
+        )
+        .map_err(err)?;
+        tx.execute("DELETE FROM notes WHERE id=?1", [id])
+            .map_err(err)?;
+        tx.execute("DELETE FROM note_refs WHERE source=?1", [id])
+            .map_err(err)?;
+        tx.execute("DELETE FROM note_tags WHERE note_id=?1", [id])
+            .map_err(err)?;
+        tx.execute("DELETE FROM note_files WHERE id=?1", [id])
+            .map_err(err)?;
+        tx.commit().map_err(err)
+    }
+    pub fn reconcile_batch(&mut self, limit: usize) -> Result<bool> {
+        if !self.reconciling {
+            return Ok(false);
+        }
+        for _ in 0..limit.clamp(1, 16) {
+            let Some(path) = self.reconcile.pop_front() else {
+                break;
+            };
+            let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if valid_id(id).is_err() {
+                self.warnings
+                    .push(format!("Skipped invalid note filename: {}", path.display()));
+                continue;
+            }
+            let signature = match file_signature(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    if !path.exists() {
+                        self.remove_indexed_note(id)?;
+                    } else {
+                        self.warnings.push(e);
+                    }
+                    continue;
+                }
+            };
+            let existing = self
+                .db
+                .query_row("SELECT signature FROM note_files WHERE id=?1", [id], |r| {
+                    r.get::<_, String>(0)
+                })
+                .ok();
+            if existing.as_deref() == Some(&signature) {
+                continue;
+            }
+            match self.load_note(id) {
+                Ok(note) => self.index_note(&note)?,
+                Err(e) => self
+                    .warnings
+                    .push(format!("Skipped {}: {e}", path.display())),
+            }
+        }
+        if self.reconcile.is_empty() {
+            self.reconciling = false;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+}
+
 fn insert_index(db: &Connection, note: &Note) -> Result<()> {
     db.execute(
         "INSERT INTO notes(id,summary) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary",
@@ -459,9 +619,10 @@ fn insert_index(db: &Connection, note: &Note) -> Result<()> {
         params![rowid, note.id, note.title, body, note.tags.join(" ")],
     )
     .map_err(err)?;
+    crate::relations::index(db, note)?;
     Ok(())
 }
-fn extract_text(node: &Value, output: &mut String) {
+pub(crate) fn extract_text(node: &Value, output: &mut String) {
     if let Some(text) = node.get("text").and_then(Value::as_str) {
         output.push_str(text);
     }

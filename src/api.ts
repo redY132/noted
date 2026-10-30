@@ -2,6 +2,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { Folder, ImageAsset, ImageAssetData, Note, NoteSummary, WorkspaceStatus } from './model';
 import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets';
 import { registerImageSource, unregisterImageSource } from './component-motion';
+import { previewRelationOperation, type PreviewRelations } from './relations-preview';
+import type { Page, PairState, PairMutation, PickerNote, ConnectionEntry, ReferenceEntry, RelatedNote } from './model';
 
 export const browserPreview = !isTauri();
 const key = 'noted-browser-preview-v1';
@@ -23,6 +25,12 @@ function plainText(value: unknown): string {
 
 async function preview<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
   const store = read();
+  if (['set_relation','restore_dismissed','list_notes_page','picker_notes','list_connections','list_references','related_notes','export_relations'].includes(command)) {
+    const relations = JSON.parse(localStorage.getItem('noted-preview-relations-v1') ?? '{}') as PreviewRelations;
+    const result = previewRelationOperation(relations,command,args,store.notes,store.folders);
+    if(command==='set_relation'||command==='restore_dismissed')localStorage.setItem('noted-preview-relations-v1',JSON.stringify(relations));
+    return structuredClone(result) as T;
+  }
   let result: unknown;
   switch (command) {
     case 'workspace_status': result = { path: 'Browser preview storage · separate from your desktop notes', warnings: [] }; break;
@@ -130,6 +138,14 @@ async function assetUrl(noteId: string, assetId: string): Promise<string> {
 }
 function releaseAssetUrl(url: string) { unregisterImageSource(url); URL.revokeObjectURL(url); }
 export const api = {
+  exportRelations: () => call<{formatVersion:1;pairs:PairState[]}>('export_relations'),
+  pageNotes: (query = '', folderId?: string, cursor?: number | null, limit = 80) => call<Page<NoteSummary>>('list_notes_page', {query,folderId,cursor,limit}),
+  picker: (sourceId: string, query = '', cursor?: number | null, limit = 40) => call<Page<PickerNote>>('picker_notes', {sourceId,query,cursor,limit}),
+  connections: (noteId: string, cursor?: number | null, limit = 40) => call<Page<ConnectionEntry>>('list_connections',{noteId,cursor,limit}),
+  references: (noteId: string, cursor?: number | null, limit = 40) => call<Page<ReferenceEntry>>('list_references',{noteId,cursor,limit}),
+  related: (noteId: string, cursor?: number | null, limit = 8) => call<Page<RelatedNote>>('related_notes',{noteId,cursor,limit}),
+  setRelation: (a:string,b:string,connected?:boolean,dismissed?:boolean,expectedRevision?:number) => call<PairMutation>('set_relation',{a,b,connected,dismissed,expectedRevision}),
+  restoreDismissed: (noteId:string) => call<number>('restore_dismissed',{noteId}),
   importAsset,
   assetUrl,
   releaseAssetUrl,

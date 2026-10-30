@@ -1,0 +1,14 @@
+{
+  "provenance": "Agent-authored evaluation fixture. Labels require human review; this is not the approved human-labeled quality gate.",
+  "language": "en",
+  "cases": [
+    {"query":"A physician treated the patient for a cardiac condition.","related":"The doctor provided care for someone with heart disease.","unrelated":"A telescope observes distant galaxies."},
+    {"query":"I cannot remember the material from last week's lecture.","related":"Spaced repetition helps students retain what they learned over time.","unrelated":"The bakery sells freshly baked bread."},
+    {"query":"The seedlings wilted after several days without rain.","related":"Young plants need regular watering to avoid drying out.","unrelated":"A software compiler converts source code into instructions."},
+    {"query":"My monthly spending exceeds my earnings.","related":"A household budget can reduce expenses below income.","unrelated":"The mountain path crosses a pine forest."},
+    {"query":"The application freezes while a background task holds a shared lock.","related":"Long operations should avoid blocking the interface through mutex contention.","unrelated":"A violin produces sound through vibrating strings."},
+    {"query":"The dough failed to rise in a cold kitchen.","related":"Yeast fermentation slows at low temperatures during bread making.","unrelated":"Mars orbits the Sun beyond Earth."},
+    {"query":"I woke repeatedly and felt exhausted the next day.","related":"Fragmented sleep can cause daytime fatigue.","unrelated":"A painter combines pigments to create new colors."},
+    {"query":"I want to reconnect with friends I haven't seen in years.","related":"Reaching out to old acquaintances can renew neglected relationships.","unrelated":"Indexes accelerate database lookups."}
+  ]
+}

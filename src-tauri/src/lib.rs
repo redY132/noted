@@ -1,4 +1,7 @@
 mod assets;
+pub mod relations;
+#[cfg(feature = "semantic")]
+pub mod semantic;
 pub mod store;
 
 #[cfg(feature = "desktop")]
@@ -93,10 +96,181 @@ mod desktop {
     #[tauri::command]
     pub async fn rebuild_index(state: State<'_, SharedStore>) -> Result<WorkspaceStatus, String> {
         work(state, |s| {
-            s.rebuild_index()?;
+            s.start_reconcile()?;
             Ok(s.status())
         })
         .await
+    }
+
+    #[tauri::command]
+    pub async fn set_relation(
+        state: State<'_, SharedStore>,
+        a: String,
+        b: String,
+        connected: Option<bool>,
+        dismissed: Option<bool>,
+        expected_revision: Option<u64>,
+    ) -> Result<crate::relations::PairMutation, String> {
+        work(state, move |s| {
+            s.set_relation(&a, &b, connected, dismissed, expected_revision)
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn list_connections(
+        state: State<'_, SharedStore>,
+        note_id: String,
+        cursor: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<crate::relations::Page<crate::relations::ConnectionEntry>, String> {
+        work(state, move |s| {
+            s.list_connections(&note_id, cursor.unwrap_or(0), limit.unwrap_or(40))
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn list_references(
+        state: State<'_, SharedStore>,
+        note_id: String,
+        cursor: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<crate::relations::Page<crate::relations::ReferenceEntry>, String> {
+        work(state, move |s| {
+            s.list_references(&note_id, cursor.unwrap_or(0), limit.unwrap_or(40))
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn picker_notes(
+        state: State<'_, SharedStore>,
+        source_id: String,
+        query: String,
+        cursor: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<crate::relations::Page<crate::relations::PickerEntry>, String> {
+        work(state, move |s| {
+            s.picker_notes(&source_id, &query, cursor.unwrap_or(0), limit.unwrap_or(40))
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn list_notes_page(
+        state: State<'_, SharedStore>,
+        query: String,
+        folder_id: Option<String>,
+        cursor: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<crate::relations::Page<NoteSummary>, String> {
+        work(state, move |s| {
+            s.list_notes_page(
+                &query,
+                folder_id.as_deref(),
+                cursor.unwrap_or(0),
+                limit.unwrap_or(80),
+            )
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn related_notes(
+        state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
+        note_id: String,
+        cursor: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<crate::relations::Page<crate::relations::RelatedEntry>, String> {
+        let service = semantic.inner().clone();
+        let id = note_id.clone();
+        let candidates = tauri::async_runtime::spawn_blocking(move || service.related(id))
+            .await
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default()
+            .into_iter()
+            .map(|m| (m.note_id, m.score as f64))
+            .collect();
+        work(state, move |s| {
+            s.related_with_semantic(
+                &note_id,
+                candidates,
+                cursor.unwrap_or(0),
+                limit.unwrap_or(8),
+            )
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn restore_dismissed(
+        state: State<'_, SharedStore>,
+        note_id: String,
+    ) -> Result<usize, String> {
+        work(state, move |s| s.restore_dismissed(&note_id)).await
+    }
+
+    #[tauri::command]
+    pub async fn semantic_status(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+    ) -> Result<crate::semantic::SemanticStatus, String> {
+        Ok(state.status())
+    }
+    #[tauri::command]
+    pub async fn semantic_settings(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+        settings: crate::semantic::SemanticSettings,
+    ) -> Result<crate::semantic::SemanticStatus, String> {
+        state.settings(settings)
+    }
+    #[tauri::command]
+    pub async fn semantic_activity(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+        note_id: Option<String>,
+        typing: bool,
+    ) -> Result<(), String> {
+        state.activity(note_id, typing)
+    }
+    #[tauri::command]
+    pub async fn semantic_download_model(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+    ) -> Result<crate::semantic::SemanticStatus, String> {
+        let service = state.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || service.download())
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn semantic_install_pack(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+        path: String,
+    ) -> Result<crate::semantic::SemanticStatus, String> {
+        let service = state.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || service.install_pack(path))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn semantic_remove_data(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+    ) -> Result<crate::semantic::SemanticStatus, String> {
+        let service = state.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || service.remove_data())
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn semantic_related(
+        state: State<'_, Arc<crate::semantic::SemanticService>>,
+        note_id: String,
+    ) -> Result<Vec<crate::semantic::SemanticMatch>, String> {
+        let service = state.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || service.related(note_id))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+
+    #[tauri::command]
+    pub async fn export_relations(
+        state: State<'_, SharedStore>,
+    ) -> Result<serde_json::Value, String> {
+        work(state, |s| s.export_relations()).await
     }
 
     pub fn run() {
@@ -107,8 +281,26 @@ mod desktop {
                     Some(path) => std::path::PathBuf::from(path),
                     None => app.path().app_data_dir()?.join("workspace"),
                 };
-                let store = Store::open(root).map_err(std::io::Error::other)?;
-                app.manage(Arc::new(Mutex::new(store)));
+                let store = Store::open_cached(root.clone()).map_err(std::io::Error::other)?;
+                let store = Arc::new(Mutex::new(store));
+                {
+                    let mut guard = store
+                        .lock()
+                        .map_err(|_| std::io::Error::other("Workspace lock failed"))?;
+                    guard.start_reconcile().map_err(std::io::Error::other)?;
+                }
+                let background = store.clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    if let Ok(mut s) = background.lock() {
+                        let _ = s.reconcile_batch(4);
+                    }
+                });
+                app.manage(store);
+                #[cfg(feature = "semantic")]
+                app.manage(Arc::new(
+                    crate::semantic::SemanticService::start(root).map_err(std::io::Error::other)?,
+                ));
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
@@ -122,7 +314,22 @@ mod desktop {
                 save_note,
                 search_notes,
                 workspace_status,
-                rebuild_index
+                semantic_status,
+                semantic_settings,
+                semantic_activity,
+                semantic_download_model,
+                semantic_install_pack,
+                semantic_remove_data,
+                semantic_related,
+                rebuild_index,
+                set_relation,
+                list_connections,
+                list_references,
+                picker_notes,
+                list_notes_page,
+                related_notes,
+                export_relations,
+                restore_dismissed
             ])
             .run(tauri::generate_context!())
             .expect("Noted could not start its local workspace");
