@@ -19,6 +19,9 @@ use std::{
 use usearch::{new_index, Index, IndexOptions, MetricKind, ScalarKind};
 
 type Result<T> = std::result::Result<T, String>;
+/// A neighbor index supplies candidates, not evidence that they are related.
+/// Accept only whole-note similarity; one matching template window is insufficient.
+pub const MIN_SEMANTIC_SIMILARITY: f32 = 0.60;
 const MODEL: &str = "minilm-l6-v2-q8-751bff3-extract1";
 const REVISION: &str = "751bff37182d3f1213fa05d7196b954e230abad9";
 const FILES: &[(&str, u64, &str)] = &[
@@ -772,31 +775,35 @@ impl Engine {
         if self.needs(id, &hash(note_text(root, id)?.as_bytes())) {
             return Ok(vec![]);
         }
-        let mut statement=self.db.prepare("SELECT c.vector FROM bindings b JOIN chunks c ON c.id=b.chunk WHERE b.note=?1 ORDER BY b.ordinal").map_err(err)?;
+        let mut statement=self.db.prepare("SELECT c.id,c.vector FROM bindings b JOIN chunks c ON c.id=b.chunk WHERE b.note=?1 ORDER BY b.ordinal").map_err(err)?;
         let vectors = statement
-            .query_map([id], |r| r.get::<_, Vec<u8>>(0))
+            .query_map([id], |r| {
+                Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?))
+            })
             .map_err(err)?
-            .map(|r| read_vector(&r.map_err(err)?))
+            .map(|r| {
+                let (key, bytes) = r.map_err(err)?;
+                Ok((key, read_vector(&bytes)?))
+            })
             .collect::<Result<Vec<_>>>()?;
         if vectors.is_empty() {
             return Ok(vec![]);
         }
-        let mut aggregate = vec![0f32; 384];
-        for v in &vectors {
-            for (a, b) in aggregate.iter_mut().zip(v) {
-                *a += b;
-            }
-        }
-        let norm = aggregate.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0. {
-            for v in &mut aggregate {
-                *v /= norm
-            }
-        }
-        let mut queries = vec![aggregate];
-        for i in 0..vectors.len().min(8) {
-            queries
-                .push(vectors[i * (vectors.len() - 1) / (vectors.len().min(8) - 1).max(1)].clone())
+        let note_count: usize = self
+            .db
+            .query_row("SELECT count(*) FROM notes", [], |r| {
+                r.get::<_, i64>(0).map(|n| n as usize)
+            })
+            .map_err(err)?;
+        let aggregate = note_centroid(&vectors, &self.key_refs, note_count);
+        let informative = informative_vectors(&vectors, &self.key_refs, note_count);
+        let mut queries = vec![aggregate.clone()];
+        for i in 0..informative.len().min(8) {
+            queries.push(
+                informative[i * (informative.len() - 1) / (informative.len().min(8) - 1).max(1)]
+                    .1
+                    .clone(),
+            )
         }
         let mut scores: HashMap<String, f32> = HashMap::new();
         let mut key_scores: HashMap<u64, f32> = HashMap::new();
@@ -841,18 +848,89 @@ impl Engine {
                     .or_insert(score);
             }
         }
-        let mut matches: Vec<_> = scores
-            .into_iter()
-            .filter(|(id, score)| {
-                *score >= 0.35
-                    && note_text(root, id).is_ok_and(|text| !self.needs(id, &hash(text.as_bytes())))
-            })
-            .map(|(note_id, score)| SemanticMatch { note_id, score })
-            .collect();
+        // Bound work to ANN candidates, then evaluate the document in both notes.
+        // The previous maximum-window score promoted unrelated notes sharing boilerplate.
+        let mut candidates: Vec<_> = scores.into_iter().collect();
+        candidates.sort_by(|a, b| b.1.total_cmp(&a.1));
+        candidates.truncate(120);
+        let mut matches = Vec::new();
+        let mut st=self.db.prepare("SELECT c.id,c.vector FROM bindings b JOIN chunks c ON c.id=b.chunk WHERE b.note=?1 ORDER BY b.ordinal").map_err(err)?;
+        for (note_id, _) in candidates {
+            if !note_text(root, &note_id)
+                .is_ok_and(|text| !self.needs(&note_id, &hash(text.as_bytes())))
+            {
+                continue;
+            }
+            let rows = st
+                .query_map([&note_id], |r| {
+                    Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?))
+                })
+                .map_err(err)?;
+            let candidate = rows
+                .map(|r| {
+                    let (key, bytes) = r.map_err(err)?;
+                    Ok((key, read_vector(&bytes)?))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let centroid = note_centroid(&candidate, &self.key_refs, note_count);
+            let score = aggregate
+                .iter()
+                .zip(&centroid)
+                .map(|(a, b)| a * b)
+                .sum::<f32>()
+                .clamp(-1., 1.);
+            if score >= MIN_SEMANTIC_SIMILARITY {
+                matches.push(SemanticMatch { note_id, score });
+            }
+        }
         matches.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.note_id.cmp(&b.note_id)));
         matches.truncate(120);
         Ok(matches)
     }
+}
+fn informative_vectors<'a>(
+    vectors: &'a [(u64, Vec<f32>)],
+    frequency: &HashMap<u64, usize>,
+    notes: usize,
+) -> Vec<&'a (u64, Vec<f32>)> {
+    let common_limit = (notes / 10).max(3);
+    let mut seen = HashSet::new();
+    let unique: Vec<_> = vectors
+        .iter()
+        .filter(|(key, _)| seen.insert(*key))
+        .collect();
+    let informative: Vec<_> = unique
+        .iter()
+        .copied()
+        .filter(|(key, _)| frequency.get(key).copied().unwrap_or(1) <= common_limit)
+        .collect();
+    // An entirely duplicated note can genuinely be related; only remove ubiquitous
+    // windows when there is other document content to represent its actual topic.
+    if informative.is_empty() {
+        unique
+    } else {
+        informative
+    }
+}
+fn note_centroid(
+    vectors: &[(u64, Vec<f32>)],
+    frequency: &HashMap<u64, usize>,
+    notes: usize,
+) -> Vec<f32> {
+    let mut aggregate = vec![0.; 384];
+    for (key, vector) in informative_vectors(vectors, frequency, notes) {
+        let weight = 1. / (1. + frequency.get(key).copied().unwrap_or(1) as f32).ln();
+        for (a, b) in aggregate.iter_mut().zip(vector) {
+            *a += weight * b;
+        }
+    }
+    let norm = aggregate.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if norm > 0. {
+        for v in &mut aggregate {
+            *v /= norm;
+        }
+    }
+    aggregate
 }
 fn runnable(s: &Shared) -> bool {
     s.status.settings.enabled
@@ -1452,6 +1530,10 @@ mod tests {
         }
         let results = engine.related(&ids[0], root).unwrap();
         assert_eq!(results[0].note_id, ids[1]);
+        assert!(
+            !results.iter().any(|m| m.note_id == ids[2]),
+            "Unrelated astronomy must not pass the semantic relevance gate: {results:?}"
+        );
         engine.checkpoint().unwrap();
         assert_eq!(engine.related(&ids[0], root).unwrap()[0].note_id, ids[1]);
         fs::remove_file(root.join("notes").join(format!("{}.json", ids[1]))).unwrap();
@@ -1475,6 +1557,86 @@ mod tests {
         println!(
             "real offline model + chunking + ANN + cache + checkpoint completed in {:?}",
             started.elapsed()
+        );
+    }
+    #[test]
+    fn whole_note_centroid_ignores_ubiquitous_template_windows_when_topic_content_exists() {
+        let mut topic = vec![0.; 384];
+        topic[0] = 1.;
+        let mut template = vec![0.; 384];
+        template[1] = 1.;
+        let windows = vec![(1, topic.clone()), (2, template.clone()), (2, template)];
+        let frequencies = HashMap::from([(1, 2), (2, 40)]);
+        assert_eq!(note_centroid(&windows, &frequencies, 100), topic);
+    }
+    #[test]
+    #[ignore = "requires the pinned offline model pack in NOTED_MODEL_PACK"]
+    fn real_local_whole_note_relevance_rejects_shared_boilerplate() {
+        let source = PathBuf::from(std::env::var("NOTED_MODEL_PACK").unwrap());
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir(root.join("notes")).unwrap();
+        fs::create_dir_all(root.join("semantic/model/onnx")).unwrap();
+        for (name, _, _) in FILES {
+            fs::copy(source.join(name), root.join("semantic/model").join(name)).unwrap();
+        }
+        let shared = Arc::new(Mutex::new(Shared {
+            status: SemanticStatus {
+                experimental: true,
+                settings: SemanticSettings {
+                    enabled: true,
+                    paused: false,
+                    allow_battery: true,
+                },
+                model_ready: true,
+                download_bytes: 0,
+                model_bytes: 0,
+                downloading: false,
+                indexed: 0,
+                total: 0,
+                generation: 0,
+                on_battery: false,
+                busy: false,
+                error: None,
+            },
+            active_note: None,
+            last_typing: Instant::now() - Duration::from_secs(10),
+            remove: false,
+            stop: false,
+            cache: HashMap::new(),
+            pending: HashSet::new(),
+        }));
+        let common="Compare the immediate result with what happened a week later. Record one observation that supports the explanation and one detail that could suggest an alternative. Next time, change only one variable so the comparison remains useful.";
+        let bodies=[
+            "Young tomato plants wilt when the soil dries around shallow roots. Mulch reduces evaporation and a drip line delivers water without soaking the leaves. Check soil moisture below the surface before watering. Yellow leaves can reflect excess water as well as nutrient problems. Compare a shaded bed with sunny containers.",
+            "Vegetable seedlings need moisture near their roots. A layer of mulch stops water evaporating too quickly, while drip irrigation helps the plants without wetting their foliage. Check deeper soil before watering tomatoes again. Both drought and overwatering can cause leaves to droop, especially in containers exposed to the sun.",
+            "A telescope collects faint light from distant galaxies. Dark skies and patient observation reveal more detail than increasing magnification under bright city lights. Plan a viewing session around moon phase, cloud cover, and target altitude. Allow the eyes to adapt to darkness and compare the same star cluster through different eyepieces.",
+            "A sourdough starter rises after feeding because yeast and bacteria consume flour. A cool kitchen slows fermentation. Compare the dough volume and aroma before changing the recipe. The loaf has a dense crumb and a pale crust. Try a longer proof, weigh the water carefully, and preheat the baking vessel. Record how hydration changes the texture."
+        ];
+        let mut engine = Engine::open(root).unwrap();
+        let mut ids = vec![];
+        for body in bodies {
+            let id = uuid::Uuid::new_v4().to_string();
+            let n = serde_json::json!({"id":id,"title":"Observation: a question to revisit","content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":body}]},{"type":"paragraph","content":[{"type":"text","text":common}]}]}});
+            fs::write(
+                root.join("notes").join(format!("{id}.json")),
+                serde_json::to_vec(&n).unwrap(),
+            )
+            .unwrap();
+            engine.embed_note(&id, &authored_text(&n), &shared).unwrap();
+            ids.push(id);
+        }
+        let matches = engine.related(&ids[0], root).unwrap();
+        eprintln!("boilerplate regression: {matches:?}; IDs {ids:?}");
+        assert!(
+            matches.iter().any(|m| m.note_id == ids[1]),
+            "Paraphrased gardening note should remain discoverable"
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|m| m.note_id != ids[2] && m.note_id != ids[3]),
+            "Shared boilerplate alone must not connect gardening to astronomy or baking"
         );
     }
     #[test]

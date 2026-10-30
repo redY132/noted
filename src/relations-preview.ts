@@ -1,6 +1,9 @@
 import type { Folder, Note, PairState, NoteSummary } from './model.ts';
 
 export type PreviewRelations = Record<string, PairState>;
+const stopWords=new Set('the and for with this that from have has was were are not but you your our their can will would should into about when what which than then also one two its'.split(' '));
+function terms(text:string) {return new Set(text.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter(t=>t.length>=3&&/\p{L}/u.test(t)&&!stopWords.has(t)));}
+function authored(node:Note['content']):string {return [node.text??'',...(node.content??[]).map(authored)].join(' ');}
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const summary = ({ content: _c, presentation: _p, formatVersion: _f, revisionToken: _t, ...note }: Note): NoteSummary => note;
 const page = <T>(items:T[], args:Record<string,unknown>) => {
@@ -52,11 +55,16 @@ export function previewRelationOperation(state:PreviewRelations,command:string,a
   }
   if(command==='related_notes') {
     const original=notes.find(n=>n.id===source);if(!original)return page([],args);
-    const tokens=new Set(original.title.toLocaleLowerCase().split(/\W+/).filter(t=>t.length>2));
+    const tokensById=new Map(notes.map(n=>[n.id,terms(n.title+' '+authored(n.content).slice(0,8192))]));
+    const frequency=new Map<string,number>();for(const tokens of tokensById.values())for(const t of tokens)frequency.set(t,(frequency.get(t)||0)+1);
+    const commonLimit=Math.max(2,Math.ceil(notes.length*.10)), rareLimit=Math.max(2,Math.ceil(notes.length*.01));
+    const distinctive=[...tokensById.get(source)??[]].filter(t=>frequency.get(t)!>1&&frequency.get(t)!<=commonLimit).sort((a,b)=>frequency.get(a)!-frequency.get(b)!||a.localeCompare(b)).slice(0,24);
     const items=notes.filter(n=>n.id!==source).filter(n=>{const s=pair(source,n.id).value;return !s.connected&&!s.dismissed;}).map(n=>{
-      const shared=n.tags.filter(t=>original.tags.includes(t));const title=n.title.toLocaleLowerCase().split(/\W+/).filter(t=>tokens.has(t)).length;
-      const score=shared.reduce((sum,t)=>sum+Math.log(1+notes.length/(1+notes.filter(n=>n.tags.includes(t)).length)),0)+title;
-      return {note:summary(n),score,reasons:[...shared.map(t=>'Shared tag: '+t),...(title?['Related wording']:[])]};
+      const shared=n.tags.filter(t=>original.tags.includes(t)&&notes.filter(n=>n.tags.includes(t)).length<=commonLimit);
+      const overlap=distinctive.filter(t=>tokensById.get(n.id)!.has(t));
+      const lexical=overlap.length>=2||overlap.some(t=>frequency.get(t)!<=rareLimit);
+      const score=shared.reduce((sum,t)=>sum+Math.log(1+notes.length/(1+notes.filter(n=>n.tags.includes(t)).length)),0)+(lexical?overlap.length:0);
+      return {note:summary(n),score,reasons:[...shared.map(t=>'Shared tag: '+t),...(lexical?['Related wording']:[])]};
     }).filter(n=>n.score>0).sort((a,b)=>b.score-a.score||a.note.id.localeCompare(b.note.id));return page(items,args);
   }
   throw Error('Unknown connection operation');

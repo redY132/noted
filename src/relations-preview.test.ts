@@ -4,6 +4,11 @@ import { previewRelationOperation, type PreviewRelations } from './relations-pre
 import type { Note, NoteSummary, PairMutation } from './model.ts';
 const ids=[1,2,3].map(n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`);
 const notes=ids.map((id,i):Note=>({id,title:`Topic ${i}`,folderId:null,tags:['topic'],revision:1,revisionToken:'token',formatVersion:1,createdAt:'2026-01-01',updatedAt:'2026-01-01',presentation:{schemaId:'default'},content:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Private words'}]}]}}));
+test('suggestions reject boilerplate and broad collection tags but keep distinctive topics',()=>{
+  const corpus=Array.from({length:50},(_,i)=>({...structuredClone(notes[0]),id:`00000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`,title:`Observation ${i} first attempt`,tags:['semantic-sample'],content:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:(i<2?'Sourdough starter fermentation flour bread yeast. ':'Astronomy telescope galaxy planet orbit. ')+'Compare the result next week and record one observation.'}]}]}}));
+  const result=previewRelationOperation({},'related_notes',{noteId:corpus[0].id},corpus,[]) as {items:{note:NoteSummary}[]};
+  assert.deepEqual(result.items.map(n=>n.note.id),[corpus[1].id]);
+});
 test('mutual connections are idempotent, preserve documents and use revision-checked Undo',()=>{
   const state:PreviewRelations={}; const original=JSON.stringify(notes);
   const run=(command:string,args:Record<string,unknown>)=>previewRelationOperation(state,command,args,notes,[]);

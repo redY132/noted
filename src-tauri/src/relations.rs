@@ -6,6 +6,51 @@ type Result<T> = std::result::Result<T, String>;
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
+fn relevance_terms(text: &str) -> std::collections::BTreeSet<String> {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| s.chars().count() >= 3 && s.chars().any(char::is_alphabetic))
+        .filter(|s| {
+            !matches!(
+                *s,
+                "the"
+                    | "and"
+                    | "for"
+                    | "with"
+                    | "this"
+                    | "that"
+                    | "from"
+                    | "have"
+                    | "has"
+                    | "was"
+                    | "were"
+                    | "are"
+                    | "not"
+                    | "but"
+                    | "you"
+                    | "your"
+                    | "our"
+                    | "their"
+                    | "can"
+                    | "will"
+                    | "would"
+                    | "should"
+                    | "into"
+                    | "about"
+                    | "when"
+                    | "what"
+                    | "which"
+                    | "than"
+                    | "then"
+                    | "also"
+                    | "one"
+                    | "two"
+                    | "its"
+            )
+        })
+        .map(str::to_owned)
+        .collect()
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairState {
@@ -69,7 +114,7 @@ pub struct RelatedEntry {
     pub score: f64,
 }
 pub fn init(db: &Connection) -> Result<()> {
-    db.execute_batch("CREATE TABLE IF NOT EXISTS note_refs(source TEXT NOT NULL,target TEXT NOT NULL,occurrences INTEGER NOT NULL,PRIMARY KEY(source,target)); CREATE INDEX IF NOT EXISTS refs_target ON note_refs(target); CREATE TABLE IF NOT EXISTS note_tags(note_id TEXT NOT NULL,tag TEXT NOT NULL,PRIMARY KEY(note_id,tag)); CREATE INDEX IF NOT EXISTS tags_tag ON note_tags(tag); CREATE VIRTUAL TABLE IF NOT EXISTS picker_search USING fts5(id UNINDEXED,title,tags,folder,tokenize='unicode61'); CREATE INDEX IF NOT EXISTS notes_folder ON notes(json_extract(summary,'$.folderId')); CREATE INDEX IF NOT EXISTS notes_updated ON notes(json_extract(summary,'$.updatedAt') DESC,id); CREATE TABLE IF NOT EXISTS note_files(id TEXT PRIMARY KEY,signature TEXT NOT NULL);").map_err(err)
+    db.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS note_vocab USING fts5vocab(note_search, 'row'); CREATE TABLE IF NOT EXISTS note_refs(source TEXT NOT NULL,target TEXT NOT NULL,occurrences INTEGER NOT NULL,PRIMARY KEY(source,target)); CREATE INDEX IF NOT EXISTS refs_target ON note_refs(target); CREATE TABLE IF NOT EXISTS note_tags(note_id TEXT NOT NULL,tag TEXT NOT NULL,PRIMARY KEY(note_id,tag)); CREATE INDEX IF NOT EXISTS tags_tag ON note_tags(tag); CREATE VIRTUAL TABLE IF NOT EXISTS picker_search USING fts5(id UNINDEXED,title,tags,folder,tokenize='unicode61'); CREATE INDEX IF NOT EXISTS notes_folder ON notes(json_extract(summary,'$.folderId')); CREATE INDEX IF NOT EXISTS notes_updated ON notes(json_extract(summary,'$.updatedAt') DESC,id); CREATE TABLE IF NOT EXISTS note_files(id TEXT PRIMARY KEY,signature TEXT NOT NULL);").map_err(err)
 }
 pub fn open(root: &std::path::Path) -> Result<Connection> {
     let path = root.join("relations.sqlite3");
@@ -486,7 +531,18 @@ impl Store {
         limit: usize,
     ) -> Result<Page<RelatedEntry>> {
         let mut items = self.related_notes(note_id, 0, 100)?.items;
-        for (rank, (id, _similarity)) in semantic.into_iter().take(120).enumerate() {
+        #[cfg(feature = "semantic")]
+        let semantic_floor = crate::semantic::MIN_SEMANTIC_SIMILARITY as f64;
+        #[cfg(not(feature = "semantic"))]
+        let semantic_floor = 0.60;
+        // Rank fusion orders qualifying evidence; it must not turn an arbitrary
+        // nearest neighbor into an accepted relationship.
+        for (rank, (id, _similarity)) in semantic
+            .into_iter()
+            .filter(|(_, similarity)| similarity.is_finite() && *similarity >= semantic_floor)
+            .take(120)
+            .enumerate()
+        {
             let score = 1.0 / (60.0 + rank as f64);
             if let Some(item) = items.iter_mut().find(|i| i.note.id == id) {
                 item.score += score;
@@ -518,9 +574,17 @@ impl Store {
     ) -> Result<Page<RelatedEntry>> {
         self.require_note(note_id)?;
         let mut candidates = HashMap::<String, (f64, Vec<String>)>::new();
-        let mut stmt=self.db.prepare("WITH freq AS MATERIALIZED (SELECT tag,count(*) AS n FROM note_tags WHERE tag IN (SELECT tag FROM note_tags WHERE note_id=?1) GROUP BY tag) SELECT t.note_id,sum(1.0/f.n) AS weight FROM note_tags t JOIN freq f ON t.tag=f.tag WHERE t.note_id<>?1 GROUP BY t.note_id ORDER BY weight DESC,t.note_id LIMIT 120").map_err(err)?;
+        let total: usize = self
+            .db
+            .query_row("SELECT count(*) FROM notes", [], |r| {
+                r.get::<_, i64>(0).map(|n| n as usize)
+            })
+            .map_err(err)?;
+        let common_limit = ((total as f64 * 0.10).ceil() as usize).max(2);
+        let rare_limit = ((total as f64 * 0.01).ceil() as usize).max(2);
+        let mut stmt=self.db.prepare("WITH freq AS MATERIALIZED (SELECT tag,count(*) AS n FROM note_tags WHERE tag IN (SELECT tag FROM note_tags WHERE note_id=?1) GROUP BY tag) SELECT t.note_id,sum(1.0/f.n) AS weight FROM note_tags t JOIN freq f ON t.tag=f.tag WHERE t.note_id<>?1 AND f.n<=?2 GROUP BY t.note_id ORDER BY weight DESC,t.note_id LIMIT 120").map_err(err)?;
         let tags = stmt
-            .query_map([note_id], |r| {
+            .query_map(params![note_id, common_limit as i64], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
             })
             .map_err(err)?;
@@ -528,33 +592,47 @@ impl Store {
             let (id, _) = row.map_err(err)?;
             candidates.insert(id, (2.0 / (60.0 + rank as f64), vec!["Shared tags".into()]));
         }
-        let source = self
-            .summary_for(note_id)?
-            .ok_or("This note is not indexed yet")?;
-        let mut words = source
-            .title
-            .split_whitespace()
-            .chain(source.tags.iter().map(String::as_str))
-            .filter(|w| w.len() > 2)
-            .take(12)
-            .map(|s| format!("\"{}\"", s.replace('"', "\"\"")))
-            .collect::<Vec<_>>();
-        if words.is_empty() {
-            let text: String=self.db.query_row("SELECT substr(body,1,4096) FROM note_search WHERE rowid=(SELECT rowid FROM notes WHERE id=?1)",[note_id],|r|r.get(0)).optional().map_err(err)?.unwrap_or_default();
-            words = text
-                .split_whitespace()
-                .filter(|w| w.len() > 3)
-                .take(12)
-                .map(|s| format!("\"{}\"", s.replace('"', "\"\"")))
-                .collect();
+        let text: String=self.db.query_row("SELECT title || ' ' || substr(body,1,8192) FROM note_search WHERE rowid=(SELECT rowid FROM notes WHERE id=?1)",[note_id],|r|r.get(0)).optional().map_err(err)?.unwrap_or_default();
+        let mut distinctive = Vec::<(String, usize)>::new();
+        let mut vocab = self
+            .db
+            .prepare("SELECT doc FROM note_vocab WHERE term=?1")
+            .map_err(err)?;
+        for term in relevance_terms(&text).into_iter().take(256) {
+            let frequency: usize = vocab
+                .query_row([&term], |r| r.get::<_, i64>(0).map(|n| n as usize))
+                .optional()
+                .map_err(err)?
+                .unwrap_or(0);
+            if frequency > 1 && frequency <= common_limit {
+                distinctive.push((term, frequency));
+            }
         }
+        distinctive.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        distinctive.truncate(24);
+        let words: Vec<_> = distinctive
+            .iter()
+            .map(|(term, _)| format!("\"{term}\""))
+            .collect();
         if !words.is_empty() {
-            let mut stmt=self.db.prepare("SELECT id FROM note_search WHERE note_search MATCH ?1 ORDER BY bm25(note_search) LIMIT 120").map_err(err)?;
+            let mut stmt=self.db.prepare("SELECT id,title || ' ' || substr(body,1,8192) FROM note_search WHERE note_search MATCH ?1 ORDER BY bm25(note_search) LIMIT 120").map_err(err)?;
             let rows = stmt
-                .query_map([words.join(" OR ")], |r| r.get::<_, String>(0))
+                .query_map([words.join(" OR ")], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })
                 .map_err(err)?;
             for (rank, row) in rows.enumerate() {
-                let entry = candidates.entry(row.map_err(err)?).or_default();
+                let (id, body) = row.map_err(err)?;
+                let terms = relevance_terms(&body);
+                let shared: Vec<_> = distinctive
+                    .iter()
+                    .filter(|(term, _)| terms.contains(term))
+                    .collect();
+                if shared.len() < 2 && !shared.iter().any(|(_, frequency)| *frequency <= rare_limit)
+                {
+                    continue;
+                }
+                let entry = candidates.entry(id).or_default();
                 entry.0 += 1.0 / (60.0 + rank as f64);
                 entry.1.push("Shared wording".into());
             }
@@ -588,6 +666,38 @@ impl Store {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn generic_words_and_collection_tags_do_not_connect_unrelated_notes() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut s = Store::open(temp.path()).unwrap();
+        let mut ids = vec![];
+        for i in 0..50 {
+            let mut note = s
+                .create_note(format!("Observation {} first attempt", i), None)
+                .unwrap();
+            note.tags = vec!["semantic-sample".into()];
+            let subject = if i < 2 {
+                "Sourdough starter fermentation flour bread dough yeast."
+            } else {
+                "Astronomy telescope galaxy planet nebula orbit."
+            };
+            note.content = json!({"type":"doc","content":[{"type":"paragraph","attrs":{"id":"p"},"content":[{"type":"text","text":format!("{subject} Compare the immediate result with what happened a week later. Record one observation and change one variable next time.")}]}]});
+            ids.push(s.save_note(note, 1).unwrap().id);
+        }
+        let suggestions = s.related_notes(&ids[0], 0, 100).unwrap();
+        assert_eq!(suggestions.total, 1);
+        assert_eq!(suggestions.items[0].note.id, ids[1]);
+        let fused = s
+            .related_with_semantic(
+                &ids[0],
+                vec![(ids[2].clone(), 0.4), (ids[3].clone(), f64::NAN)],
+                0,
+                100,
+            )
+            .unwrap();
+        assert_eq!(fused.total, 1);
+        assert_eq!(fused.items[0].note.id, ids[1]);
+    }
     #[test]
     fn mutual_connections_undo_dismissals_and_rebuild_are_independent_of_notes() {
         let temp = tempfile::tempdir().unwrap();
