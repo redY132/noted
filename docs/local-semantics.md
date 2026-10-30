@@ -38,14 +38,16 @@ The 512 MiB memory target and latency targets require measurement on the agreed 
 
 ## Development-machine observations
 
-The release example is running actual quantized model inference against synthetic short notes. These are isolated Rust measurements with no CPU throttling, not the 8 GB reference laptop or the Tauri process tree. Twenty evenly distributed vector queries are checked against exact float32 dot-product neighbors for recall. Later lifecycle/cache-management fixes do not turn these samples into low-end acceptance evidence. The 50,000-note run and separate long-note results are recorded after they finish.
+The release example ran actual quantized model inference against synthetic short notes. These are isolated Rust measurements with no CPU throttling, not the 8 GB reference laptop or the Tauri process tree. Twenty evenly distributed vector queries are checked against exact float32 dot-product neighbors for recall. Later lifecycle/cache-management fixes do not turn these samples into low-end acceptance evidence.
 
 | Notes | Actual words | Unique chunks | Cumulative indexing seconds | Related query p95 ms | Recall@20 | Private memory MiB | Derived cache/index MiB |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 500 | 17,191 | 500 | 10.64 | 13.21 | 1.00 | 53.9 | 5.4 |
 | 5,000 | 171,897 | 5,000 | 98.27 | 15.31 | 1.00 | 63.1 | 19.8 |
+| 50,000 | 1,718,778 | 50,000 | 1,196.86 | 24.88 | 1.00 | 140.7 | 162.7 |
+| 500 longer notes | 494,724 | 3,381 | 118.52 | 19.77 | 1.00 | 122.7 | 14.1 |
 
-The corpus averages about 34 words per note; it does not represent 50,000 notes averaging 1,000 words. Cached model weights and note files are excluded from the derived cache/index column. The private-memory snapshot includes temporary vectors used for the exact-search comparison and is neither a peak nor a full-application measurement. Raw observations are in ignored `output/semantic-benchmark-real-50000/report.json`.
+The short-note corpus averages about 34 words per note; it does not represent 50,000 notes averaging 1,000 words. The separate longer-note run uses the final implementation with `NOTED_BENCH_LONG_WORDS=1000` and 500 notes, averaging 989 actual whitespace-delimited words and approximately 6.8 unique cached chunks per note. Both runs perform real model inference. Cached model weights and note files are excluded from the derived cache/index column. The private-memory snapshot includes temporary vectors used for the exact-search comparison and is neither a peak nor a full-application measurement. Raw observations are in ignored `output/semantic-benchmark-real-50000/report.json` and `output/semantic-benchmark-long-500/report.json`. Both benchmark processes finished successfully; neither remains running.
 
 ## Upstream sources and licenses
 

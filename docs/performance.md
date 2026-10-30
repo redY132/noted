@@ -4,6 +4,12 @@
 
 Connection/discovery implementation measurements are in [connection performance](connection-performance.md) and [local semantics](local-semantics.md). These distinguish keyword/tag workloads from real local inference and ANN workloads; neither establishes acceptance on the agreed 8 GB reference laptop. Semantic discovery remains experimental and opt-in pending reference-hardware and human-labeled relevance evaluation.
 
+The connection milestone passes 52 frontend tests and 30 Rust unit/integration tests, plus the explicitly enabled real-model integration test. The final Windows release executable passes `scripts/connections-smoke.js`: source-bound picker, multi-connect, removal/Undo, actual card-to-card ray dragging, no navigation or text mutation on drop, and persisted connections after reload. Offline verified model-pack installation and pause controls also pass in a disposable native workspace.
+
+A complete native process restart preserves the saved connections, roughly 6,000 authored words and the paused semantic setting. Test ports 1430/1431, isolated browser/native processes and both real semantic benchmark processes were stopped after verification; the user's port 1420 was not used.
+
+A separate native typing observation with semantics enabled used 58 automation-generated input events (20 ms requested interval) in a repeated-text note of roughly 6,000 words. At 1200×800 CSS pixels, DPR 2, beforeinput-to-next-animation-frame p95 was 9.7 ms, maximum 10.5 ms. No save error was shown. This is one warm development-machine observation with background processing enabled, not proof that inference was continuously busy, physical key-to-paint latency, sustained FPS or reference-hardware acceptance. Raw local observations: ignored `output/playwright/connections-native-typing.json`.
+
 Ordinary writing, selection, scrolling, and navigation must remain smooth on an inexpensive Windows laptop with integrated graphics. The exact reference CPU, RAM, SSD, and display refresh rate still need selection. Development-machine measurements do not establish low-end acceptance.
 
 Provisional targets from the spec:

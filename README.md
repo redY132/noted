@@ -46,12 +46,20 @@ The formatting toolbar reflects the caret or selection, including mixed formatti
 - **Tables:** Tab / Shift+Tab moves between cells. The Table menu inserts a table and changes rows, columns, headers and merged cells.
 - **Code blocks:** Tab inserts code indentation. **Escape, then Tab** leaves the editor for app controls.
 - **Ctrl+F / Ctrl+H:** find and replace within this note. Matches stay within text blocks; replacement is undoable. Workspace search remains separate.
-- **Ctrl+K:** add/edit a web link. External links are stored and can be copied; opening external sites remains unimplemented. The Note button links a local note by stable ID.
+- **Ctrl+K:** add/edit a web link. Explicit activation opens HTTP(S) links in the system browser. The Note button inserts an inline reference to a local note by stable ID.
 - **Clear text formatting** removes inline styles; it keeps headings, indentation, lists and tables.
 
 See the [editor audit](docs/editor-feature-audit.md) for the source-backed comparison, delivered scope, tests and remaining gaps. This is not full Logseq/Obsidian feature parity or a complete configurable schema engine.
 
-**Editable components:** select paragraphs and choose **Text panel**, then change width, alignment and appearance. Panels remain directly editable. **Local image** imports a copied static PNG/JPEG/WebP; select it to edit its description and layout. Use the corner resize handle or numeric width control, and the up/down controls to reorder within document flow. Layout changes and text share undo/redo. Images are limited to 10 MiB and 32 megapixels; animation and free canvas positioning remain future work.
+**Editable components:** select paragraphs and choose **Text panel**, or add an independent **New panel**. Panels and copied PNG/JPEG/WebP/GIF images support guided flow or free placement, width, coordinates and layers. Use drag/resize handles or numeric controls; layout and text share undo/redo. Motion presets and GIFs respect pause and reduced-motion settings. Images are limited to 10 MiB and 32 megapixels, with additional GIF frame/work limits.
+
+## Connections and local discovery
+
+Click a note's **⤳** handle to search and connect multiple notes, or drag the handle onto another note card, the open note body, or an internal note reference. Connections are mutual and do not insert text. The **Connections** panel separates saved connections, inline references/backlinks, and suggestions. Removing a connection leaves written references intact; Undo, persistent dismissal/restoration and a workspace connection export are available.
+
+Keyword/tag suggestions work offline without a model. Optional **Local discovery · experimental** runs an English embedding model on the desktop. Enable it in the Connections panel, then explicitly download the verified 22.6 MiB pack or install the same pack offline. Initial indexing is background work and can take substantial time. Pause/resume and battery controls are available. Notes and embeddings are never uploaded; the model download host receives ordinary connection metadata. Cloud AI is not included.
+
+See [local semantics](docs/local-semantics.md) for offline-pack files, benchmark results and remaining acceptance gates. Browser preview exercises connection interactions but does not run the production local inference worker. Automated verification uses disposable workspaces and ports 1430/1431, leaving the normal development port 1420 available.
 
 ## Editor comparison and integration checks
 
@@ -75,16 +83,16 @@ $env:NOTED_WORKSPACE = Join-Path $PWD 'output\scratch-workspace'
 npm run desktop
 ```
 
-Note files are structured JSON, linked by stable UUID rather than filename or title. SQLite is a derived search index. The native store uses revision checks and file fingerprints to reject stale saves, and preserves a previous-file backup. This is not a substitute for user backups or encryption. External editing should be done with the app closed until a richer conflict-resolution workflow exists.
+Note files are structured JSON, linked by stable UUID rather than filename or title. `index.sqlite3` and semantic indexes are rebuildable. `relations.sqlite3` contains authoritative connections and dismissals and must be included in a consistent workspace backup; Workspace details can also export these as JSON. The native store uses revision checks and file fingerprints to reject stale saves, and preserves a previous-file backup. This is not a substitute for user backups or encryption. External editing should be done with the app closed until a richer conflict-resolution workflow exists.
 
-The prototype has no AI connection, telemetry, remote fonts, sync, plugin execution, or remote media fetching. All editor assets are bundled. Future AI formatting must go through validated scoped operations; the prototype's human editing command is not an AI-safe API.
+The prototype has no cloud AI connection, telemetry, remote fonts, sync, plugin execution, or remote media fetching. Editor assets and the inference runtime are bundled; model weights are a separate explicit download/offline installation. Future AI formatting must go through validated scoped operations; the prototype's human editing command is not an AI-safe API.
 
 ## Current boundaries
 
 - The JSON format is experimental and subject to migration as the document model develops.
 - Markdown shortcuts cover the editor's supported constructs; this is not a complete Markdown round-trip implementation.
 - Presentation presets demonstrate deterministic formatting. A general user-defined schema engine, automatic schema enforcement UI, and content-preserving AI operations remain future work.
-- Canvas editing, folder overviews, animation quality controls, flashbacks, and sync remain on the roadmap.
+- Zoomable drawing/canvas tools, folder overviews, animation FPS controls, flashbacks, and sync remain on the roadmap.
 - See [architecture](docs/architecture.md) and [performance](docs/performance.md) for decisions, limitations, and verification scope.
 
 No project license has been selected yet. Third-party dependencies retain their respective licenses.
