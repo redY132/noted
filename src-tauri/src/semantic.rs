@@ -99,6 +99,73 @@ pub struct SemanticMatch {
     pub note_id: String,
     pub score: f32,
 }
+/// Typed queries rank matching passages, independently of relationship suggestions.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuerySearchState {
+    pub matches: Vec<SemanticMatch>,
+    pub pending: bool,
+    pub available: bool,
+    pub generation: u64,
+}
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct QueryKey {
+    source: String,
+    query: String,
+    connected_only: bool,
+    index_generation: u64,
+    scope_generation: u64,
+    model_generation: u64,
+}
+#[derive(Clone)]
+struct QueryJob {
+    key: QueryKey,
+    sequence: u64,
+}
+#[derive(Default)]
+struct Queries {
+    cache: HashMap<QueryKey, Vec<SemanticMatch>>,
+    latest: Option<QueryKey>,
+    pending: Option<QueryJob>,
+    active: Option<QueryJob>,
+    sequence: u64,
+    index_generation: u64,
+    scope_generation: u64,
+    model_generation: u64,
+    wake_queued: bool,
+}
+impl Queries {
+    fn index_changed(&mut self) {
+        self.index_generation += 1;
+        self.latest = None;
+        self.pending = None;
+        self.sequence += 1;
+    }
+    fn invalidate(&mut self) {
+        self.cache.clear();
+        self.latest = None;
+        self.pending = None;
+        self.sequence += 1;
+    }
+    fn current(&self, job: &QueryJob) -> bool {
+        self.sequence == job.sequence
+            && self.latest.as_ref() == Some(&job.key)
+            && self.index_generation == job.key.index_generation
+            && self.scope_generation == job.key.scope_generation
+            && self.model_generation == job.key.model_generation
+    }
+}
+fn normalized_query(query: &str) -> String {
+    // Bound work before normalization/tokenization, including multibyte input.
+    query
+        .chars()
+        .take(2048)
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
 struct Shared {
     status: SemanticStatus,
     active_note: Option<String>,
@@ -107,9 +174,11 @@ struct Shared {
     stop: bool,
     cache: HashMap<String, (u64, Vec<SemanticMatch>)>,
     pending: HashSet<String>,
+    queries: Queries,
 }
 enum Command {
     Related(String),
+    Search,
 }
 pub struct SemanticService {
     root: PathBuf,
@@ -145,6 +214,7 @@ impl SemanticService {
             stop: false,
             cache: HashMap::new(),
             pending: HashSet::new(),
+            queries: Queries::default(),
         }));
         let (tx, rx) = mpsc::channel();
         let worker = shared.clone();
@@ -167,6 +237,7 @@ impl SemanticService {
         if !settings.enabled {
             s.cache.clear();
             s.pending.clear();
+            s.queries.invalidate();
         }
         s.status.settings = settings;
         drop(s);
@@ -198,6 +269,91 @@ impl SemanticService {
         }
         Ok(cached.map(|(_, results)| results).unwrap_or_default())
     }
+    /// Called after note/relationship mutations, outside the Store lock.
+    pub fn invalidate_scope(&self) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.queries.scope_generation += 1;
+            s.queries.invalidate();
+        }
+    }
+    /// Return cached/pending state immediately; the single worker owns inference.
+    pub fn search(
+        &self,
+        source_id: String,
+        query: String,
+        connected_only: bool,
+    ) -> Result<QuerySearchState> {
+        valid_id(&source_id)?;
+        let query = normalized_query(&query);
+        let mut s = self.shared.lock().map_err(err)?;
+        let available = s.status.settings.enabled
+            && s.status.model_ready
+            && !s.status.downloading
+            && !s.remove
+            && !s.stop;
+        if !available || query.is_empty() {
+            s.queries.invalidate();
+            return Ok(QuerySearchState {
+                matches: vec![],
+                pending: false,
+                available,
+                generation: s.queries.sequence,
+            });
+        }
+        let key = QueryKey {
+            source: source_id,
+            query,
+            connected_only,
+            index_generation: s.queries.index_generation,
+            scope_generation: s.queries.scope_generation,
+            model_generation: s.queries.model_generation,
+        };
+        if s.queries.latest.as_ref() != Some(&key) {
+            s.queries.sequence += 1;
+            s.queries.latest = Some(key.clone());
+            s.queries.pending = None;
+        }
+        let cached = s.queries.cache.get(&key).cloned();
+        let previous = if cached.is_none() {
+            s.queries
+                .cache
+                .iter()
+                .filter(|(old, _)| {
+                    old.source == key.source
+                        && old.query == key.query
+                        && old.connected_only == key.connected_only
+                        && old.scope_generation == key.scope_generation
+                        && old.model_generation == key.model_generation
+                })
+                .max_by_key(|(old, _)| old.index_generation)
+                .map(|(_, value)| value.clone())
+        } else {
+            None
+        };
+        if cached.is_none()
+            && s.queries.pending.is_none()
+            && !s
+                .queries
+                .active
+                .as_ref()
+                .is_some_and(|job| s.queries.current(job))
+        {
+            s.queries.pending = Some(QueryJob {
+                key,
+                sequence: s.queries.sequence,
+            });
+            if !s.queries.wake_queued {
+                self.tx.send(Command::Search).map_err(err)?;
+                s.queries.wake_queued = true;
+            }
+        }
+        Ok(QuerySearchState {
+            pending: cached.is_none(),
+            matches: cached.or(previous).unwrap_or_default(),
+            available,
+            generation: s.queries.sequence,
+        })
+    }
     pub fn remove_data(&self) -> Result<SemanticStatus> {
         self.settings(SemanticSettings::default())?;
         let mut s = self.shared.lock().map_err(err)?;
@@ -223,15 +379,19 @@ impl SemanticService {
             s.status.downloading = true;
             s.status.download_bytes = 0;
             s.status.error = None;
+            s.queries.model_generation += 1;
+            s.queries.invalidate();
         }
         let root = self.root.clone();
         let shared = self.shared.clone();
         thread::spawn(move || {
             let result = install_model(&root, source.as_deref(), &shared);
+            let ready = result.is_ok() || verify_model(&root).is_ok();
             let mut s = shared.lock().unwrap();
             s.status.downloading = false;
+            s.status.model_ready = ready;
             match result {
-                Ok(()) => s.status.model_ready = true,
+                Ok(()) => (),
                 Err(e) => s.status.error = Some(e),
             }
         });
@@ -467,6 +627,15 @@ struct Engine {
     directory: PathBuf,
     delta_count: usize,
     key_refs: HashMap<u64, usize>,
+    query_vectors: HashMap<String, Vec<f32>>,
+    query_scopes: Vec<QueryScope>,
+}
+struct QueryScope {
+    source: String,
+    index_generation: u64,
+    scope_generation: u64,
+    notes: HashSet<String>,
+    bindings: HashMap<u64, Vec<String>>,
 }
 impl Engine {
     fn missing(&self, available: &HashSet<String>) -> Result<Vec<String>> {
@@ -533,6 +702,8 @@ impl Engine {
             directory,
             delta_count: 0,
             key_refs: HashMap::new(),
+            query_vectors: HashMap::new(),
+            query_scopes: Vec::new(),
         };
         if engine.restore_checkpoint().is_err() {
             engine.checkpoint()?;
@@ -674,7 +845,7 @@ impl Engine {
         for batch in chunks.chunks(4) {
             {
                 let s = shared.lock().map_err(err)?;
-                if !runnable(&s) {
+                if !runnable(&s) || s.queries.pending.is_some() {
                     return Ok(false);
                 }
             }
@@ -770,6 +941,142 @@ impl Engine {
             self.checkpoint()?
         }
         Ok(true)
+    }
+    fn query_vector(&mut self, query: &str) -> Result<Vec<f32>> {
+        if let Some(vector) = self.query_vectors.get(query) {
+            return Ok(vector.clone());
+        }
+        // The same 240-token content limit as document windows, before specials.
+        let text = chunks(&self.model, query)?
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+        let vector = self
+            .model
+            .embed([text], Some(1))
+            .map_err(err)?
+            .pop()
+            .ok_or("Missing query embedding")?;
+        if vector.len() != 384 || vector.iter().any(|v| !v.is_finite()) {
+            return Err("Invalid query embedding".into());
+        }
+        if self.query_vectors.len() >= 32 {
+            self.query_vectors.clear();
+        }
+        self.query_vectors.insert(query.to_owned(), vector.clone());
+        Ok(vector)
+    }
+    fn search(&mut self, key: &QueryKey, root: &Path) -> Result<Vec<SemanticMatch>> {
+        if note_text(root, &key.source).is_err() {
+            return Ok(vec![]);
+        }
+        let connected = if key.connected_only {
+            Some(connected_scope(root, &key.source)?)
+        } else {
+            None
+        };
+        let query = self.query_vector(&key.query)?;
+        // A shared chunk can belong to both an allowed and a disallowed note.
+        // Build keys AND note bindings, and filter each binding again on output.
+        let scope = if let Some(notes) = &connected {
+            if let Some(position) = self.query_scopes.iter().position(|scope| {
+                scope.source == key.source
+                    && scope.index_generation == key.index_generation
+                    && scope.scope_generation == key.scope_generation
+                    && scope.notes == *notes
+            }) {
+                Some(position)
+            } else {
+                let mut allowed: HashMap<u64, Vec<String>> = HashMap::new();
+                let mut st = self
+                    .db
+                    .prepare("SELECT chunk FROM bindings WHERE note=?1")
+                    .map_err(err)?;
+                for note in notes {
+                    if !note_text(root, note)
+                        .is_ok_and(|text| !self.needs(note, &hash(text.as_bytes())))
+                    {
+                        continue;
+                    }
+                    let rows = st.query_map([note], |r| r.get::<_, i64>(0)).map_err(err)?;
+                    for row in rows {
+                        allowed
+                            .entry(row.map_err(err)? as u64)
+                            .or_default()
+                            .push(note.clone());
+                    }
+                }
+                if self.query_scopes.len() >= 4 {
+                    self.query_scopes.clear();
+                }
+                self.query_scopes.push(QueryScope {
+                    source: key.source.clone(),
+                    index_generation: key.index_generation,
+                    scope_generation: key.scope_generation,
+                    notes: notes.clone(),
+                    bindings: allowed,
+                });
+                Some(self.query_scopes.len() - 1)
+            }
+        } else {
+            None
+        };
+        let allowed = scope.map(|position| &self.query_scopes[position].bindings);
+        let mut bindings = self
+            .db
+            .prepare("SELECT DISTINCT note FROM bindings WHERE chunk=?1 AND note<>?2")
+            .map_err(err)?;
+        let mut scores: HashMap<String, f32> = HashMap::new();
+        for index in [&self.base, &self.delta] {
+            let found = index
+                .filtered_search(&query, 480, |chunk| {
+                    if let Some(allowed) = allowed {
+                        allowed.contains_key(&chunk)
+                    } else {
+                        self.key_refs.get(&chunk).is_some_and(|n| *n > 0)
+                    }
+                })
+                .map_err(err)?;
+            for (chunk, distance) in found.keys.into_iter().zip(found.distances) {
+                let score = (1. - distance).clamp(-1., 1.);
+                // Passage-query retrieval is not whole-document recommendation.
+                if score < 0.25 {
+                    continue;
+                }
+                let notes = if let Some(allowed) = allowed {
+                    allowed[&chunk].clone()
+                } else {
+                    bindings
+                        .query_map(params![chunk as i64, key.source], |r| r.get::<_, String>(0))
+                        .map_err(err)?
+                        .collect::<std::result::Result<Vec<_>, _>>()
+                        .map_err(err)?
+                };
+                for note in notes {
+                    scores
+                        .entry(note.clone())
+                        .and_modify(|s| *s = s.max(score))
+                        .or_insert(score);
+                }
+            }
+        }
+        let mut candidates: Vec<_> = scores.into_iter().collect();
+        candidates.sort_by(|a,b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut matches = vec![];
+        for (note_id, score) in candidates {
+            if note_text(root, &note_id).is_ok_and(|text| !self.needs(&note_id, &hash(text.as_bytes()))) {
+                matches.push(SemanticMatch { note_id, score });
+                if matches.len() == 120 { break; }
+            }
+        }
+        // Do not publish a result computed against relationships that changed.
+        if connected
+            .as_ref()
+            .is_some_and(|before| connected_scope(root, &key.source).as_ref() != Ok(before))
+        {
+            return Err("Connections changed during semantic query".into());
+        }
+        Ok(matches)
     }
     fn related(&self, id: &str, root: &Path) -> Result<Vec<SemanticMatch>> {
         if self.needs(id, &hash(note_text(root, id)?.as_bytes())) {
@@ -932,6 +1239,32 @@ fn note_centroid(
     }
     aggregate
 }
+fn connected_scope(root: &Path, source: &str) -> Result<HashSet<String>> {
+    let path = root.join("relations.sqlite3");
+    if !path.exists() {
+        return Ok(HashSet::new());
+    }
+    let metadata = fs::symlink_metadata(&path).map_err(err)?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.file_attributes_windows_reparse()
+    {
+        return Err("Invalid connections database".into());
+    }
+    let db = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(err)?;
+    db.busy_timeout(Duration::from_millis(40)).map_err(err)?;
+    let mut st = db.prepare("SELECT CASE WHEN a=?1 THEN b ELSE a END FROM pairs WHERE connected=1 AND (a=?1 OR b=?1)").map_err(err)?;
+    let rows = st
+        .query_map([source], |r| r.get::<_, String>(0))
+        .map_err(err)?;
+    rows.filter_map(|row| match row {
+        Ok(id) if valid_id(&id).is_ok() => Some(Ok(id)),
+        Ok(_) => None,
+        Err(e) => Some(Err(err(e))),
+    })
+    .collect()
+}
 fn runnable(s: &Shared) -> bool {
     s.status.settings.enabled
         && !s.status.settings.paused
@@ -950,14 +1283,16 @@ fn merge_pending(queue: &mut Vec<String>, new: impl IntoIterator<Item = String>)
 }
 fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Command>) {
     let mut engine: Option<Engine> = None;
+    let mut engine_model_generation = 0;
     let mut seen: HashMap<String, (SystemTime, u64)> = HashMap::new();
     let mut queued = vec![];
+    let mut related_jobs = vec![];
     let mut removals: Vec<String> = vec![];
     let mut scan = Instant::now() - Duration::from_secs(60);
     let mut model_scan = Instant::now() - Duration::from_secs(60);
     let mut model_stamp: Option<Vec<(u64, SystemTime)>> = None;
     loop {
-        {
+        let check_model = {
             let mut s = shared.lock().unwrap();
             if s.stop {
                 return;
@@ -994,6 +1329,8 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                 s.status.indexed = 0;
                 s.status.total = 0;
                 s.status.generation += 1;
+                s.queries.index_generation += 1;
+                s.queries.invalidate();
                 s.remove = false;
                 if !failures.is_empty() {
                     s.status.error = Some(format!(
@@ -1002,27 +1339,108 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                     ));
                 }
             }
-            if !s.status.model_ready
+            !s.status.model_ready
                 && !s.status.downloading
                 && model_scan.elapsed() > Duration::from_secs(30)
-            {
-                let stamp: Vec<_> = FILES
-                    .iter()
-                    .map(|f| {
-                        fs::metadata(root.join("semantic/model").join(f.0))
-                            .ok()
-                            .map(|m| (m.len(), m.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
-                            .unwrap_or((0, SystemTime::UNIX_EPOCH))
-                    })
-                    .collect();
-                if model_stamp.as_ref() != Some(&stamp) {
-                    s.status.model_ready = verify_model(&root).is_ok();
-                    model_stamp = Some(stamp);
-                }
-                model_scan = Instant::now();
+        };
+        if check_model {
+            let stamp: Vec<_> = FILES
+                .iter()
+                .map(|f| {
+                    fs::metadata(root.join("semantic/model").join(f.0))
+                        .ok()
+                        .map(|m| (m.len(), m.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
+                        .unwrap_or((0, SystemTime::UNIX_EPOCH))
+                })
+                .collect();
+            if model_stamp.as_ref() != Some(&stamp) {
+                let ready = verify_model(&root).is_ok();
+                shared.lock().unwrap().status.model_ready = ready;
+                model_stamp = Some(stamp);
+            }
+            model_scan = Instant::now();
+        }
+        // Search messages are only wake markers; the shared latest job coalesces typing.
+        for command in rx.try_iter().take(256) {
+            match command {
+                Command::Search => shared.lock().unwrap().queries.wake_queued = false,
+                Command::Related(id) => merge_pending(&mut related_jobs, [id]),
             }
         }
-        while let Ok(Command::Related(id)) = rx.try_recv() {
+        let ready = {
+            let s = shared.lock().unwrap();
+            if !s.status.settings.enabled || engine_model_generation != s.queries.model_generation {
+                engine = None;
+                engine_model_generation = s.queries.model_generation;
+            }
+            s.status.settings.enabled && s.status.model_ready && !s.status.downloading
+        };
+        if !ready {
+            related_jobs.clear();
+            shared.lock().unwrap().pending.clear();
+            thread::sleep(Duration::from_millis(150));
+            continue;
+        }
+        if engine.is_none() {
+            match Engine::open(&root) {
+                Ok(e) => {
+                    let indexed =
+                        e.db.query_row("SELECT count(*) FROM notes", [], |r| {
+                            r.get::<_, i64>(0).map(|v| v as usize)
+                        })
+                        .unwrap_or(0);
+                    engine = Some(e);
+                    let mut s = shared.lock().unwrap();
+                    s.status.indexed = indexed;
+                    s.status.generation += 1;
+                }
+                Err(e) => {
+                    let model_ready = verify_model(&root).is_ok();
+                    let mut s = shared.lock().unwrap();
+                    s.status.error = Some(e);
+                    s.status.model_ready = model_ready;
+                    if !model_ready {
+                        s.queries.invalidate();
+                    }
+                    drop(s);
+                    thread::sleep(Duration::from_secs(2));
+                    continue;
+                }
+            }
+        }
+        let job = {
+            let mut s = shared.lock().unwrap();
+            let job = s.queries.pending.take();
+            s.queries.active = job.clone();
+            job
+        };
+        if let Some(job) = job {
+            let result = engine.as_mut().unwrap().search(&job.key, &root);
+            let mut s = shared.lock().unwrap();
+            s.queries.active = None;
+            if s.queries.current(&job)
+                && s.status.settings.enabled
+                && s.status.model_ready
+                && !s.remove
+            {
+                match result {
+                    Ok(matches) => {
+                        if s.queries.cache.len() >= 64 {
+                            s.queries.cache.clear();
+                        }
+                        s.queries.cache.insert(job.key, matches);
+                    }
+                    Err(error) => s.status.error = Some(error),
+                }
+            }
+        }
+        for _ in 0..4 {
+            if shared.lock().unwrap().queries.pending.is_some() {
+                break;
+            }
+            let Some(id) = related_jobs.pop() else {
+                break;
+            };
             if !shared.lock().unwrap().status.settings.enabled {
                 shared.lock().unwrap().pending.remove(&id);
                 continue;
@@ -1045,37 +1463,6 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                     s.cache.insert(id, (generation, results));
                 }
                 Err(error) => s.status.error = Some(error),
-            }
-        }
-        let ready = {
-            let s = shared.lock().unwrap();
-            if !s.status.settings.enabled {
-                engine = None;
-            }
-            s.status.settings.enabled && s.status.model_ready
-        };
-        if !ready {
-            thread::sleep(Duration::from_millis(150));
-            continue;
-        }
-        if engine.is_none() {
-            match Engine::open(&root) {
-                Ok(e) => {
-                    let indexed =
-                        e.db.query_row("SELECT count(*) FROM notes", [], |r| {
-                            r.get::<_, i64>(0).map(|v| v as usize)
-                        })
-                        .unwrap_or(0);
-                    engine = Some(e);
-                    let mut s = shared.lock().unwrap();
-                    s.status.indexed = indexed;
-                    s.status.generation += 1;
-                }
-                Err(e) => {
-                    shared.lock().unwrap().status.error = Some(e);
-                    thread::sleep(Duration::from_secs(2));
-                    continue;
-                }
             }
         }
         if !runnable(&shared.lock().unwrap()) {
@@ -1126,6 +1513,8 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                 let mut s = shared.lock().unwrap();
                 s.cache.clear();
                 s.status.generation += 1;
+                s.queries.index_generation += 1;
+                s.queries.invalidate();
                 s.status.indexed = engine
                     .as_ref()
                     .unwrap()
@@ -1167,7 +1556,9 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                 shared.lock().unwrap().status.busy = true;
                 let changed = engine.as_mut().unwrap().embed_note(&id, &text, &shared)?;
                 if !engine.as_ref().unwrap().needs(&id, &hash(text.as_bytes())) {
-                    seen.insert(id, stamp);
+                    seen.insert(id.clone(), stamp);
+                } else {
+                    queued.insert(0, id.clone());
                 }
                 Ok(changed)
             })();
@@ -1177,6 +1568,12 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                 Ok(changed) => {
                     if changed {
                         s.status.generation += 1;
+                        // Previous generations may remain useful while indexing adds
+                        // notes, but an edited binding must never retain its old score.
+                        for matches in s.queries.cache.values_mut() {
+                            matches.retain(|item| item.note_id != id);
+                        }
+                        s.queries.index_changed();
                     }
                     s.status.indexed = engine
                         .as_ref()
@@ -1259,6 +1656,7 @@ pub fn benchmark(pack: &Path, root: &Path, maximum: usize) -> Result<Value> {
         stop: false,
         cache: HashMap::new(),
         pending: HashSet::new(),
+        queries: Queries::default(),
     }));
     let load = Instant::now();
     let mut engine = Engine::open(root)?;
@@ -1398,6 +1796,500 @@ fn private_memory() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn query_service(root: &Path) -> (SemanticService, mpsc::Receiver<Command>) {
+        safe_directory(&root.join("semantic")).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let shared = Shared {
+            status: SemanticStatus {
+                experimental: true,
+                settings: SemanticSettings {
+                    enabled: true,
+                    paused: false,
+                    allow_battery: true,
+                },
+                model_ready: true,
+                download_bytes: 0,
+                model_bytes: 0,
+                downloading: false,
+                indexed: 0,
+                total: 0,
+                generation: 1,
+                on_battery: false,
+                busy: false,
+                error: None,
+            },
+            active_note: None,
+            last_typing: Instant::now() - Duration::from_secs(10),
+            remove: false,
+            stop: false,
+            cache: HashMap::new(),
+            pending: HashSet::new(),
+            queries: Queries::default(),
+        };
+        (
+            SemanticService {
+                root: root.into(),
+                shared: Arc::new(Mutex::new(shared)),
+                tx,
+            },
+            rx,
+        )
+    }
+    #[test]
+    fn typed_search_coalesces_and_rejects_obsolete_model_scope_and_index_jobs() {
+        let temp = tempfile::tempdir().unwrap();
+        let (service, rx) = query_service(temp.path());
+        let source = uuid::Uuid::new_v4().to_string();
+        let started = Instant::now();
+        let first = service
+            .search(source.clone(), "  HEART   Care ".into(), true)
+            .unwrap();
+        assert!(first.available && first.pending && first.matches.is_empty());
+        let old = service
+            .shared
+            .lock()
+            .unwrap()
+            .queries
+            .pending
+            .clone()
+            .unwrap();
+        for i in 0..1000 {
+            service
+                .search(source.clone(), format!("query {i}"), true)
+                .unwrap();
+        }
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(
+            rx.try_iter().count(),
+            1,
+            "typing must not grow the worker channel"
+        );
+        let mut s = service.shared.lock().unwrap();
+        assert!(!s.queries.current(&old));
+        let latest = s.queries.pending.clone().unwrap();
+        assert_eq!(latest.key.query, "query 999");
+        assert!(s.queries.current(&latest));
+        s.queries.model_generation += 1;
+        assert!(!s.queries.current(&latest));
+        s.queries.model_generation -= 1;
+        s.queries.index_generation += 1;
+        assert!(!s.queries.current(&latest));
+        drop(s);
+        service.invalidate_scope();
+        assert!(service.shared.lock().unwrap().queries.pending.is_none());
+        assert!(normalized_query(&"😀".repeat(5000)).chars().count() <= 2048);
+    }
+    #[test]
+    fn typed_cached_state_is_immediate_and_unavailable_never_queues_inference() {
+        let temp = tempfile::tempdir().unwrap();
+        let (service, _rx) = query_service(temp.path());
+        let source = uuid::Uuid::new_v4().to_string();
+        service
+            .search(source.clone(), "heart care".into(), true)
+            .unwrap();
+        let mut s = service.shared.lock().unwrap();
+        let job = s.queries.pending.take().unwrap();
+        let matches = vec![SemanticMatch {
+            note_id: uuid::Uuid::new_v4().to_string(),
+            score: 0.45,
+        }];
+        s.queries.cache.insert(job.key, matches.clone());
+        s.status.settings.paused = true;
+        s.status.on_battery = true;
+        s.status.settings.allow_battery = false;
+        drop(s);
+        let start = Instant::now();
+        let cached = service
+            .search(source.clone(), " HEART  care ".into(), true)
+            .unwrap();
+        assert!(!cached.pending && cached.available);
+        assert_eq!(cached.matches, matches);
+        assert!(start.elapsed() < Duration::from_millis(100));
+        service.shared.lock().unwrap().queries.index_changed();
+        let refresh = service
+            .search(source.clone(), "heart care".into(), true)
+            .unwrap();
+        assert!(refresh.pending);
+        assert_eq!(
+            refresh.matches, matches,
+            "unchanged cached bindings remain usable during refresh"
+        );
+        service.shared.lock().unwrap().queries.model_generation += 1;
+        let new_model = service
+            .search(source.clone(), "heart care".into(), true)
+            .unwrap();
+        assert!(
+            new_model.pending && new_model.matches.is_empty(),
+            "model generations must not reuse results"
+        );
+        service.invalidate_scope();
+        assert!(
+            service
+                .search(source.clone(), "heart care".into(), true)
+                .unwrap()
+                .pending
+        );
+        service.shared.lock().unwrap().status.model_ready = false;
+        let unavailable = service
+            .search(source.clone(), "heart care".into(), true)
+            .unwrap();
+        assert!(!unavailable.available && !unavailable.pending && unavailable.matches.is_empty());
+        service.shared.lock().unwrap().status.model_ready = true;
+        service.settings(SemanticSettings::default()).unwrap();
+        let disabled = service.search(source, "heart care".into(), false).unwrap();
+        assert!(!disabled.available && !disabled.pending);
+        assert!(service.shared.lock().unwrap().queries.cache.is_empty());
+    }
+    #[test]
+    fn missing_offline_model_is_unavailable_and_query_never_installs_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let service = SemanticService::start(temp.path().into()).unwrap();
+        service
+            .settings(SemanticSettings {
+                enabled: true,
+                paused: true,
+                allow_battery: false,
+            })
+            .unwrap();
+        let state = service
+            .search(uuid::Uuid::new_v4().to_string(), "heart care".into(), false)
+            .unwrap();
+        assert!(!state.available && !state.pending && state.matches.is_empty());
+        assert!(!temp.path().join("semantic/model").exists());
+        assert!(!service.status().downloading);
+    }
+    fn write_query_note(root: &Path, text: &str) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        let note = serde_json::json!({"id":id,"title":"","content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":text}]}]}});
+        fs::write(
+            root.join("notes").join(format!("{id}.json")),
+            serde_json::to_vec(&note).unwrap(),
+        )
+        .unwrap();
+        id
+    }
+    #[test]
+    #[ignore = "requires the pinned offline model pack in NOTED_MODEL_PACK"]
+    fn real_typed_query_filters_before_ann_and_finds_long_note_paraphrases() {
+        let pack = PathBuf::from(std::env::var("NOTED_MODEL_PACK").unwrap());
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir(root.join("notes")).unwrap();
+        fs::create_dir_all(root.join("semantic/model/onnx")).unwrap();
+        for (name, _, _) in FILES {
+            fs::copy(pack.join(name), root.join("semantic/model").join(name)).unwrap();
+        }
+        let (service, _) = query_service(root);
+        let load = Instant::now();
+        let mut engine = Engine::open(root).unwrap();
+        let load_ms = load.elapsed().as_secs_f64() * 1000.;
+        let source = write_query_note(root, "A personal collection of research and observations.");
+        let target = write_query_note(
+            root,
+            "A physician treated the patient for a cardiac condition.",
+        );
+        let unrelated = write_query_note(
+            root,
+            "A physician treated the patient for a cardiac condition.",
+        );
+        for id in [&source, &target, &unrelated] {
+            engine
+                .embed_note(id, &note_text(root, id).unwrap(), &service.shared)
+                .unwrap();
+        }
+        let mut key = QueryKey {
+            source: source.clone(),
+            query: "medical care for someone with heart disease".into(),
+            connected_only: false,
+            index_generation: 0,
+            scope_generation: 0,
+            model_generation: 0,
+        };
+        let embed_start = Instant::now();
+        let query = engine.query_vector(&key.query).unwrap();
+        let query_embed_ms = embed_start.elapsed().as_secs_f64() * 1000.;
+        let target_chunk: i64 = engine
+            .db
+            .query_row(
+                "SELECT chunk FROM bindings WHERE note=?1 LIMIT 1",
+                [&target],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // More globally stronger hits than the retrieval budget, all disconnected.
+        // Synthetic vectors make the scope gate independent of incidental model rank.
+        for i in 0..620 {
+            let mut distractor = query.clone();
+            let mut random = i as u64 + 1;
+            for value in &mut distractor {
+                random = random.wrapping_mul(6364136223846793005).wrapping_add(1);
+                *value += ((random >> 32) as u32 as f32 / u32::MAX as f32 - 0.5) * 0.02;
+            }
+            let norm = distractor.iter().map(|v| v * v).sum::<f32>().sqrt();
+            for v in &mut distractor {
+                *v /= norm;
+            }
+            engine
+                .db
+                .execute(
+                    "INSERT INTO chunks(hash,vector) VALUES(?1,?2)",
+                    params![format!("query-distractor-{i}"), bytes_vector(&distractor)],
+                )
+                .unwrap();
+            let chunk = engine.db.last_insert_rowid();
+            engine
+                .db
+                .execute(
+                    "INSERT INTO bindings VALUES(?1,?2,?3)",
+                    params![unrelated, (i + 1) as i64, chunk],
+                )
+                .unwrap();
+        }
+        engine.refresh_key_refs().unwrap();
+        engine.checkpoint().unwrap();
+        let global = engine.base.search(&query, 480).unwrap();
+        eprintln!(
+            "global candidate count {} target rank {:?}; distances {:?}",
+            global.keys.len(),
+            global.keys.iter().position(|k| *k == target_chunk as u64),
+            global.distances.last()
+        );
+        assert!(!engine
+            .base
+            .search(&query, 480)
+            .unwrap()
+            .keys
+            .contains(&(target_chunk as u64)));
+        let astronomy = "A telescope collects faint light from distant galaxies. Dark skies reveal stars and planets. ".repeat(100);
+        let long = write_query_note(root,&format!("{astronomy}\nThe doctor provided treatment to a person suffering from heart disease. The clinician evaluated chest pain, reviewed symptoms, checked blood pressure and cardiac function, and prescribed medication to protect the heart. Follow-up visits monitored recovery and adjusted the therapy. The patient received guidance on exercise, diet, and recognizing signs requiring urgent evaluation. A cardiologist explained the diagnosis and discussed options for managing the illness over time.\n{astronomy}"));
+        engine
+            .embed_note(&long, &note_text(root, &long).unwrap(), &service.shared)
+            .unwrap();
+        let relations = crate::relations::open(root).unwrap();
+        for target in [&target, &long] {
+            let (a, b) = if source < *target {
+                (&source, target)
+            } else {
+                (target, &source)
+            };
+            relations
+                .execute(
+                    "INSERT INTO pairs(a,b,connected,revision) VALUES(?1,?2,1,1)",
+                    params![a, b],
+                )
+                .unwrap();
+        }
+        key.connected_only = true;
+        let start = Instant::now();
+        let matches = engine.search(&key, root).unwrap();
+        let uncached_ms = start.elapsed().as_secs_f64() * 1000.;
+        assert!(
+            matches.iter().any(|m| m.note_id == target),
+            "connected target below global ANN budget: {matches:?}"
+        );
+        assert!(
+            matches.iter().any(|m| m.note_id == long),
+            "paraphrase in long note: {matches:?}"
+        );
+        assert!(
+            matches.iter().all(|m| m.note_id != unrelated),
+            "shared chunks must not leak disconnected bindings"
+        );
+        let mut times = vec![];
+        for _ in 0..20 {
+            let start = Instant::now();
+            engine.search(&key, root).unwrap();
+            times.push(start.elapsed().as_secs_f64() * 1000.);
+        }
+        times.sort_by(f64::total_cmp);
+        assert_eq!(
+            engine.query_vectors.len(),
+            1,
+            "scope/index work reuses query embedding"
+        );
+        fs::remove_file(root.join("notes").join(format!("{target}.json"))).unwrap();
+        assert!(engine
+            .search(&key, root)
+            .unwrap()
+            .iter()
+            .all(|m| m.note_id != target));
+        relations
+            .execute("UPDATE pairs SET connected=0,revision=revision+1", [])
+            .unwrap();
+        assert!(engine.search(&key, root).unwrap().is_empty());
+        eprintln!("typed query modelLoadMs={load_ms:.2} queryEmbeddingMs={query_embed_ms:.2} uncachedRetrievalMs={uncached_ms:.2} warmRetrievalP95Ms={:.2} privateMemoryBytes={} longNoteWords={} distractorChunks=620", times[18], private_memory(), note_text(root,&long).unwrap().split_whitespace().count());
+        engine.checkpoint().unwrap();
+        drop(engine);
+        relations
+            .execute("UPDATE pairs SET connected=1,revision=revision+1", [])
+            .unwrap();
+        // Exercise the actual single-worker API, while background work is paused.
+        let live = SemanticService::start(root.into()).unwrap();
+        live.settings(SemanticSettings {
+            enabled: true,
+            paused: true,
+            allow_battery: false,
+        })
+        .unwrap();
+        let ready = Instant::now();
+        while !live.status().model_ready {
+            assert!(ready.elapsed() < Duration::from_secs(10));
+            thread::sleep(Duration::from_millis(10));
+        }
+        for i in 0..100 {
+            live.search(source.clone(), format!("obsolete query {i}"), true)
+                .unwrap();
+        }
+        let requested = Instant::now();
+        let first = live
+            .search(source.clone(), key.query.clone(), true)
+            .unwrap();
+        assert!(first.pending && first.available);
+        loop {
+            let state = live
+                .search(source.clone(), key.query.clone(), true)
+                .unwrap();
+            if !state.pending {
+                assert!(state.matches.iter().any(|m| m.note_id == long));
+                break;
+            }
+            assert!(
+                requested.elapsed() < Duration::from_secs(10),
+                "worker query did not complete: {:?}",
+                live.status()
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let completed_ms = requested.elapsed().as_secs_f64() * 1000.;
+        let mut cached = vec![];
+        for _ in 0..100 {
+            let start = Instant::now();
+            assert!(
+                !live
+                    .search(source.clone(), key.query.clone(), true)
+                    .unwrap()
+                    .pending
+            );
+            cached.push(start.elapsed().as_secs_f64() * 1000.);
+        }
+        cached.sort_by(f64::total_cmp);
+        eprintln!(
+            "single worker pendingToCompleteMs={completed_ms:.2} cachedApiP95Ms={:.4}",
+            cached[94]
+        );
+    }
+    #[test]
+    #[ignore = "requires an existing disposable synthetic corpus in NOTED_QUERY_BENCH_ROOT"]
+    fn cached_synthetic_corpus_query_performance() {
+        let Ok(path) = std::env::var("NOTED_QUERY_BENCH_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(path);
+        assert!(root
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("semantic-benchmark"));
+        let reports: Vec<Value> =
+            serde_json::from_slice(&fs::read(root.join("report.json")).unwrap()).unwrap();
+        assert_eq!(reports.last().unwrap()["synthetic"], true);
+        let load = Instant::now();
+        let mut engine = Engine::open(&root).unwrap();
+        let load_ms = load.elapsed().as_secs_f64() * 1000.;
+        let ids: Vec<String> = engine
+            .db
+            .prepare("SELECT id FROM notes ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        let chunks: usize = engine
+            .db
+            .query_row("SELECT count(*) FROM chunks", [], |r| r.get::<_, i64>(0))
+            .unwrap() as usize;
+        let queries = [
+            "a physician treating someone with heart disease",
+            "observing planets and distant galaxies",
+            "protecting wildlife and forests",
+            "baking a loaf with yeast and flour",
+            "solving equations in mathematics",
+            "playing a melody on the piano",
+            "computer memory and database performance",
+            "painting a picture with watercolor",
+        ];
+        for query in queries {
+            engine.query_vector(query).unwrap();
+        }
+        let mut relations = crate::relations::open(&root).unwrap();
+        let mut results = vec![];
+        for count in [500, 5000, 50000] {
+            if count > ids.len() {
+                continue;
+            }
+            // Early synthetic benchmarks omitted identity; upgrade only this explicitly
+            // disposable fixture. Authored text and all embedding fingerprints stay put.
+            let mut upgraded = 0;
+            for id in ids.iter().take(count) {
+                let path = root.join("notes").join(format!("{id}.json"));
+                let mut note: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                if note.get("id").is_none() {
+                    note.as_object_mut()
+                        .unwrap()
+                        .insert("id".into(), Value::String(id.clone()));
+                    fs::write(path, serde_json::to_vec(&note).unwrap()).unwrap();
+                    upgraded += 1;
+                }
+            }
+            eprintln!(
+                "reused {} cached notes; upgraded {upgraded} legacy synthetic identities",
+                count
+            );
+            let tx = relations.transaction().unwrap();
+            tx.execute("DELETE FROM pairs", []).unwrap();
+            for target in ids.iter().take(count).skip(1) {
+                tx.execute(
+                    "INSERT INTO pairs(a,b,connected,revision) VALUES(?1,?2,1,?3)",
+                    params![ids[0], target, count as i64],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+            let mut key = QueryKey {
+                source: ids[0].clone(),
+                query: queries[0].into(),
+                connected_only: true,
+                index_generation: 0,
+                scope_generation: count as u64,
+                model_generation: 0,
+            };
+            let start = Instant::now();
+            let first = engine.search(&key, &root).unwrap();
+            let cold_scope_ms = start.elapsed().as_secs_f64() * 1000.;
+            assert!(!first.is_empty());
+            let allowed_ids: HashSet<_> = ids[..count].iter().collect();
+            let mut times = vec![];
+            for i in 0..20 {
+                key.query = queries[i % queries.len()].into();
+                let start = Instant::now();
+                let matches = engine.search(&key, &root).unwrap();
+                let elapsed = start.elapsed().as_secs_f64() * 1000.;
+                assert!(matches
+                    .iter()
+                    .all(|item| allowed_ids.contains(&item.note_id)));
+                times.push(elapsed);
+            }
+            times.sort_by(f64::total_cmp);
+            let report = serde_json::json!({"corpusNotes":ids.len(),"connectedScopeNotes":count-1,"corpusChunks":chunks,"corpusWords":reports.last().unwrap()["words"],"modelAndIndexLoadMs":load_ms,"coldScopeBuildMs":cold_scope_ms,"warmQueryRetrievalP95Ms":times[18],"privateMemoryBytes":private_memory(),"reuseExistingSyntheticCache":true,"newIndexingMeasured":false,"queryEmbeddingCacheWarm":true,"reference8GbHardware":false});
+            eprintln!("{report}");
+            results.push(report);
+            fs::write(
+                root.join("typed-query-report.json"),
+                serde_json::to_vec_pretty(&results).unwrap(),
+            )
+            .unwrap();
+        }
+    }
     #[test]
     fn background_rescan_preserves_pending_progress() {
         let mut queue: Vec<String> = (0..500).map(|n| n.to_string()).collect();
@@ -1444,6 +2336,7 @@ mod tests {
             stop: false,
             cache: HashMap::new(),
             pending: HashSet::new(),
+            queries: Queries::default(),
         };
         let id = uuid::Uuid::new_v4().to_string();
         shared.cache.insert(
@@ -1507,6 +2400,7 @@ mod tests {
             stop: false,
             cache: HashMap::new(),
             pending: HashSet::new(),
+            queries: Queries::default(),
         }));
         let started = Instant::now();
         let mut engine = Engine::open(root).unwrap();
@@ -1605,6 +2499,7 @@ mod tests {
             stop: false,
             cache: HashMap::new(),
             pending: HashSet::new(),
+            queries: Queries::default(),
         }));
         let common="Compare the immediate result with what happened a week later. Record one observation that supports the explanation and one detail that could suggest an alternative. Next time, change only one variable so the comparison remains useful.";
         let bodies=[
@@ -1691,6 +2586,7 @@ mod tests {
             stop: false,
             cache: HashMap::new(),
             pending: HashSet::new(),
+            queries: Queries::default(),
         };
         assert!(!runnable(&s));
         s.status.settings.enabled = true;

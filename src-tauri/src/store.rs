@@ -94,6 +94,17 @@ pub struct Store {
     warnings: Vec<String>,
     _lock: File,
 }
+/// A separate SQLite reader for graph/search work. It shares no Rust mutex with
+/// the writer, owns no advisory writer lock, and exposes no mutation methods.
+#[cfg(any(feature = "desktop", test))]
+pub(crate) struct ReadView(Store);
+#[cfg(any(feature = "desktop", test))]
+impl std::ops::Deref for ReadView {
+    type Target = Store;
+    fn deref(&self) -> &Store {
+        &self.0
+    }
+}
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -141,6 +152,37 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 impl Store {
+    #[cfg(any(feature = "desktop", test))]
+    pub(crate) fn read_view(&self) -> Result<ReadView> {
+        let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
+        let db =
+            Connection::open_with_flags(self.root.join("index.sqlite3"), flags).map_err(err)?;
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(err)?;
+        db.execute(
+            "ATTACH DATABASE ?1 AS authored_relations",
+            [self
+                .root
+                .join("relations.sqlite3")
+                .to_string_lossy()
+                .as_ref()],
+        )
+        .map_err(err)?;
+        let relations =
+            Connection::open_with_flags(self.root.join("relations.sqlite3"), flags).map_err(err)?;
+        relations
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(err)?;
+        Ok(ReadView(Self {
+            root: self.root.clone(),
+            db,
+            relations,
+            reconcile: Default::default(),
+            reconciling: false,
+            warnings: Vec::new(),
+            _lock: File::open(self.root.join("workspace.lock")).map_err(err)?,
+        }))
+    }
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let mut store = Self::open_cached(root)?;
         store.rebuild_index()?;
@@ -178,6 +220,13 @@ impl Store {
         )
         .map_err(err)?;
         let relations = crate::relations::open(&root)?;
+        // Search reads authored scope directly through indexed SQL; even a very
+        // high-degree root must not copy its entire neighborhood into memory.
+        db.execute(
+            "ATTACH DATABASE ?1 AS authored_relations",
+            [root.join("relations.sqlite3").to_string_lossy().as_ref()],
+        )
+        .map_err(err)?;
         let store = Self {
             root,
             db,

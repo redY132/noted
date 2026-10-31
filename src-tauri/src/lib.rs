@@ -11,6 +11,22 @@ mod desktop {
     use tauri::{Manager, State};
 
     type SharedStore = Arc<Mutex<Store>>;
+    type SharedGraph = Arc<Mutex<crate::store::ReadView>>;
+
+    async fn read_work<T: Send + 'static>(
+        state: State<'_, SharedGraph>,
+        f: impl FnOnce(&Store) -> Result<T, String> + Send + 'static,
+    ) -> Result<T, String> {
+        let state = state.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let reader = state
+                .lock()
+                .map_err(|_| "Graph reader lock failed".to_string())?;
+            f(&reader)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
 
     async fn work<T: Send + 'static>(
         state: State<'_, SharedStore>,
@@ -46,10 +62,15 @@ mod desktop {
     #[tauri::command]
     pub async fn create_note(
         state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
         title: String,
         folder_id: Option<String>,
     ) -> Result<Note, String> {
-        work(state, move |s| s.create_note(title, folder_id)).await
+        let result = work(state, move |s| s.create_note(title, folder_id)).await;
+        if result.is_ok() {
+            semantic.invalidate_scope();
+        }
+        result
     }
     #[tauri::command]
     pub async fn load_note(state: State<'_, SharedStore>, id: String) -> Result<Note, String> {
@@ -75,10 +96,15 @@ mod desktop {
     #[tauri::command]
     pub async fn save_note(
         state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
         note: Note,
         expected_revision: u64,
     ) -> Result<Note, String> {
-        work(state, move |s| s.save_note(note, expected_revision)).await
+        let result = work(state, move |s| s.save_note(note, expected_revision)).await;
+        if result.is_ok() {
+            semantic.invalidate_scope();
+        }
+        result
     }
     #[tauri::command]
     pub async fn search_notes(
@@ -105,37 +131,117 @@ mod desktop {
     #[tauri::command]
     pub async fn set_relation(
         state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
         a: String,
         b: String,
         connected: Option<bool>,
         dismissed: Option<bool>,
         expected_revision: Option<u64>,
+        strength: Option<u8>,
     ) -> Result<crate::relations::PairMutation, String> {
-        work(state, move |s| {
-            s.set_relation(&a, &b, connected, dismissed, expected_revision)
+        let result = work(state, move |s| {
+            s.set_relation_strength(&a, &b, connected, dismissed, expected_revision, strength)
+        })
+        .await;
+        if result.as_ref().is_ok_and(|m| m.changed) {
+            semantic.invalidate_scope();
+        }
+        result
+    }
+    #[tauri::command]
+    pub async fn connection_edges(
+        state: State<'_, SharedGraph>,
+        note_ids: Vec<String>,
+    ) -> Result<Vec<crate::relations::PairState>, String> {
+        read_work(state, move |s| s.connection_edges(note_ids)).await
+    }
+    #[tauri::command]
+    pub async fn connection_search(
+        state: State<'_, SharedGraph>,
+        service: State<'_, Arc<crate::semantic::SemanticService>>,
+        source_id: String,
+        query: String,
+        scope: String,
+        cursor: Option<usize>,
+        limit: Option<usize>,
+        semantic: Option<bool>,
+    ) -> Result<crate::relations::ConnectionSearchPage, String> {
+        let connected_only = match scope.as_str() {
+            "connected" => true,
+            "workspace" => false,
+            _ => return Err("Search scope must be connected or workspace".into()),
+        };
+        crate::store::valid_id(&source_id)?;
+        if query.len() > 2048 {
+            return Err("Search query is too long".into());
+        }
+        // Inference is queued on the semantic worker without acquiring Store.
+        let (matches, pending, available, generation) =
+            if semantic.unwrap_or(false) && !query.trim().is_empty() {
+                let service = service.inner().clone();
+                let id = source_id.clone();
+                let q = query.clone();
+                match tauri::async_runtime::spawn_blocking(move || {
+                    service.search(id, q, connected_only)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+                {
+                    Ok(result) => (
+                        result
+                            .matches
+                            .into_iter()
+                            .map(|m| (m.note_id, m.score as f64))
+                            .collect(),
+                        result.pending,
+                        result.available,
+                        result.generation,
+                    ),
+                    Err(_) => (Vec::new(), false, false, 0),
+                }
+            } else {
+                (Vec::new(), false, false, 0)
+            };
+        read_work(state, move |s| {
+            let page = s.search_connections(
+                &source_id,
+                &query,
+                connected_only,
+                cursor.unwrap_or(0),
+                limit.unwrap_or(40),
+                matches,
+            )?;
+            Ok(crate::relations::ConnectionSearchPage {
+                items: page.items,
+                next_cursor: page.next_cursor,
+                total: page.total,
+                semantic_pending: pending,
+                semantic_available: available,
+                generation,
+            })
         })
         .await
     }
     #[tauri::command]
     pub async fn list_connections(
-        state: State<'_, SharedStore>,
+        state: State<'_, SharedGraph>,
         note_id: String,
         cursor: Option<usize>,
         limit: Option<usize>,
     ) -> Result<crate::relations::Page<crate::relations::ConnectionEntry>, String> {
-        work(state, move |s| {
+        read_work(state, move |s| {
             s.list_connections(&note_id, cursor.unwrap_or(0), limit.unwrap_or(40))
         })
         .await
     }
     #[tauri::command]
     pub async fn list_references(
-        state: State<'_, SharedStore>,
+        state: State<'_, SharedGraph>,
         note_id: String,
         cursor: Option<usize>,
         limit: Option<usize>,
     ) -> Result<crate::relations::Page<crate::relations::ReferenceEntry>, String> {
-        work(state, move |s| {
+        read_work(state, move |s| {
             s.list_references(&note_id, cursor.unwrap_or(0), limit.unwrap_or(40))
         })
         .await
@@ -173,7 +279,7 @@ mod desktop {
     }
     #[tauri::command]
     pub async fn related_notes(
-        state: State<'_, SharedStore>,
+        state: State<'_, SharedGraph>,
         semantic: State<'_, Arc<crate::semantic::SemanticService>>,
         note_id: String,
         cursor: Option<usize>,
@@ -188,7 +294,7 @@ mod desktop {
             .into_iter()
             .map(|m| (m.note_id, m.score as f64))
             .collect();
-        work(state, move |s| {
+        read_work(state, move |s| {
             s.related_with_semantic(
                 &note_id,
                 candidates,
@@ -201,9 +307,14 @@ mod desktop {
     #[tauri::command]
     pub async fn restore_dismissed(
         state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
         note_id: String,
     ) -> Result<usize, String> {
-        work(state, move |s| s.restore_dismissed(&note_id)).await
+        let result = work(state, move |s| s.restore_dismissed(&note_id)).await;
+        if result.as_ref().is_ok_and(|n| *n > 0) {
+            semantic.invalidate_scope();
+        }
+        result
     }
 
     #[tauri::command]
@@ -282,6 +393,9 @@ mod desktop {
                     None => app.path().app_data_dir()?.join("workspace"),
                 };
                 let store = Store::open_cached(root.clone()).map_err(std::io::Error::other)?;
+                let graph = Arc::new(Mutex::new(
+                    store.read_view().map_err(std::io::Error::other)?,
+                ));
                 let store = Arc::new(Mutex::new(store));
                 {
                     let mut guard = store
@@ -297,6 +411,7 @@ mod desktop {
                     }
                 });
                 app.manage(store);
+                app.manage(graph);
                 #[cfg(feature = "semantic")]
                 app.manage(Arc::new(
                     crate::semantic::SemanticService::start(root).map_err(std::io::Error::other)?,
@@ -324,6 +439,8 @@ mod desktop {
                 rebuild_index,
                 set_relation,
                 list_connections,
+                connection_edges,
+                connection_search,
                 list_references,
                 picker_notes,
                 list_notes_page,
