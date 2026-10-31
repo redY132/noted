@@ -1,5 +1,6 @@
 import type { NoteSummary } from './model';
 import { noteLinkTarget } from './note-links.ts';
+import { createRayMotion, retractRayPath, updateRayMotion, type RayMotion } from './connection-ray.ts';
 
 type Page<T> = { items: T[]; nextCursor: number | null; total: number };
 type Pair = { a: string; b: string; connected: boolean; dismissed: boolean; revision: number };
@@ -17,7 +18,7 @@ export interface ConnectionAPI {
 }
 export const connectionHandle = (id: string, title: string) => `<button type="button" class="connection-handle" data-connect-source="${esc(id)}" data-source-title="${esc(title || 'Untitled')}" aria-label="Connect ${esc(title || 'Untitled')} to another note" title="Click to find notes; drag to connect">⤳</button>`;
 const esc = (value: string) => value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-export const connectionsMarkup = `<aside id="connections-panel" class="connections-panel" aria-label="Note connections" hidden><header><h2>Connections</h2><button type="button" id="connections-close" aria-label="Close connections">×</button></header><div id="connections-current"></div><div class="connections-body"><section><h3>Connected</h3><div id="connections-saved"></div></section><section><h3>References</h3><div id="connections-references"></div></section><section><h3>Suggested</h3><div id="connections-suggested"></div><button type="button" id="connections-restore">Restore dismissed suggestions</button></section><section id="semantic-controls"></section></div></aside><section id="connection-picker" class="connection-picker" role="dialog" aria-modal="false" aria-labelledby="connection-picker-title" hidden><header><h2 id="connection-picker-title">Connect notes</h2><button type="button" id="connection-picker-close" aria-label="Close note picker">×</button></header><p id="connection-source-title"></p><input id="connection-query" type="search" aria-label="Find notes to connect" placeholder="Search titles, folders, tags…" autocomplete="off"><div id="connection-picker-results"></div></section><div id="connection-toast" class="connection-toast" role="status" hidden><span></span><button type="button" id="connection-undo">Undo</button></div><div id="connection-announcement" class="sr-only" aria-live="polite"></div><svg id="connection-ray" class="connection-ray" aria-hidden="true" hidden><line stroke="currentColor" stroke-width="2" stroke-dasharray="5 3" /></svg>`;
+export const connectionsMarkup = `<aside id="connections-panel" class="connections-panel" aria-label="Note connections" hidden><header><h2>Connections</h2><button type="button" id="connections-close" aria-label="Close connections">×</button></header><div id="connections-current"></div><div class="connections-body"><section><h3>Connected</h3><div id="connections-saved"></div></section><section><h3>References</h3><div id="connections-references"></div></section><section><h3>Suggested</h3><div id="connections-suggested"></div><button type="button" id="connections-restore">Restore dismissed suggestions</button></section><section id="semantic-controls"></section></div></aside><section id="connection-picker" class="connection-picker" role="dialog" aria-modal="false" aria-labelledby="connection-picker-title" hidden><header><h2 id="connection-picker-title">Connect notes</h2><button type="button" id="connection-picker-close" aria-label="Close note picker">×</button></header><p id="connection-source-title"></p><input id="connection-query" type="search" aria-label="Find notes to connect" placeholder="Search titles, folders, tags…" autocomplete="off"><div id="connection-picker-results"></div></section><div id="connection-toast" class="connection-toast" role="status" hidden><span></span><button type="button" id="connection-undo">Undo</button></div><div id="connection-announcement" class="sr-only" aria-live="polite"></div><svg id="connection-ray" class="connection-ray" aria-hidden="true" hidden><defs><marker id="connection-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 1 1 L 8 5 L 1 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></marker></defs><path class="connection-ray-path" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" marker-end="url(#connection-arrow)" /></svg>`;
 
 /** Every target carries a real note ID; arbitrary document text is never a target. */
 export function targetNote(element: Element | null): string | null {
@@ -34,11 +35,13 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
   const {api} = options;
   const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
   const panel = $('#connections-panel'), picker = $('#connection-picker'), results = $('#connection-picker-results'), ray = $('#connection-ray');
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   let source: {id: string; title: string} | null = null, anchor: HTMLElement | null = null;
   let searchGeneration = 0, panelGeneration = 0, queryTimer: ReturnType<typeof setTimeout> | undefined, refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let restoreFocus: HTMLElement | null = null, undo: Mutation | null = null;
-  let dragging: { id: number; source: string; title: string; startX: number; startY: number; x: number; y: number; handle: HTMLElement; active: boolean; target: Element | null; frame: number } | null = null;
+  let dragging: { id: number; source: string; title: string; startX: number; startY: number; x: number; y: number; handle: HTMLElement; active: boolean; target: Element | null; frame: number; motion: RayMotion; time: number } | null = null;
   let suppressedDragClick: {handle:HTMLElement;until:number}|null=null;
+  let retractionFrame = 0;
   const busyPairs = new Set<string>();
   panel.hidden = !(options.visibility?.isOpen() ?? false);
   function announce(message: string) { $('#connection-announcement').textContent = message; }
@@ -121,17 +124,38 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
       if(page.nextCursor===null) button.remove(); else {button.dataset.cursor=String(page.nextCursor);button.removeAttribute('disabled');}
     } catch(reason) {button.removeAttribute('disabled');options.error(reason);}
   }
+  function stopRetraction() {
+    cancelAnimationFrame(retractionFrame); retractionFrame=0; ray.setAttribute('hidden','');
+  }
+  function retract(drag: NonNullable<typeof dragging>) {
+    const curve=drag.motion.curve;
+    if(!curve||reducedMotion?.matches){stopRetraction();return;}
+    const start=performance.now(),path=ray.querySelector('.connection-ray-path')!;
+    const step=(now:number)=>{
+      if(reducedMotion?.matches){stopRetraction();return;}
+      const progress=Math.max(0,Math.min(1,(now-start)/400));
+      const rect=drag.handle.isConnected?drag.handle.getBoundingClientRect():null;
+      const anchor=rect?{x:rect.left+rect.width/2,y:rect.top+rect.height/2}:curve.source;
+      path.setAttribute('d',retractRayPath(curve,(1+Math.cos(progress*Math.PI))/2,anchor));
+      if(progress>=1){stopRetraction();return;}
+      retractionFrame=requestAnimationFrame(step);
+    };
+    retractionFrame=requestAnimationFrame(step);
+  }
   function finishDrag(cancel=false) {
+    if(cancel)stopRetraction();
     const drag=dragging; if(!drag) return;
-    dragging=null; cancelAnimationFrame(drag.frame); ray.setAttribute('hidden','');
+    dragging=null; cancelAnimationFrame(drag.frame);
+    if(drag.active&&!cancel)retract(drag);else stopRetraction();
     drag.target?.classList.remove('connection-drop-target'); document.body.classList.remove('connection-dragging');
     try {drag.handle.releasePointerCapture?.(drag.id);} catch { /* element may have rerendered */ }
     if(drag.active) {suppressedDragClick={handle:drag.handle,until:Date.now()+400}; const id=targetNote(document.elementFromPoint(drag.x,drag.y));if(!cancel&&id&&id!==drag.source)void mutate(drag.source,id,true);}
   }
-  function frame() {
+  function frame(now=performance.now()) {
     const drag=dragging; if(!drag?.active) return;
-    const rect=drag.handle.getBoundingClientRect(), line=ray.querySelector('line')!;
-    for(const [name,value] of Object.entries({x1:rect.left+rect.width/2,y1:rect.top+rect.height/2,x2:drag.x,y2:drag.y}))line.setAttribute(name,String(value));
+    const rect=drag.handle.getBoundingClientRect(), path=ray.querySelector('.connection-ray-path')!;
+    path.setAttribute('d',updateRayMotion(drag.motion,{x:rect.left+rect.width/2,y:rect.top+rect.height/2},{x:drag.x,y:drag.y},now-drag.time,reducedMotion?.matches??false));
+    drag.time=now;
     const hit=document.elementFromPoint(drag.x,drag.y), id=targetNote(hit);
     const target=id&&id!==drag.source?hit?.closest('[data-note-target],[data-note],a[href]')??null:null;
     if(target!==drag.target){drag.target?.classList.remove('connection-drop-target');target?.classList.add('connection-drop-target');drag.target=target;}
@@ -149,7 +173,8 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
     const handle=(event.target as Element).closest<HTMLElement>('[data-connect-source]');
     if(!handle||event.button!==0||!handle.dataset.connectSource)return;
     event.preventDefault(); event.stopPropagation();
-    dragging={id:event.pointerId,source:handle.dataset.connectSource,title:handle.dataset.sourceTitle||'Untitled',startX:event.clientX,startY:event.clientY,x:event.clientX,y:event.clientY,handle,active:false,target:null,frame:0};
+    stopRetraction();
+    dragging={id:event.pointerId,source:handle.dataset.connectSource,title:handle.dataset.sourceTitle||'Untitled',startX:event.clientX,startY:event.clientY,x:event.clientX,y:event.clientY,handle,active:false,target:null,frame:0,motion:createRayMotion({x:event.clientX,y:event.clientY}),time:performance.now()};
     handle.setPointerCapture?.(event.pointerId);
   },true);
   document.addEventListener('pointermove',event=>{
@@ -179,7 +204,7 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
     const load=target.closest<HTMLElement>('[data-panel-more]');if(load)void more(load);
   },true);
   document.addEventListener('keydown',event=>{
-    if(event.key==='Escape'){if(dragging){event.preventDefault();finishDrag(true);}else if(!picker.hidden){event.preventDefault();closePicker();}}
+    if(event.key==='Escape'){if(dragging){event.preventDefault();finishDrag(true);}else{if(retractionFrame){event.preventDefault();stopRetraction();}if(!picker.hidden){event.preventDefault();closePicker();}}}
     if(!picker.hidden&&picker.contains(event.target as Node)&&['ArrowDown','ArrowUp','Enter'].includes(event.key)){
       const buttons=[...results.querySelectorAll<HTMLButtonElement>('[data-picker-connect]:not(:disabled)')];
       if(!buttons.length)return;const index=buttons.indexOf(document.activeElement as HTMLButtonElement);

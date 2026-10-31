@@ -59,6 +59,26 @@ test('connection undo uses action revision and restores previous pair state',asy
   const mutation=h.calls.filter(c=>c[0]==='mutate').at(-1)!;assert.equal(mutation[5],1);assert.equal(h.errors.length,0);h.dom.window.close();
 });
 
+test('release retracts visually without delaying the connection; a new gesture and blur cancel animation work',async()=>{
+  const h=harness(),callbacks=new Map<number,FrameRequestCallback>();let id=0;
+  Object.defineProperty(globalThis,'requestAnimationFrame',{value:(callback:FrameRequestCallback)=>{callbacks.set(++id,callback);return id;},configurable:true});
+  Object.defineProperty(globalThis,'cancelAnimationFrame',{value:(frame:number)=>callbacks.delete(frame),configurable:true});
+  const handle=document.querySelector<HTMLElement>('[data-connect-source]')!,path=document.querySelector('.connection-ray-path')!,ray=document.querySelector('#connection-ray')!;
+  handle.dispatchEvent(h.event('pointerdown',10,10));document.dispatchEvent(h.event('pointermove',200,150));
+  document.dispatchEvent(h.event('pointerup',200,150));await tick();
+  assert.equal(h.connected,true);assert.equal(ray.hasAttribute('hidden'),false);
+  assert.equal(callbacks.size,1,'drag loop is replaced by one retraction frame');
+  const original=path.getAttribute('d'),entry=[...callbacks][0];callbacks.delete(entry[0]);entry[1](performance.now()+200);
+  assert.notEqual(path.getAttribute('d'),original);
+  handle.dispatchEvent(h.event('pointerdown',10,10));
+  assert.equal(callbacks.size,0);assert.equal(ray.hasAttribute('hidden'),true);
+  document.dispatchEvent(h.event('pointermove',200,150));document.dispatchEvent(h.event('pointerup',200,150));
+  assert.equal(callbacks.size,1);
+  window.dispatchEvent(new h.dom.window.Event('blur'));
+  assert.equal(callbacks.size,0);assert.equal(ray.hasAttribute('hidden'),true);
+  h.dom.window.close();
+});
+
 test('drop targets resolve note identity from cards and internal references but not ordinary text or web links',()=>{
   const h=harness();const host=document.createElement('div');host.innerHTML=`<a href="noted://note/${b.id}"><em>Note</em></a><a href="https://example.com">Web</a><p>Plain</p>`;
   assert.equal(targetNote(host.querySelector('em')),b.id);assert.equal(targetNote(host.querySelector('p')),null);assert.equal(targetNote(host.querySelectorAll('a')[1]),null);h.dom.window.close();
