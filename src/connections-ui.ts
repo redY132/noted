@@ -93,6 +93,6 @@ export function initializeConnectionsUI(options:FloatingOptions){
     if(suppressedDragClick&&Date.now()<suppressedDragClick.until&&handle===suppressedDragClick.handle&&event.detail!==0){suppressedDragClick=null;event.preventDefault();event.stopImmediatePropagation();return;}
     if(handle){event.preventDefault();event.stopPropagation();graph.open(handle,event.detail===0);}
   },true);
-  document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;if(dragging){event.preventDefault();finishDrag('cancel');}else if(retractionFrame){event.preventDefault();stopRetraction();}if(graph.isOpen()){event.preventDefault();graph.close();}},true);
+  document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;if(dragging){event.preventDefault();finishDrag('cancel');}else if(retractionFrame){event.preventDefault();stopRetraction();}if(graph.isOpen()){event.preventDefault();if(graph.dismissPopup()){event.stopPropagation();}else graph.close();}},true);
   return{...graph,isDragging:()=>Boolean(dragging)};
 }

@@ -32,12 +32,12 @@ async page => {
     assert(await page.locator('#connection-picker-results').isVisible(),'Multi-connect results closed');
   }
   await page.locator('[data-graph-action=reset]').click();
-  await page.locator(`[data-graph-node="${ids[0]}"]`).dispatchEvent('pointerover');
+  await page.locator(`[data-graph-node="${ids[0]}"]`).dispatchEvent('click');
   assert((await page.locator('#note-title').inputValue()).startsWith('Gamma'),'Selection navigated');
-  await page.locator('[data-selected-action=remove]').click();
+  await page.locator('[data-node-action=remove]').click();
   await page.waitForFunction(()=>document.querySelector('#connection-toast').textContent.includes('removed'));
   await page.locator('#connection-undo').click();
-  await page.waitForFunction(()=>document.querySelector('[data-selected-action=remove]'));
+  await page.waitForFunction(()=>document.querySelector('[data-node-action=remove]'));
   const edgeKey=JSON.stringify([ids[2],ids[0]].sort());
   await page.locator('[data-graph-edge]').evaluateAll((elements,key)=>elements.find(el=>el.dataset.graphEdge===key).dispatchEvent(new MouseEvent('click',{bubbles:true})),edgeKey);
   const strength=page.locator('#connection-strength'),initial=Number(await strength.inputValue());
@@ -69,8 +69,10 @@ async page => {
   await page.locator('#header-connection-handle button').click();
   await page.waitForFunction(source=>[...document.querySelectorAll('[data-graph-edge]')].filter(el=>JSON.parse(el.dataset.graphEdge).includes(source)).length===2,ids[2]);
   await page.locator(`[data-graph-node="${ids[0]}"] circle`).click();
+  assert((await page.locator('#note-title').inputValue()).startsWith('Gamma'),'Node click navigated without popup choice');
+  await page.locator('[data-node-action=open]').click();
   await page.waitForFunction(()=>document.querySelector('#note-title')?.value.startsWith('Alpha'));
   await page.waitForFunction(()=>document.querySelector('#connection-source-title')?.textContent.startsWith('From: Alpha'));
   assert(await page.locator('[data-selected-action=open],[data-selected-action=expand],[data-selected-action=focus]').count()===0,'Obsolete node actions remain');
-  return {passed:true,clickNavigation:true,multiConnect:true,selection:true,strengthUndo:true,cardSource:true,focusMode:true,keyboard:true,dragDuplicate:true,persistence:true};
+  return {passed:true,popupNavigation:true,multiConnect:true,selection:true,strengthUndo:true,cardSource:true,focusMode:true,keyboard:true,dragDuplicate:true,persistence:true};
 }

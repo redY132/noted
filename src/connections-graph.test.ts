@@ -4,6 +4,10 @@ import { ConnectionsGraph,graphPairKey } from './connections-graph.ts';
 import type { NoteSummary } from './model.ts';
 const note=(id:string):NoteSummary=>({id,title:id,folderId:null,tags:[],revision:0,createdAt:'',updatedAt:''});
 
+test('multi-selected notes survive suggestion paging and cannot be evicted by the node cap',()=>{
+ const g=new ConnectionsGraph(note('root'));for(let i=0;i<59;i++){g.add(String(i),note(String(i)),true);g.multiSelected.add(String(i));}g.removeSuggestions();assert.equal(g.nodes.size,60);assert.equal(g.add('new',note('new')),false);assert.equal(g.nodes.size,60);
+});
+
 test('bounded exploration preserves root, selected node and full selected path',()=>{
  const g=new ConnectionsGraph(note('root'));
  for(let i=0;i<59;i++)g.add(`branch-${i}`,note(`branch-${i}`),false,i===0?'root':`branch-${i-1}`);

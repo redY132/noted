@@ -8,11 +8,12 @@ export class ConnectionsGraph {
   nodes = new Map<string,GraphNode>();
   edges: GraphPair[] = [];
   selected: string;
+  readonly multiSelected=new Set<string>();
   root: string;
   private clock = 0;
   constructor(note: NoteSummary) { this.root = this.selected = note.id; this.add(note.id,note,false,null); }
   protectedIds() {
-    const ids = new Set([this.root]); let node = this.nodes.get(this.selected);
+    const ids = new Set([this.root,...this.multiSelected]); let node = this.nodes.get(this.selected);
     while(node && !ids.has(node.id)) { ids.add(node.id); node = node.parent ? this.nodes.get(node.parent) : undefined; }
     return ids;
   }
@@ -44,5 +45,5 @@ export class ConnectionsGraph {
     this.edges=visible.sort((a,b)=>priority(b)-priority(a)||b.strength-a.strength||graphPairKey(a.a,a.b).localeCompare(graphPairKey(b.a,b.b))).slice(0,180-this.suggestionEdges().length);
   }
   position(id: string,x: number,y: number) {const node=this.nodes.get(id);if(node&&Number.isFinite(x)&&Number.isFinite(y)){node.x=x;node.y=y;}}
-  removeSuggestions() {for(const [id,node] of this.nodes)if(node.suggested&&id!==this.selected)this.nodes.delete(id);}
+  removeSuggestions() {for(const [id,node] of this.nodes)if(node.suggested&&id!==this.selected&&!this.multiSelected.has(id))this.nodes.delete(id);}
 }

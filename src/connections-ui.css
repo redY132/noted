@@ -181,6 +181,41 @@
   #connections-panel .connection-selection button { font-size: 10px; padding: 6px 8px; }
   #connections-panel .connection-selection strong { max-width: 140px; }
 }
+
+/* Strength is readable at every zoom; suggested edges keep their separate dashed style. */
+#connections-panel .connection-edge:not(.suggestion-edge) {
+  stroke:color-mix(in srgb,var(--accent-text) calc(14% + var(--strength)*13%),var(--ui-strong-border));
+  stroke-width:calc(.8px + var(--strength)*.7px);
+  stroke-opacity:calc(.22 + var(--strength)*.15);
+  opacity:1;
+  vector-effect:non-scaling-stroke;
+}
+#connections-panel .connection-edge:not(.suggestion-edge):is(:hover,:focus,.selected) { stroke:var(--accent-text);stroke-opacity:1;stroke-width:calc(2px + var(--strength)*.7px); }
+#connections-panel .connection-edge-value { display:none;pointer-events:none;fill:var(--ui-text);font:600 11px system-ui;paint-order:stroke fill;stroke:var(--ui-surface);stroke-width:4px;stroke-linejoin:round;text-anchor:middle; }
+#connections-panel .connection-edge:is(:hover,:focus,.selected) + .connection-edge-value { display:block; }
+.connection-strength-key { display:inline-flex;align-items:center;gap:4px;margin-left:5px;vertical-align:middle; }
+.connection-strength-key i { display:block;width:15px;height:calc(.8px + var(--key-strength)*.7px);background:var(--accent-text);opacity:calc(.22 + var(--key-strength)*.15);border-radius:2px; }
+#connections-panel .connection-node.batch-selected circle { stroke:var(--accent-text);stroke-width:4;fill:var(--accent-soft); }
+
+#connections-panel .connection-node-popup {
+  position:fixed;z-index:5;width:260px;max-width:calc(100vw - 16px);padding:12px;
+  border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface);color:var(--ui-text);
+  box-shadow:0 6px 24px var(--ui-shadow);pointer-events:auto;font:12px system-ui;isolation:isolate;
+}
+#connections-panel .connection-node-popup[hidden] { display:none!important; }
+#connections-panel .connection-node-popup::after { content:'';position:absolute;left:calc(var(--popup-arrow,130px) - 6px);width:11px;height:11px;transform:rotate(45deg);background:var(--ui-surface);z-index:-1; }
+#connections-panel .connection-node-popup[data-side=above]::after { bottom:-6px;border-right:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border); }
+#connections-panel .connection-node-popup[data-side=below]::after { top:-6px;border-left:1px solid var(--ui-border);border-top:1px solid var(--ui-border); }
+.connection-node-popup header { display:flex;align-items:flex-start;gap:8px; }
+.connection-node-popup header strong { flex:1;overflow-wrap:anywhere;font-size:12px;font-weight:600;line-height:1.5; }
+.connection-node-popup [data-node-action=close] { margin:-5px -4px 0 0;width:24px;height:24px;font-size:18px;border-radius:50%;color:var(--ui-muted);flex-shrink:0; }
+.connection-node-popup p { margin:7px 0 12px;color:var(--ui-muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere; }
+.connection-popup-actions { display:flex;gap:7px;align-items:center; }
+.connection-popup-actions button { flex:1;padding:8px 9px;border:1px solid var(--ui-border);border-radius:7px;background:var(--ui-subtle);font-size:11px; }
+.connection-popup-actions button:first-child { background:var(--accent);color:var(--accent-foreground);border-color:var(--accent); }
+.connection-popup-actions button:disabled { cursor:default;opacity:.55; }
+.connection-node-popup .connection-popup-secondary { margin-top:9px;padding:3px 0;font-size:10px;color:var(--ui-muted); }
+.connection-node-popup [data-node-action=remove]:hover { color:var(--ui-danger); }
 @media(prefers-reduced-motion:reduce) { #connections-panel { transition: none; transform: none!important; } }
 
 /* Creation, discovery and view controls have distinct weights, not one row of identical pills. */
