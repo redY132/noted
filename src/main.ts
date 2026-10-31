@@ -83,7 +83,7 @@ const editorExtensions = () => createEditorExtensions(() => session?.note.presen
 const editingUI = initializeEditingUI({ getEditor: () => editor, getSchema: () => session?.note.presentation.schemaId ?? 'default', error });
 const componentUI = initializeComponentUI({ getEditor: () => editor, getNoteId: () => session?.note.id ?? null, importAsset: (id, file) => api.importAsset(id, file), error });
 const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close()},initialLayout);
-const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:openNote,folder:folderPath,error});
+const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
 const documentSchema = getSchema(editorExtensions());

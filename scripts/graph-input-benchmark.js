@@ -27,9 +27,13 @@ async page => {
   await page.locator('#search').fill('');
   await page.locator('#header-connection-handle button').click();
   await page.waitForFunction(() => document.querySelector('#connection-graph').dataset.layoutState === 'settled');
-  await page.locator('[data-graph-node="10000000-0000-4000-8000-000000000002"]').dispatchEvent('click');
-  for (let attempt=0; attempt<10 && await page.locator('[data-graph-node]').count()<60; attempt++) {
-    await page.locator('[data-selected-action=expand]').click();
+  await page.locator('[data-graph-action=add]').click();
+  const labels=['Seed trials','Watercolour field journal','Architecture notes','Walking routes','Reading journal','Garden plans'];
+  for (let i=22; i<=81 && await page.locator('[data-graph-node]').count()<60; i++) {
+    const id=`10000000-0000-4000-8000-${String(i).padStart(12,'0')}`;
+    if(await page.locator(`[data-graph-node="${id}"]`).count())continue;
+    await page.locator('#connection-query').fill(`${labels[(i-2)%labels.length]} ${i}`);
+    await page.locator(`[data-search-select="${id}"]`).click();
     await page.waitForFunction(() => document.querySelector('#connection-graph').dataset.layoutState === 'settled');
   }
   const nodes=await page.locator('[data-graph-node]').count(), edges=await page.locator('.connection-edge').count();

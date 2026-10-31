@@ -182,3 +182,36 @@
   #connections-panel .connection-selection strong { max-width: 140px; }
 }
 @media(prefers-reduced-motion:reduce) { #connections-panel { transition: none; transform: none!important; } }
+
+/* Creation, discovery and view controls have distinct weights, not one row of identical pills. */
+#connections-panel .connection-toolbar { gap: 14px; }
+#connections-panel .connection-main-actions,
+#connections-panel .connection-view-actions { display:flex; align-items:center; gap:6px; }
+#connections-panel .connection-toolbar button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:34px; }
+#connections-panel .connection-toolbar button svg { flex-shrink:0; }
+#connections-panel .connection-toolbar [data-graph-action=add] { background:var(--accent); color:var(--accent-foreground); border-color:var(--accent); border-radius:9px; padding:8px 13px; font-weight:600; }
+#connections-panel .connection-toolbar [data-graph-action=add]:hover,
+#connections-panel .connection-toolbar [data-graph-action=add][aria-pressed=true] { background:var(--accent); color:var(--accent-foreground); box-shadow:0 0 0 3px var(--accent-soft); }
+#connections-panel .connection-toolbar [data-graph-action=references] { border-radius:9px; }
+#connections-panel .connection-toolbar [data-graph-action=more] { border-color:transparent; background:var(--ui-subtle); color:var(--ui-muted); box-shadow:none; border-radius:9px; }
+#connections-panel .connection-toolbar [data-graph-action=more]:hover { background:var(--ui-hover); color:var(--ui-text); }
+#connections-panel .connection-controls-divider { width:1px; height:22px; background:var(--ui-strong-border); opacity:.55; }
+#connections-panel .connection-view-actions button { width:34px; height:34px; padding:8px; border-radius:50%; color:var(--ui-muted); }
+#connections-panel .connection-view-actions button:hover,
+#connections-panel .connection-view-actions button[aria-pressed=true] { color:var(--ui-text); background:var(--ui-hover); }
+#connections-panel .connection-selection strong { background:var(--ui-surface); border:0; box-shadow:none; font-weight:500; }
+#connections-panel .connection-selection > span { background:var(--ui-subtle); border:0; box-shadow:none; padding:4px 8px; }
+#connections-panel .connection-selection [data-selected-action=connect] { background:var(--accent); color:var(--accent-foreground); border-color:var(--accent); }
+#connections-panel .connection-selection [data-selected-action^=remove]:hover { color:var(--ui-danger); background:var(--ui-danger-surface); }
+#connections-panel .connection-node:hover .connection-node-title,
+#connections-panel .connection-node:focus-visible .connection-node-title { text-decoration:underline; }
+#connections-panel .connection-node[data-note-unavailable] { cursor:default; }
+#connections-panel .connection-entry [data-search-select] { display:inline-flex; padding:5px; flex:0; color:var(--ui-muted); }
+@media(max-width:600px) {
+  #connections-panel .connection-toolbar { gap:8px; flex-wrap:nowrap; }
+  #connections-panel .connection-main-actions { gap:4px; }
+  #connections-panel .connection-toolbar button { font-size:10px; padding:7px; gap:4px; }
+  #connections-panel .connection-view-actions { gap:3px; }
+  #connections-panel .connection-view-actions button { width:30px; height:30px; padding:7px; }
+  #connections-panel .connection-toolbar [data-graph-action=more] svg { display:none; }
+}

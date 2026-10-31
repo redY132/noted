@@ -13,7 +13,7 @@ async page => {
   await page.waitForFunction(()=>document.querySelectorAll('.connection-node.suggested').length===5);
   for(const count of [10,15,20]){await page.locator('[data-graph-action=more]').click();await page.waitForFunction(count=>document.querySelectorAll('.connection-node.suggested').length===count,count);}
   const candidate=await page.locator('.connection-node.suggested').first().getAttribute('data-graph-node');
-  await page.locator(`[data-graph-node="${candidate}"]`).dispatchEvent('click');
+  await page.locator(`[data-graph-node="${candidate}"]`).dispatchEvent('pointerover');
   await page.locator('[data-graph-action=more]').click();
   await page.waitForFunction(()=>document.querySelectorAll('.connection-node.suggested').length<20);
   assert(await page.locator('.connection-node.suggested').count()<=20,'Suggestion cap exceeded');
@@ -38,19 +38,15 @@ async page => {
   assert(await page.locator('#connection-references').evaluate(el=>el.hidden),'Settings overlapped references');
   assert(await page.locator('#semantic-enabled').isVisible(),'Semantic controls lost');
   await page.locator('[data-graph-action=settings]').click();
-  await page.locator(`[data-graph-node="${id(1)}"]`).dispatchEvent('click');
-  await page.locator('[data-selected-action=expand]').click();
+  await page.locator('[data-graph-action=list]').click();
+  await page.locator('[data-connected-more]').click();
   await page.waitForFunction(()=>document.querySelector('[data-graph-node][data-note-unavailable]'));
-  await page.locator('[data-graph-node][data-note-unavailable]').dispatchEvent('click');
-  assert(await page.locator('[data-selected-action=open]').isDisabled()&&await page.locator('[data-selected-action=expand]').isDisabled(),'Missing target offered navigation');
+  await page.locator('[data-graph-node][data-note-unavailable]').dispatchEvent('pointerover');
+  assert(await page.locator('[data-selected-action=open],[data-selected-action=expand],[data-selected-action=focus]').count()===0,'Obsolete controls remain');
   assert(await page.locator('[data-selected-action=remove]').isVisible(),'Missing connection cannot be removed');
-  for(const branch of [2,3]){
-    await page.locator(`[data-graph-node="${id(branch)}"]`).dispatchEvent('click');
-    for(let i=0;i<3;i++){await page.locator('[data-selected-action=expand]').click();await page.waitForFunction(()=>document.querySelector('#connection-graph').dataset.layoutState==='settled');}
-  }
   assert(await page.locator('[data-graph-node]').count()<=60,'Node cap exceeded');
   assert(await page.locator('.connection-edge').count()<=180,'Edge cap exceeded');
-  assert(await page.locator(`[data-graph-node="${id(1)}"]`).count()===1&&await page.locator(`[data-graph-node="${id(3)}"]`).count()===1,'Source or selected branch was pruned');
+  await page.locator('[data-graph-action=list]').click();
   const view=await page.locator('#connection-viewport').getAttribute('transform');
   await page.locator('#connection-graph').hover();await page.mouse.wheel(0,-200);
   assert(await page.locator('#connection-viewport').getAttribute('transform')!==view,'Zoom did not change camera');
@@ -58,5 +54,5 @@ async page => {
   assert(await page.getByRole('textbox',{name:'Note content',exact:true}).innerText()===original,'Graph changed document content');
   await page.locator('#connections-close').click();
   assert(await page.locator('#connection-graph').getAttribute('data-layout-state')==='stopped','Closed graph left simulation running');
-  return{passed:true,suggestionPaging:true,dismissRestore:true,scopedBodySearch:true,references:true,missingNotes:true,boundedExpansion:true,panZoom:true,documentPreserved:true,workerStopped:true};
+  return{passed:true,suggestionPaging:true,dismissRestore:true,scopedBodySearch:true,references:true,missingNotes:true,connectionPagination:true,panZoom:true,documentPreserved:true,workerStopped:true};
 }

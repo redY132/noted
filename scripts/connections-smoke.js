@@ -32,7 +32,7 @@ async page => {
     assert(await page.locator('#connection-picker-results').isVisible(),'Multi-connect results closed');
   }
   await page.locator('[data-graph-action=reset]').click();
-  await page.locator(`[data-graph-node="${ids[0]}"]`).dispatchEvent('click');
+  await page.locator(`[data-graph-node="${ids[0]}"]`).dispatchEvent('pointerover');
   assert((await page.locator('#note-title').inputValue()).startsWith('Gamma'),'Selection navigated');
   await page.locator('[data-selected-action=remove]').click();
   await page.waitForFunction(()=>document.querySelector('#connection-toast').textContent.includes('removed'));
@@ -68,5 +68,9 @@ async page => {
   await page.waitForFunction(()=>document.querySelector('#note-title')?.value.startsWith('Gamma'));
   await page.locator('#header-connection-handle button').click();
   await page.waitForFunction(source=>[...document.querySelectorAll('[data-graph-edge]')].filter(el=>JSON.parse(el.dataset.graphEdge).includes(source)).length===2,ids[2]);
-  return {passed:true,multiConnect:true,selection:true,strengthUndo:true,cardSource:true,focusMode:true,keyboard:true,dragDuplicate:true,persistence:true};
+  await page.locator(`[data-graph-node="${ids[0]}"] circle`).click();
+  await page.waitForFunction(()=>document.querySelector('#note-title')?.value.startsWith('Alpha'));
+  await page.waitForFunction(()=>document.querySelector('#connection-source-title')?.textContent.startsWith('From: Alpha'));
+  assert(await page.locator('[data-selected-action=open],[data-selected-action=expand],[data-selected-action=focus]').count()===0,'Obsolete node actions remain');
+  return {passed:true,clickNavigation:true,multiConnect:true,selection:true,strengthUndo:true,cardSource:true,focusMode:true,keyboard:true,dragDuplicate:true,persistence:true};
 }
