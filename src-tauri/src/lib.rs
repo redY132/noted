@@ -143,7 +143,10 @@ mod desktop {
             s.set_relation_strength(&a, &b, connected, dismissed, expected_revision, strength)
         })
         .await;
-        if result.as_ref().is_ok_and(|m| m.changed) {
+        if result
+            .as_ref()
+            .is_ok_and(|m| m.previous.connected != m.state.connected)
+        {
             semantic.invalidate_scope();
         }
         result
@@ -152,8 +155,12 @@ mod desktop {
     pub async fn connection_edges(
         state: State<'_, SharedGraph>,
         note_ids: Vec<String>,
+        source_id: Option<String>,
     ) -> Result<Vec<crate::relations::PairState>, String> {
-        read_work(state, move |s| s.connection_edges(note_ids)).await
+        read_work(state, move |s| {
+            s.connection_edges_for(note_ids, source_id.as_deref())
+        })
+        .await
     }
     #[tauri::command]
     pub async fn connection_search(
@@ -307,13 +314,11 @@ mod desktop {
     #[tauri::command]
     pub async fn restore_dismissed(
         state: State<'_, SharedStore>,
-        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
         note_id: String,
     ) -> Result<usize, String> {
         let result = work(state, move |s| s.restore_dismissed(&note_id)).await;
-        if result.as_ref().is_ok_and(|n| *n > 0) {
-            semantic.invalidate_scope();
-        }
+        // Dismissals affect suggestion filtering, not the confirmed membership
+        // used by typed search. Keep expensive scoped ANN caches reusable.
         result
     }
 

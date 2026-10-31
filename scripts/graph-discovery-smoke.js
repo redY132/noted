@@ -1,0 +1,62 @@
+async page => {
+  // Run only with the disposable 500-note create-graph-fixture.mjs workspace.
+  const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+  const assert=(value,message)=>{if(!value)throw Error(message);};
+  await page.setViewportSize({width:1200,height:900});await page.emulateMedia({reducedMotion:'reduce'});
+  if(!await page.locator('#connections-panel').evaluate(el=>el.hidden))await page.locator('#connections-close').click();
+  if(await page.locator('[data-panel-toggle=notes]').getAttribute('aria-expanded')!=='true')await page.locator('[data-panel-toggle=notes]').click();
+  await page.locator('#search').fill('Orchard notebook');await page.locator(`[data-note="${id(1)}"]`).click();
+  await page.waitForFunction(()=>document.querySelector('#note-title')?.value==='Orchard notebook');
+  await page.locator('#search').fill('');
+  const original=await page.getByRole('textbox',{name:'Note content',exact:true}).innerText();
+  await page.locator('#header-connection-handle button').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.connection-node.suggested').length===5);
+  for(const count of [10,15,20]){await page.locator('[data-graph-action=more]').click();await page.waitForFunction(count=>document.querySelectorAll('.connection-node.suggested').length===count,count);}
+  const candidate=await page.locator('.connection-node.suggested').first().getAttribute('data-graph-node');
+  await page.locator(`[data-graph-node="${candidate}"]`).dispatchEvent('click');
+  await page.locator('[data-graph-action=more]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.connection-node.suggested').length<20);
+  assert(await page.locator('.connection-node.suggested').count()<=20,'Suggestion cap exceeded');
+  await page.locator('[data-selected-action=dismiss]').click();
+  await page.waitForFunction(()=>document.querySelector('#connection-announcement').textContent==='Suggestion dismissed');
+  await page.locator('#connections-close').click();await page.locator('#header-connection-handle button').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.connection-node.suggested').length===5);
+  assert(await page.locator(`[data-graph-node="${candidate}"]`).count()===0,'Dismissal was not retained');
+  await page.locator('[data-graph-action=settings]').click();await page.locator('#connections-restore').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.connection-node.suggested').length>=5);
+  await page.locator('[data-graph-action=settings]').click();
+  await page.locator('#connection-query').fill('palimpsest');
+  await page.waitForFunction(id=>document.querySelector(`[data-search-select="${id}"]`),id(2));
+  assert(await page.locator('#connection-picker-results [data-picker-connect]:not(:disabled)').count()===0,'Connected search included an unconnected note');
+  await page.locator(`[data-search-select="${id(2)}"]`).click();
+  assert(await page.locator('#connection-picker-results').evaluate(el=>el.hidden),'Selecting result hid the graph behind results');
+  assert(await page.locator(`[data-graph-node="${id(2)}"]`).getAttribute('aria-pressed')==='true','Search selection missing');
+  await page.locator('[data-graph-action=references]').click();
+  await page.waitForFunction(()=>document.querySelector('#connection-reference-results').textContent.includes('Watercolour'));
+  assert((await page.locator('#connection-reference-results').innerText()).includes('outgoing'),'Outgoing reference provenance missing');
+  await page.locator('[data-graph-action=settings]').click();
+  assert(await page.locator('#connection-references').evaluate(el=>el.hidden),'Settings overlapped references');
+  assert(await page.locator('#semantic-enabled').isVisible(),'Semantic controls lost');
+  await page.locator('[data-graph-action=settings]').click();
+  await page.locator(`[data-graph-node="${id(1)}"]`).dispatchEvent('click');
+  await page.locator('[data-selected-action=expand]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-graph-node][data-note-unavailable]'));
+  await page.locator('[data-graph-node][data-note-unavailable]').dispatchEvent('click');
+  assert(await page.locator('[data-selected-action=open]').isDisabled()&&await page.locator('[data-selected-action=expand]').isDisabled(),'Missing target offered navigation');
+  assert(await page.locator('[data-selected-action=remove]').isVisible(),'Missing connection cannot be removed');
+  for(const branch of [2,3]){
+    await page.locator(`[data-graph-node="${id(branch)}"]`).dispatchEvent('click');
+    for(let i=0;i<3;i++){await page.locator('[data-selected-action=expand]').click();await page.waitForFunction(()=>document.querySelector('#connection-graph').dataset.layoutState==='settled');}
+  }
+  assert(await page.locator('[data-graph-node]').count()<=60,'Node cap exceeded');
+  assert(await page.locator('.connection-edge').count()<=180,'Edge cap exceeded');
+  assert(await page.locator(`[data-graph-node="${id(1)}"]`).count()===1&&await page.locator(`[data-graph-node="${id(3)}"]`).count()===1,'Source or selected branch was pruned');
+  const view=await page.locator('#connection-viewport').getAttribute('transform');
+  await page.locator('#connection-graph').hover();await page.mouse.wheel(0,-200);
+  assert(await page.locator('#connection-viewport').getAttribute('transform')!==view,'Zoom did not change camera');
+  await page.locator('[data-graph-action=reset]').click();
+  assert(await page.getByRole('textbox',{name:'Note content',exact:true}).innerText()===original,'Graph changed document content');
+  await page.locator('#connections-close').click();
+  assert(await page.locator('#connection-graph').getAttribute('data-layout-state')==='stopped','Closed graph left simulation running');
+  return{passed:true,suggestionPaging:true,dismissRestore:true,scopedBodySearch:true,references:true,missingNotes:true,boundedExpansion:true,panZoom:true,documentPreserved:true,workerStopped:true};
+}

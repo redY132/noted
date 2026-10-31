@@ -45,14 +45,14 @@ async page => {
     await field.fill(value); await field.press('Tab');
   }
   const position = await page.locator('.note-panel').evaluate(el => ({x:el.dataset.x,y:el.dataset.y,left:el.style.left,top:el.style.top}));
-  for (const name of ['navigation','notes','details','footer','connections']) await panel(name,true);
+  for (const name of ['navigation','notes','details','footer']) await panel(name,true);
   await page.locator('#appearance-toggle').click();
   await page.keyboard.press('F8');
   assert(!await visible('#appearance-popover'), 'Focus mode left popover open');
   for (const id of ['navigation-panel','notes-panel','formatting-tools','layout-tools','note-details','note-footer','connections-panel']) assert(!await visible('#'+id), 'Focus mode left panel open: '+id);
   assert(await page.locator('.workspace').evaluate(el => Math.round(el.getBoundingClientRect().width)) === (await page.viewportSize()).width, 'Editor did not reclaim viewport');
   await page.keyboard.press('F8');
-  for (const id of ['navigation-panel','notes-panel','layout-tools','note-details','note-footer','connections-panel']) assert(await visible('#'+id), 'Focus mode did not restore: '+id);
+  for (const id of ['navigation-panel','notes-panel','layout-tools','note-details','note-footer']) assert(await visible('#'+id), 'Focus mode did not restore: '+id);
   assert(await page.evaluate(() => window.__shellEditor === document.querySelector('#editor .tiptap')), 'Editor recreated');
   assert(JSON.stringify(position) === JSON.stringify(await page.locator('.note-panel').evaluate(el => ({x:el.dataset.x,y:el.dataset.y,left:el.style.left,top:el.style.top}))), 'Free coordinates changed');
   assert((await content.innerText()).includes('Words and formatting stay intact.'), 'Words changed');
@@ -74,7 +74,7 @@ async page => {
   await page.waitForFunction(() => document.querySelector('#editor .tiptap'));
   assert(await page.locator('html').getAttribute('data-theme') === 'dark','Theme did not persist');
   assert(await page.locator('html').evaluate(el => el.style.getPropertyValue('--accent')) === '#f9db35','Accent did not persist');
-  assert(await visible('#navigation-panel') && await visible('#connections-panel') && !await visible('#formatting-tools'),'Layout did not persist');
+  assert(await visible('#navigation-panel') && !await visible('#connections-panel') && !await visible('#formatting-tools'),'Layout did not persist');
   assert((await content.innerText()).includes('Words and formatting stay intact.'),'Reload lost words');
   await page.locator('#appearance-toggle').click();
   await page.locator('#appearance-mode').selectOption('system');
@@ -103,12 +103,11 @@ async page => {
       await page.locator('#appearance-toggle').click();
       await page.locator('#appearance-mode').selectOption(mode);
       await page.keyboard.press('Escape');
-      await panel('connections',true);
-      if(width>=1440) assert(await page.locator('#connections-panel').evaluate(el=>getComputedStyle(el).position)!=='fixed','Wide panel did not dock');
-      else assert(await page.locator('#connections-panel').evaluate(el=>getComputedStyle(el).position)==='fixed','Narrow panel did not overlay');
+      await page.locator('#header-connection-handle button').click();
+      assert(await page.locator('#connections-panel').evaluate(el=>getComputedStyle(el).position)==='fixed','Graph did not float');
       await settle();
       await page.screenshot({path:`output/playwright/shell-${width}-${mode}.png`});
-      await panel('connections',false);
+      await page.locator('#connections-close').click();
     }
   }
   await page.emulateMedia({reducedMotion:'reduce'});

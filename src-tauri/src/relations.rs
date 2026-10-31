@@ -439,6 +439,13 @@ impl Store {
     }
     /// The graph is deliberately bounded independently of a note's degree.
     pub fn connection_edges(&self, note_ids: Vec<String>) -> Result<Vec<PairState>> {
+        self.connection_edges_for(note_ids, None)
+    }
+    pub fn connection_edges_for(
+        &self,
+        note_ids: Vec<String>,
+        source_id: Option<&str>,
+    ) -> Result<Vec<PairState>> {
         if note_ids.len() > 60 {
             return Err("The graph supports at most 60 notes".into());
         }
@@ -449,10 +456,16 @@ impl Store {
                 ids.insert(id);
             }
         }
+        if let Some(source) = source_id {
+            crate::store::valid_id(source)?;
+            if !ids.contains(source) {
+                return Err("Graph source must be a visible existing note".into());
+            }
+        }
         let ids = serde_json::to_string(&ids).map_err(err)?;
-        let mut stmt = self.relations.prepare("SELECT a,b,connected,dismissed,revision,strength FROM pairs WHERE connected=1 AND a IN (SELECT value FROM json_each(?1)) AND b IN (SELECT value FROM json_each(?1)) ORDER BY strength DESC,a,b LIMIT 180").map_err(err)?;
+        let mut stmt = self.relations.prepare("SELECT a,b,connected,dismissed,revision,strength FROM pairs WHERE connected=1 AND a IN (SELECT value FROM json_each(?1)) AND b IN (SELECT value FROM json_each(?1)) ORDER BY CASE WHEN a=?2 OR b=?2 THEN 0 ELSE 1 END,strength DESC,a,b LIMIT 180").map_err(err)?;
         let rows = stmt
-            .query_map([ids], |r| {
+            .query_map(params![ids, source_id.unwrap_or("")], |r| {
                 Ok(PairState {
                     a: r.get(0)?,
                     b: r.get(1)?,
@@ -1405,6 +1418,46 @@ mod tests {
         assert_eq!(
             s.list_references(&b.id, 0, 40).unwrap().items[0].incoming,
             1
+        );
+    }
+    #[test]
+    fn dense_graph_prioritizes_source_pairs_before_the_edge_cap() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let notes = (0..25)
+            .map(|i| store.create_note(format!("Node {i}"), None).unwrap())
+            .collect::<Vec<_>>();
+        for i in 1..notes.len() {
+            store
+                .set_relation_strength(&notes[0].id, &notes[i].id, Some(true), None, None, Some(1))
+                .unwrap();
+            for j in i + 1..notes.len() {
+                store
+                    .set_relation_strength(
+                        &notes[i].id,
+                        &notes[j].id,
+                        Some(true),
+                        None,
+                        None,
+                        Some(5),
+                    )
+                    .unwrap();
+            }
+        }
+        let ids = notes.iter().map(|n| n.id.clone()).collect::<Vec<_>>();
+        let unscoped = store.connection_edges(ids.clone()).unwrap();
+        assert_eq!(unscoped.len(), 180);
+        assert!(!unscoped
+            .iter()
+            .any(|p| p.a == notes[0].id || p.b == notes[0].id));
+        let scoped = store.connection_edges_for(ids, Some(&notes[0].id)).unwrap();
+        assert_eq!(scoped.len(), 180);
+        assert_eq!(
+            scoped
+                .iter()
+                .filter(|p| p.a == notes[0].id || p.b == notes[0].id)
+                .count(),
+            24
         );
     }
     #[test]

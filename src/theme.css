@@ -173,4 +173,5 @@ dialog form>label { color:var(--ui-muted); }
 .connection-toast { background:var(--ui-text); color:var(--ui-surface); box-shadow:0 4px 16px var(--ui-shadow); }
 .connection-toast button { color:inherit; }
 .error-banner { background:var(--ui-danger-surface); border-color:var(--ui-danger); color:var(--ui-danger); }
+.error-banner:not([hidden]) { position:relative; z-index:70; }
 .error-banner button { color:inherit; border-color:var(--ui-danger); }

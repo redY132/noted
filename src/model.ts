@@ -14,9 +14,11 @@ export interface WorkspaceStatus { path: string; warnings: string[]; indexing?: 
 export interface ImageAsset { id: string; mime: string; byteLength: number; width: number; height: number }
 export interface ImageAssetData extends ImageAsset { bytes: number[] }
 export interface Page<T> { items: T[]; nextCursor: number | null; total: number }
-export interface PairState { a: string; b: string; connected: boolean; dismissed: boolean; revision: number }
+export interface PairState { a: string; b: string; connected: boolean; dismissed: boolean; revision: number; strength: number }
 export interface PairMutation { state: PairState; previous: PairState; changed: boolean }
 export interface PickerNote { note: NoteSummary; connected: boolean }
+export type ConnectionSearchScope = 'connected' | 'workspace';
+export interface ConnectionSearchPage extends Page<PickerNote> { semanticPending: boolean; semanticAvailable: boolean; generation: number }
 export interface ConnectionEntry { noteId: string; note: NoteSummary | null; state: PairState }
 export interface ReferenceEntry { noteId: string; note: NoteSummary | null; outgoing: number; incoming: number }
 export interface RelatedNote { note: NoteSummary; reasons: string[]; score: number }

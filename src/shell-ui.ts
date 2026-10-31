@@ -1,38 +1,38 @@
 import { ACCENT_SWATCHES } from './appearance.ts';
-export type Panel = 'navigation'|'notes'|'formatting'|'components'|'details'|'footer'|'connections';
-export const layoutKey='noted-layout-v1';
-export const defaultPanels:Record<Panel,boolean>={navigation:false,notes:true,formatting:false,components:false,details:false,footer:false,connections:false};
+export type Panel = 'navigation'|'notes'|'formatting'|'components'|'details'|'footer';
+export const layoutKey='noted-layout-v2';
+export const defaultPanels:Record<Panel,boolean>={navigation:false,notes:true,formatting:false,components:false,details:false,footer:false};
 export function applyLayoutPreferences(panels:Record<Panel,boolean>,focus=false){
+  delete document.documentElement.dataset.panelConnections;
   for(const p of Object.keys(panels) as Panel[])document.documentElement.dataset[`panel${p[0].toUpperCase()+p.slice(1)}`]=String(!focus&&panels[p]);
 }
 export function readLayout(storage?:Pick<Storage,'getItem'>):Record<Panel,boolean>{
-  try{const value=JSON.parse((storage??localStorage).getItem(layoutKey)??'null');if(value?.version!==1)return{...defaultPanels};return Object.fromEntries(Object.entries(defaultPanels).map(([key,fallback])=>[key,typeof value.panels?.[key]==='boolean'?value.panels[key]:fallback])) as Record<Panel,boolean>;}catch{return{...defaultPanels};}
+  try{const prefs=storage??localStorage;const value=JSON.parse(prefs.getItem(layoutKey)??prefs.getItem('noted-layout-v1')??'null');if(value?.version!==1&&value?.version!==2)return{...defaultPanels};return Object.fromEntries(Object.entries(defaultPanels).map(([key,fallback])=>[key,typeof value.panels?.[key]==='boolean'?value.panels[key]:fallback])) as Record<Panel,boolean>;}catch{return{...defaultPanels};}
 }
 const icons:Record<string,string>={navigation:'<path d="M4 4h16v16H4zM9 4v16"/>',notes:'<path d="M4 4h16v16H4zM13 4v16M7 8h2M7 12h2M7 16h2"/>',formatting:'<path d="M5 5h14M12 5v14M8 19h8"/>',view:'<path d="M4 5h16v14H4zM4 9h16"/>',appearance:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/>',connections:'<path d="m9 14 6-4M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm8 8a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>'};
 const icon=(name:string)=>`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${icons[name]}</svg>`;
 const toggle=(panel:Panel,label:string)=>`<button type="button" class="shell-icon" data-panel-toggle="${panel}" aria-label="${label}" title="${label}" aria-expanded="false">${icon(panel)}</button>`;
-export const shellTopbar=`<header class="shell-topbar"><div class="shell-controls">${toggle('navigation','Toggle folder navigation')}${toggle('notes','Toggle note list')}${toggle('formatting','Toggle formatting')}<button type="button" class="shell-icon" id="view-toggle" aria-label="View options" title="View options" aria-expanded="false" aria-controls="view-popover">${icon('view')}</button><button type="button" class="shell-icon" id="appearance-toggle" aria-label="Appearance" title="Appearance" aria-expanded="false" aria-controls="appearance-popover">${icon('appearance')}</button></div><span id="breadcrumb">Your workspace</span><div class="shell-status"><span id="preview-badge" hidden>Preview</span><span id="header-connection-handle"></span><button type="button" id="connections-toggle" class="shell-icon" aria-label="Toggle connections" title="Toggle connections" aria-expanded="false" aria-controls="connections-panel">${icon('connections')}</button><span id="save-state" role="status">Ready</span></div></header>`;
-const names:Record<Panel,string>={navigation:'Folder navigation',notes:'Note list',formatting:'Text formatting',components:'Layout tools',details:'Note details',footer:'Status footer',connections:'Connections'};
+export const shellTopbar=`<header class="shell-topbar"><div class="shell-controls">${toggle('navigation','Toggle folder navigation')}${toggle('notes','Toggle note list')}${toggle('formatting','Toggle formatting')}<button type="button" class="shell-icon" id="view-toggle" aria-label="View options" title="View options" aria-expanded="false" aria-controls="view-popover">${icon('view')}</button><button type="button" class="shell-icon" id="appearance-toggle" aria-label="Appearance" title="Appearance" aria-expanded="false" aria-controls="appearance-popover">${icon('appearance')}</button></div><span id="breadcrumb">Your workspace</span><div class="shell-status"><span id="preview-badge" hidden>Preview</span><span id="header-connection-handle"></span><span id="save-state" role="status">Ready</span></div></header>`;
+const names:Record<Panel,string>={navigation:'Folder navigation',notes:'Note list',formatting:'Text formatting',components:'Layout tools',details:'Note details',footer:'Status footer'};
 export const shellPopovers=`<section id="view-popover" class="shell-popover" aria-label="View options" hidden><h2>View</h2>${Object.entries(names).map(([key,label])=>`<label><input type="checkbox" data-panel-choice="${key}"> ${label}</label>`).join('')}<button type="button" id="focus-mode" aria-pressed="false">Focus mode <kbd>F8</kbd></button><button type="button" id="shell-new-note">New note <kbd>Ctrl N</kbd></button><button type="button" id="shell-workspace">Workspace details</button><button type="button" id="reset-layout">Reset layout</button></section><section id="appearance-popover" class="shell-popover" aria-label="Appearance" hidden><h2>Appearance</h2><label>Color scheme<select id="appearance-mode" aria-label="Color scheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><div class="accent-swatches">${ACCENT_SWATCHES.map(s=>`<button type="button" data-accent="${s.color}" style="--swatch:${s.color}" aria-label="${s.name} accent" title="${s.name}"></button>`).join('')}</div><label>Custom accent<input type="color" id="appearance-accent" aria-label="Custom accent color"></label><button type="button" id="reset-appearance">Reset appearance</button></section>`;
 type Appearance={get():{mode:'system'|'light'|'dark';accent:string;resolvedTheme:string};setMode(mode:'system'|'light'|'dark'):void;setAccent(color:string):void;reset():void;subscribe(fn:(state:{mode:'system'|'light'|'dark';accent:string;resolvedTheme:string})=>void):()=>void};
-export function initializeShell(options:{appearance:Appearance;getEditor:()=>{view:{focus():void;dom:HTMLElement}}|null;newNote:()=>void;workspace:()=>void},initial=readLayout()){
-  let panels={...initial},focus=false;const listeners=new Set<()=>void>();
+export function initializeShell(options:{appearance:Appearance;getEditor:()=>{view:{focus():void;dom:HTMLElement}}|null;newNote:()=>void;workspace:()=>void;closeTransient?:()=>void},initial=readLayout()){
+  let panels={...initial},focus=false;
   const $=<T extends HTMLElement>(s:string)=>document.querySelector<T>(s)!;
-  const targets:Record<Panel,string[]>={navigation:['#navigation-panel'],notes:['#notes-panel'],formatting:['#formatting-tools'],components:['#layout-tools'],details:['#note-details','#note-kicker'],footer:['#note-footer'],connections:['#connections-panel']};
+  const targets:Record<Panel,string[]>={navigation:['#navigation-panel'],notes:['#notes-panel'],formatting:['#formatting-tools'],components:['#layout-tools'],details:['#note-details','#note-kicker'],footer:['#note-footer']};
   const effective=(p:Panel)=>!focus&&panels[p];
-  const persist=()=>{try{localStorage.setItem(layoutKey,JSON.stringify({version:1,panels}));}catch{}};
+  const persist=()=>{try{localStorage.setItem(layoutKey,JSON.stringify({version:2,panels}));}catch{}};
   function apply(){
     applyLayoutPreferences(panels,focus);
+    if(focus)options.closeTransient?.();
     for(const p of Object.keys(panels) as Panel[]){
       const open=effective(p);
       for(const selector of targets[p]){const el=$(selector);if(el){if(!open&&el.contains(document.activeElement))options.getEditor()?.view.focus();el.inert=!open;el.hidden=!open;}}
       for(const b of document.querySelectorAll<HTMLButtonElement>(`[data-panel-toggle="${p}"]`)){b.setAttribute('aria-expanded',String(open));b.setAttribute('aria-controls',targets[p][0].slice(1));}
       const checkbox=$<HTMLInputElement>(`[data-panel-choice="${p}"]`);if(checkbox)checkbox.checked=open;
     }
-    $('#app').classList.toggle('connections-visible',effective('connections'));
-    $('#connections-toggle').setAttribute('aria-expanded',String(effective('connections')));
+    $('#app').classList.remove('connections-visible');
     $('#focus-mode').setAttribute('aria-pressed',String(focus));$('#focus-mode').firstChild!.textContent=focus?'Exit focus mode ':'Focus mode ';
-    for(const listener of listeners)listener();
     window.dispatchEvent(new Event('resize'));
   }
   function setPanel(p:Panel,open:boolean){if(focus){focus=false;}panels[p]=open;persist();apply();}
@@ -53,5 +53,5 @@ export function initializeShell(options:{appearance:Appearance;getEditor:()=>{vi
   for(const b of document.querySelectorAll<HTMLButtonElement>('[data-accent]'))b.onclick=()=>options.appearance.setAccent(b.dataset.accent!);
   $('#reset-appearance').onclick=()=>options.appearance.reset();
   apply();
-  return{setPanel,isOpen:effective,getPanels:()=>({...panels}),isFocus:()=>focus,connections:{isOpen:()=>effective('connections'),setOpen:(open:boolean)=>setPanel('connections',open),subscribe:(fn:()=>void)=>{listeners.add(fn);return()=>listeners.delete(fn);}}};
+  return{setPanel,isOpen:effective,getPanels:()=>({...panels}),isFocus:()=>focus};
 }

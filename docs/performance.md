@@ -1,5 +1,9 @@
 # Performance validation
 
+## Unified graph verification — October 30, 2026
+
+Current graph behavior, reproducible checks and 500/5,000/50,000-note measurements are in [floating connections graph](connections-graph.md). The graph is now a transparent full-screen scene, replacing the historical dock/drawer described below. Frontend verification now passes 106 tests and native core verification passes 32. Search and semantic warm targets were met at 5,000 notes on development hardware, but 50,000-note broad search failed its gate. Initial full-graph typing stalls led to typing-priority scheduling; the final run recorded a 7.7 ms p95 input-to-next-frame proxy with 60 nodes/180 edges and a requested background rebuild. Cold semantic scope construction remains slow at high degree. These results do not certify the reference laptop; semantic discovery remains experimental.
+
 ## Minimal shell and appearance verification — October 30, 2026
 
 The minimal shell pass adds no dependencies or continuous shell animation. After motion feedback, panel layout transitions last 480 ms with gradual acceleration and a soft finish; menus/dialogs use 360 ms and coordinated fades. System reduced motion bypasses them. Input and note transactions remain immediate; hiding panels leaves the same editor/history mounted. A shared surface observer updates free-placement scroll bounds as the editor width changes.

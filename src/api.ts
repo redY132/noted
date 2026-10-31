@@ -3,7 +3,7 @@ import type { Folder, ImageAsset, ImageAssetData, Note, NoteSummary, WorkspaceSt
 import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets';
 import { registerImageSource, unregisterImageSource } from './component-motion';
 import { previewRelationOperation, type PreviewRelations } from './relations-preview';
-import type { Page, PairState, PairMutation, PickerNote, ConnectionEntry, ReferenceEntry, RelatedNote } from './model';
+import type { Page, PairState, PairMutation, PickerNote, ConnectionEntry, ReferenceEntry, RelatedNote, ConnectionSearchPage, ConnectionSearchScope } from './model';
 
 export const browserPreview = !isTauri();
 const key = 'noted-browser-preview-v1';
@@ -25,7 +25,7 @@ function plainText(value: unknown): string {
 
 async function preview<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
   const store = read();
-  if (['set_relation','restore_dismissed','list_notes_page','picker_notes','list_connections','list_references','related_notes','export_relations'].includes(command)) {
+  if (['set_relation','restore_dismissed','list_notes_page','picker_notes','list_connections','list_references','related_notes','export_relations','connection_edges','connection_search'].includes(command)) {
     const relations = JSON.parse(localStorage.getItem('noted-preview-relations-v1') ?? '{}') as PreviewRelations;
     const result = previewRelationOperation(relations,command,args,store.notes,store.folders);
     if(command==='set_relation'||command==='restore_dismissed')localStorage.setItem('noted-preview-relations-v1',JSON.stringify(relations));
@@ -138,13 +138,15 @@ async function assetUrl(noteId: string, assetId: string): Promise<string> {
 }
 function releaseAssetUrl(url: string) { unregisterImageSource(url); URL.revokeObjectURL(url); }
 export const api = {
-  exportRelations: () => call<{formatVersion:1;pairs:PairState[]}>('export_relations'),
+  exportRelations: () => call<{formatVersion:2;pairs:PairState[]}>('export_relations'),
   pageNotes: (query = '', folderId?: string, cursor?: number | null, limit = 80) => call<Page<NoteSummary>>('list_notes_page', {query,folderId,cursor,limit}),
   picker: (sourceId: string, query = '', cursor?: number | null, limit = 40) => call<Page<PickerNote>>('picker_notes', {sourceId,query,cursor,limit}),
   connections: (noteId: string, cursor?: number | null, limit = 40) => call<Page<ConnectionEntry>>('list_connections',{noteId,cursor,limit}),
   references: (noteId: string, cursor?: number | null, limit = 40) => call<Page<ReferenceEntry>>('list_references',{noteId,cursor,limit}),
   related: (noteId: string, cursor?: number | null, limit = 8) => call<Page<RelatedNote>>('related_notes',{noteId,cursor,limit}),
-  setRelation: (a:string,b:string,connected?:boolean,dismissed?:boolean,expectedRevision?:number) => call<PairMutation>('set_relation',{a,b,connected,dismissed,expectedRevision}),
+  edges: (noteIds:string[],sourceId?:string) => call<PairState[]>('connection_edges',{noteIds,sourceId}),
+  connectionSearch: (sourceId:string,query:string,scope:ConnectionSearchScope,cursor?:number|null,limit=20,semantic=false) => call<ConnectionSearchPage>('connection_search',{sourceId,query,scope,cursor,limit,semantic}),
+  setRelation: (a:string,b:string,connected?:boolean,dismissed?:boolean,expectedRevision?:number,strength?:number) => call<PairMutation>('set_relation',{a,b,connected,dismissed,expectedRevision,strength}),
   restoreDismissed: (noteId:string) => call<number>('restore_dismissed',{noteId}),
   importAsset,
   assetUrl,
