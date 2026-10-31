@@ -142,14 +142,16 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
     };
     retractionFrame=requestAnimationFrame(step);
   }
-  function finishDrag(cancel=false) {
+  function finishDrag(mode: 'drop'|'cancel'|'leave'='drop') {
+    const cancel=mode==='cancel';
     if(cancel)stopRetraction();
     const drag=dragging; if(!drag) return;
     dragging=null; cancelAnimationFrame(drag.frame);
     if(drag.active&&!cancel)retract(drag);else stopRetraction();
     drag.target?.classList.remove('connection-drop-target'); document.body.classList.remove('connection-dragging');
     try {drag.handle.releasePointerCapture?.(drag.id);} catch { /* element may have rerendered */ }
-    if(drag.active) {suppressedDragClick={handle:drag.handle,until:Date.now()+400}; const id=targetNote(document.elementFromPoint(drag.x,drag.y));if(!cancel&&id&&id!==drag.source)void mutate(drag.source,id,true);}
+    if(drag.active||mode==='leave')suppressedDragClick={handle:drag.handle,until:mode==='leave'?Infinity:Date.now()+400};
+    if(drag.active&&mode==='drop'){const id=targetNote(document.elementFromPoint(drag.x,drag.y));if(id&&id!==drag.source)void mutate(drag.source,id,true);}
   }
   function frame(now=performance.now()) {
     const drag=dragging; if(!drag?.active) return;
@@ -174,20 +176,23 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
     if(!handle||event.button!==0||!handle.dataset.connectSource)return;
     event.preventDefault(); event.stopPropagation();
     stopRetraction();
+    suppressedDragClick=null;
     dragging={id:event.pointerId,source:handle.dataset.connectSource,title:handle.dataset.sourceTitle||'Untitled',startX:event.clientX,startY:event.clientY,x:event.clientX,y:event.clientY,handle,active:false,target:null,frame:0,motion:createRayMotion({x:event.clientX,y:event.clientY}),time:performance.now()};
     handle.setPointerCapture?.(event.pointerId);
   },true);
   document.addEventListener('pointermove',event=>{
     const drag=dragging;if(!drag||event.pointerId!==drag.id)return;
     drag.x=event.clientX;drag.y=event.clientY;
-    if(drag.x<0||drag.y<0||drag.x>innerWidth||drag.y>innerHeight){finishDrag(true);return;}
+    if(drag.x<0||drag.y<0||drag.x>=innerWidth||drag.y>=innerHeight){finishDrag('leave');return;}
     if(!drag.active&&Math.hypot(drag.x-drag.startX,drag.y-drag.startY)>6){drag.active=true;ray.removeAttribute('hidden');document.body.classList.add('connection-dragging');frame();}
     if(drag.active)event.preventDefault();
   },true);
   document.addEventListener('pointerup',event=>{if(dragging?.id===event.pointerId){dragging.x=event.clientX;dragging.y=event.clientY;finishDrag();}},true);
-  document.addEventListener('pointercancel',()=>finishDrag(true),true);
-  document.addEventListener('lostpointercapture',event=>{if(dragging?.id===event.pointerId)finishDrag(true);},true);
-  window.addEventListener('blur',()=>finishDrag(true));
+  document.addEventListener('pointerout',event=>{if(event.relatedTarget===null&&dragging?.id===event.pointerId)finishDrag('leave');},true);
+  document.addEventListener('pointerleave',event=>{if((event.target===document||event.target===document.documentElement)&&dragging?.id===event.pointerId)finishDrag('leave');},true);
+  document.addEventListener('pointercancel',()=>finishDrag('cancel'),true);
+  document.addEventListener('lostpointercapture',event=>{if(dragging?.id===event.pointerId)finishDrag('leave');},true);
+  window.addEventListener('blur',()=>finishDrag('leave'));
   document.addEventListener('click',event=>{
     const handle=(event.target as Element).closest<HTMLElement>('[data-connect-source]');
     if(suppressedDragClick&&Date.now()<suppressedDragClick.until&&handle===suppressedDragClick.handle&&event.detail!==0){suppressedDragClick=null;event.preventDefault();event.stopImmediatePropagation();return;}
@@ -204,7 +209,7 @@ export function initializeConnectionsUI(options: { visibility?:{isOpen:()=>boole
     const load=target.closest<HTMLElement>('[data-panel-more]');if(load)void more(load);
   },true);
   document.addEventListener('keydown',event=>{
-    if(event.key==='Escape'){if(dragging){event.preventDefault();finishDrag(true);}else{if(retractionFrame){event.preventDefault();stopRetraction();}if(!picker.hidden){event.preventDefault();closePicker();}}}
+    if(event.key==='Escape'){if(dragging){event.preventDefault();finishDrag('cancel');}else{if(retractionFrame){event.preventDefault();stopRetraction();}if(!picker.hidden){event.preventDefault();closePicker();}}}
     if(!picker.hidden&&picker.contains(event.target as Node)&&['ArrowDown','ArrowUp','Enter'].includes(event.key)){
       const buttons=[...results.querySelectorAll<HTMLButtonElement>('[data-picker-connect]:not(:disabled)')];
       if(!buttons.length)return;const index=buttons.indexOf(document.activeElement as HTMLButtonElement);

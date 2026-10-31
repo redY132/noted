@@ -59,7 +59,7 @@ test('connection undo uses action revision and restores previous pair state',asy
   const mutation=h.calls.filter(c=>c[0]==='mutate').at(-1)!;assert.equal(mutation[5],1);assert.equal(h.errors.length,0);h.dom.window.close();
 });
 
-test('release retracts visually without delaying the connection; a new gesture and blur cancel animation work',async()=>{
+test('release retracts visually without delaying the connection; a new gesture and cancellation stop animation work',async()=>{
   const h=harness(),callbacks=new Map<number,FrameRequestCallback>();let id=0;
   Object.defineProperty(globalThis,'requestAnimationFrame',{value:(callback:FrameRequestCallback)=>{callbacks.set(++id,callback);return id;},configurable:true});
   Object.defineProperty(globalThis,'cancelAnimationFrame',{value:(frame:number)=>callbacks.delete(frame),configurable:true});
@@ -74,9 +74,47 @@ test('release retracts visually without delaying the connection; a new gesture a
   assert.equal(callbacks.size,0);assert.equal(ray.hasAttribute('hidden'),true);
   document.dispatchEvent(h.event('pointermove',200,150));document.dispatchEvent(h.event('pointerup',200,150));
   assert.equal(callbacks.size,1);
-  window.dispatchEvent(new h.dom.window.Event('blur'));
+  document.dispatchEvent(h.event('pointercancel',200,150));
   assert.equal(callbacks.size,0);assert.equal(ray.hasAttribute('hidden'),true);
   h.dom.window.close();
+});
+
+test('leaving any window edge or losing the window releases and retracts without saving a stale target',async()=>{
+  const exits=[
+    (h:ReturnType<typeof harness>)=>document.dispatchEvent(h.event('pointermove',-1,100)),
+    (h:ReturnType<typeof harness>)=>document.dispatchEvent(h.event('pointermove',1200,100)),
+    (h:ReturnType<typeof harness>)=>document.dispatchEvent(h.event('pointermove',100,-1)),
+    (h:ReturnType<typeof harness>)=>document.dispatchEvent(h.event('pointermove',100,800)),
+    (h:ReturnType<typeof harness>)=>document.dispatchEvent(h.event('pointerout',100,100)),
+    (h:ReturnType<typeof harness>)=>document.documentElement.dispatchEvent(h.event('pointerleave',100,100)),
+    (h:ReturnType<typeof harness>)=>window.dispatchEvent(new h.dom.window.Event('blur')),
+    (h:ReturnType<typeof harness>)=>document.dispatchEvent(h.event('lostpointercapture',100,100)),
+  ];
+  for(const exit of exits){
+    const h=harness(),handle=document.querySelector<HTMLElement>('[data-connect-source]')!;
+    handle.dispatchEvent(h.event('pointerdown',10,10));document.dispatchEvent(h.event('pointermove',200,150));
+    assert.ok(document.querySelector('.connection-drop-target'));
+    exit(h);
+    assert.equal(h.ui.isDragging(),false);assert.equal(document.querySelector('#connection-ray')!.hasAttribute('hidden'),false,'release should retract');
+    assert.equal(document.querySelector('.connection-drop-target'),null);assert.equal(document.body.classList.contains('connection-dragging'),false);
+    document.dispatchEvent(h.event('pointermove',200,150));document.dispatchEvent(h.event('pointerup',200,150));await tick();
+    assert.equal(h.ui.isDragging(),false);assert.equal(h.connected,false);assert.ok(!h.calls.some(c=>c[0]==='mutate'));
+    handle.dispatchEvent(new h.dom.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+    assert.equal(document.querySelector<HTMLElement>('#connection-picker')!.hidden,true,'late physical release must not open the picker');
+    h.dom.window.close();
+  }
+});
+
+test('moving between app elements keeps dragging; a fresh press after leaving works normally',async()=>{
+  const h=harness(),handle=document.querySelector<HTMLElement>('[data-connect-source]')!,target=document.querySelector('#target')!;
+  handle.dispatchEvent(h.event('pointerdown',10,10));document.dispatchEvent(h.event('pointermove',200,150));
+  const internal=h.event('pointerout',200,150);Object.defineProperty(internal,'relatedTarget',{value:target});document.dispatchEvent(internal);
+  target.dispatchEvent(h.event('pointerleave',200,150));assert.equal(h.ui.isDragging(),true);
+  document.dispatchEvent(h.event('pointerout',200,150));assert.equal(h.ui.isDragging(),false);
+  handle.dispatchEvent(h.event('pointerdown',10,10));document.dispatchEvent(h.event('pointerup',10,10));
+  handle.dispatchEvent(new h.dom.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));await tick();
+  assert.equal(document.querySelector<HTMLElement>('#connection-picker')!.hidden,false);
+  assert.equal(h.connected,false);h.dom.window.close();
 });
 
 test('drop targets resolve note identity from cards and internal references but not ordinary text or web links',()=>{
