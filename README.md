@@ -135,3 +135,8 @@ No project license has been selected yet. Third-party dependencies retain their 
 The library now has folder rename/move, note Trash/Restore and **Recover draft / keep both** after save conflicts. **Note presets** previews Lecture, Project and Journal layouts before applying one undoable change. **Review notes** resurfaces original notes offline with folder/tag filters, reviewed/snooze/exclude/reset controls. See [daily-use behavior and verification](docs/daily-use-alpha.md).
 
 **Agent access** lets you explicitly select exact folders for a local MCP agent to search and read. Access is disabled by default and can be revoked while the server runs. **Ask agent for layout** creates an explicit revision-bound request; proposals require rendered preview, acceptance and support Undo. Build the companion with `npm run agent:build`; no agent configuration is changed automatically. This is a tested local transport/inbox, not a connected hosted Dot plugin or automatic model client. See [setup, privacy, actual capabilities and limits](docs/agent-integration.md).
+
+
+## Proposed migration support
+
+Migration from Obsidian and Logseq has been assessed, including Markdown, links/anchors, folder structure, attachments, block references, source recovery and explicit loss reports. It is **planned, not implemented**. See [the migration proposal and dependencies](docs/migration-plan.md). No personal vaults are read by this feature assessment.
