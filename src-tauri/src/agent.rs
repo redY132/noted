@@ -14,6 +14,10 @@ use std::{
     io::{BufRead, Write},
     path::Path,
 };
+pub const FORMATTING_PROTOCOL: u32 = 2;
+pub fn capabilities() -> Value {
+    json!({"schemaVersion":1,"formattingProtocol":FORMATTING_PROTOCOL,"hostedAudience":true})
+}
 type Result<T> = std::result::Result<T, String>;
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()

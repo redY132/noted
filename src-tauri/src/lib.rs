@@ -803,11 +803,6 @@ mod desktop {
         let bridge = std::env::current_exe()
             .map_err(|e| e.to_string())?
             .with_file_name("noted-agent.exe");
-        if !bridge.is_file() {
-            return Err(
-                "Build/install the matching Noted agent companion beside Noted first".into(),
-            );
-        }
         let cached = work(state, {
             let id = request.id.clone();
             move |s| s.formatting_reply(&id)
@@ -823,6 +818,11 @@ mod desktop {
                     .into(),
             });
         }
+        let bridge = tauri::async_runtime::spawn_blocking(move || {
+            crate::subscription::prepare_bridge(&bridge)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         let exe = tauri::async_runtime::spawn_blocking(crate::subscription::prepare_cli)
             .await
             .map_err(|e| e.to_string())??;

@@ -26,3 +26,11 @@ The fixture-only smoke scripts are `scripts/simple-ai-native-smoke.js`, `simple-
 Native changes require the updated desktop executable and matching agent companion. Save and close an older development window, then open the updated build; the new frontend alone cannot update an already running native backend.
 
 Current checks: **165 frontend tests pass; 85 native tests pass with four optional model/corpus tests ignored**. The Windows release and matching MCP companion build successfully. `node scripts/create-ai-formatting-fixture.mjs` creates a new temporary fixture and output/simple-ai-state.json without starting any model. Launch Noted with that workspace and a separate WebView profile before attaching Playwright. Use a fresh fixture for independent cached-proposal tests. Opening and typing are tested to make no model call; the live smoke uses only an explicit Generate click.
+
+## Companion compatibility and missing-path recovery
+
+The development instance previously ran an older `target/debug/noted-agent.exe` that rejected the current `allowHosted` policy field. The Codex client itself existed and was signed in. When no proposal file was created, the app then surfaced a misleading Windows “path specified (os error 3)” error. This was reproduced on an empty synthetic queue: the old debug companion rejected the policy while the release companion accepted it.
+
+The debug companion has been rebuilt, and the same development executable passed a real explicitly clicked synthetic generation, automatic comparison and Reject. Development and release startup/build hooks now build the matching companion. Fresh jobs check `noted-agent --capabilities` before sending note data; stale or missing companions produce actionable messages. A client that exits successfully without a proposal now reports the missing proposal rather than a filesystem path error. Cached local proposals still need no client/companion launch.
+
+`npm run agent:dev:build` repairs the development companion without modifying notes or sign-in. Save and reopen an older native app to load the new diagnostics. 87 native tests passed, including missing-proposal and incompatible-companion regression cases; no personal note was used in reproduction.

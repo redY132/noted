@@ -252,6 +252,47 @@ impl Drop for Service {
         let _ = self.cancel(None);
     }
 }
+pub fn prepare_bridge(path: &Path) -> Result<PathBuf> {
+    ordinary(path,false).map_err(|e|format!("Cannot find the Noted agent companion at {}: {e}. Build the matching companion or open the complete updated Noted package. No note was sent.",path.display()))?;
+    let output = command(path).arg("--capabilities").output().map_err(|e| {
+        format!(
+            "Cannot start the Noted agent companion at {}: {e}. No note was sent.",
+            path.display()
+        )
+    })?;
+    let metadata = if output.status.success() {
+        serde_json::from_slice::<Value>(&output.stdout).ok()
+    } else {
+        None
+    };
+    validate_bridge_capabilities(metadata.as_ref()).map_err(|e|format!("{e} Companion: {}. Run npm run agent:dev:build for a development app, or open the complete updated package. No note was sent.",path.display()))?;
+    Ok(path.to_path_buf())
+}
+fn validate_bridge_capabilities(v: Option<&Value>) -> Result<()> {
+    if v.is_some_and(|v| {
+        v["schemaVersion"] == 1
+            && v["formattingProtocol"] == crate::agent::FORMATTING_PROTOCOL
+            && v["hostedAudience"] == true
+    }) {
+        Ok(())
+    } else {
+        Err("The Noted agent companion is outdated or incompatible with this app.".into())
+    }
+}
+fn read_proposal(workspace: &Path, id: &str) -> Result<Value> {
+    let p = workspace.join("agent-replies").join(format!("{id}.json"));
+    if !p.exists() {
+        return Err("Codex finished without returning a Noted proposal. Check that the matching Noted agent is installed and the request is supported. No changes were applied.".into());
+    }
+    ordinary(&p, false).map_err(|e| format!("Cannot read the returned proposal: {e}"))?;
+    if fs::metadata(&p).map_err(err)?.len() > 1024 * 1024 {
+        return Err("Model proposal exceeds its size limit".into());
+    }
+    serde_json::from_slice(
+        &fs::read(&p).map_err(|e| format!("Cannot open the returned proposal: {e}"))?,
+    )
+    .map_err(|_| "Codex returned an invalid proposal file. No changes were applied.".into())
+}
 pub fn prepare_cli() -> Result<PathBuf> {
     let exe = locate()?;
     if auth_output(&exe)?.authentication != "chatgpt" {
@@ -386,14 +427,7 @@ fn generate(
     if !exit.success() {
         return Err("Codex could not complete this request. Check ChatGPT sign-in, model availability, account limits and network access. No API-key fallback was used.".into());
     }
-    let p = workspace
-        .join("agent-replies")
-        .join(format!("{}.json", r.id));
-    ordinary(&p, false)?;
-    if fs::metadata(&p).map_err(err)?.len() > 1024 * 1024 {
-        return Err("Model proposal exceeds its size limit".into());
-    }
-    let reply: Value = serde_json::from_slice(&fs::read(p).map_err(err)?).map_err(err)?;
+    let reply = read_proposal(&workspace, &r.id)?;
     validate_reply(n, &reply).map_err(|e| format!("The model proposal was rejected: {e}"))?;
     crate::agent::request(root,&r.id).map_err(|_|"The note changed or the request was cancelled. No proposal was applied. Create a new request from the current note.")?;
     if job.cancelled.load(Ordering::Acquire) {
@@ -461,5 +495,24 @@ mod tests {
                 "owned"
             );
         }
+    }
+    #[test]
+    fn missing_proposal_reports_the_integration_failure_instead_of_os_path_error() {
+        let t = tempfile::tempdir().unwrap();
+        let e = read_proposal(t.path(), "fixture").unwrap_err();
+        assert!(e.contains("without returning a Noted proposal"));
+        assert!(!e.contains("os error"));
+    }
+    #[test]
+    fn old_or_mismatched_companions_are_refused_before_any_model_call() {
+        assert!(validate_bridge_capabilities(None).is_err());
+        assert!(validate_bridge_capabilities(Some(
+            &json!({"schemaVersion":1,"formattingProtocol":0,"hostedAudience":true})
+        ))
+        .is_err());
+        assert!(validate_bridge_capabilities(Some(&crate::agent::capabilities())).is_ok());
+        let t = tempfile::tempdir().unwrap();
+        let e = prepare_bridge(&t.path().join("missing/noted-agent.exe")).unwrap_err();
+        assert!(e.contains("No note was sent"));
     }
 }

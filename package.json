@@ -16,7 +16,8 @@
     "check:comparison": "tsc -p experiments/editor-comparison/tsconfig.json --noEmit",
     "bench:editor:build": "npm run check:comparison && vite build --config experiments/editor-comparison/vite.config.ts",
     "bench:editor": "vite preview --config experiments/editor-comparison/vite.config.ts",
-    "bench:reference:kit": "node --experimental-strip-types scripts/build-reference-kit.mjs"
+    "bench:reference:kit": "node --experimental-strip-types scripts/build-reference-kit.mjs",
+    "agent:dev:build": "cargo build --manifest-path src-tauri/Cargo.toml --no-default-features --bin noted-agent"
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
