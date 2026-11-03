@@ -30,6 +30,6 @@ The UI has an explicit one-note request / reply / preview / accept / Undo flow b
 
 ## Checks and remaining gates
 
-154 frontend tests and 61 Rust core tests passed, including preset authorship/history and portable recovery with review/Trash/assets. Both browser and packaged WebView2 smoke tests exercised all three presets, folder rename/move, conflict preservation, Trash/Restore and review exclusion/reset. The native agent flow passed with a deterministic reply transported over the real MCP executable. This is not external model-generation evidence.
+154 frontend tests and 62 Rust core tests passed, including preset authorship/history and portable recovery with review/Trash/assets. Both browser and packaged WebView2 smoke tests exercised all three presets, folder rename/move, conflict preservation, Trash/Restore and review exclusion/reset. The native agent flow passed with a deterministic reply transported over the real MCP executable. This is not external model-generation evidence.
 
 The real lower-end reference computer and agreed whole-app startup/memory/input budgets are still unavailable; see [reference benchmark](reference-benchmark.md). Installer packaging, license selection, provider integration and hosted-chat installation remain separate decisions. No release-performance certification is implied.

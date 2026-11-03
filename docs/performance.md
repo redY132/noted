@@ -154,3 +154,6 @@ Maximum sampled summed private memory was 831.9 MiB. Process-to-debug-endpoint a
 ## Daily-use alpha checks — November 3, 2026
 
 The new library/review/preset/agent paths passed 154 frontend and 61 core tests plus browser and packaged native smoke flows. The local MCP protocol was tested through the actual executable, including Unicode chunking, privacy canaries, live revocation and unchanged canonical bytes after submission. Native request → MCP fixture reply → render validation → acceptance → Undo also passed. These are correctness/integration observations, not inference-quality or performance certification. No new lower-end hardware measurement is claimed. Review and bounded agent scans run only on explicit use, outside the keystroke path; large-library agent scan performance remains to be measured on the reference host.
+
+
+The hosted follow-up adds a separate audience-consent regression (62 core tests total). Hosted access is denied independently of local access and can be revoked independently. No hosted transport or external inference performance is claimed.

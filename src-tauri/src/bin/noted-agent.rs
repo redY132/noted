@@ -1,16 +1,17 @@
 fn main() {
-    let mut args = std::env::args_os().skip(1);
-    if args.next().as_deref() != Some(std::ffi::OsStr::new("--workspace")) {
-        eprintln!("Usage: noted-agent --workspace ABSOLUTE_WORKSPACE_PATH");
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let valid = args.len() == 2
+        || args.len() == 4
+            && args[2] == "--audience"
+            && (args[3] == "hosted" || args[3] == "local");
+    if !valid || args[0] != "--workspace" {
+        eprintln!(
+            "Usage: noted-agent --workspace ABSOLUTE_WORKSPACE_PATH [--audience local|hosted]"
+        );
         std::process::exit(2);
     }
-    let Some(path) = args.next() else {
-        std::process::exit(2);
-    };
-    if args.next().is_some() {
-        std::process::exit(2);
-    }
-    if let Err(e) = noted_core::agent::serve(std::path::Path::new(&path)) {
+    let hosted = args.len() == 4 && args[3] == "hosted";
+    if let Err(e) = noted_core::agent::serve_for(std::path::Path::new(&args[1]), hosted) {
         eprintln!("Noted agent: {e}");
         std::process::exit(1);
     }

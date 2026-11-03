@@ -1,6 +1,6 @@
 # Local agent integration and optional formatting
 
-Implemented November 3, 2026. This is a working local stdio MCP server, not a note export or a model mock. It is **not installed in the current chat or any agent by this change**. Model generation has not been exercised against an external provider; transport, permission enforcement, queuing, native preview/acceptance and Undo have been tested using disposable content and a deterministic test reply.
+Implemented November 3, 2026. This is a working local stdio MCP server, not a note export or a model mock. After Redley selected the local desktop option, the `noted` entry was registered in the installed Codex client for the existing default Noted workspace. Client-session discovery still needs a restart/refresh and has not been verified through an agent model call. **This hosted chat is not connected.** Model generation has not been exercised against an external provider; transport, permission enforcement, queuing, native preview/acceptance and Undo have been tested using disposable content and a deterministic test reply.
 
 ## Connect and choose access
 
@@ -35,7 +35,7 @@ Requests survive app restarts and can be selected, rejected or cancelled in the 
 
 ## Storage and limits
 
-`agent-access.json` is disabled by default. `agent-requests/` and `agent-replies/` contain local transient work. They are deliberately omitted from portable backups, so restoring a workspace cannot reactivate agent access. Canonical note files remain authoritative and atomically published. The agent process does not acquire the app writer lock or write canonical data; its sole write operation publishes a reply sidecar for user review.
+`agent-access.json` is disabled by default. Its independent `allowHosted` flag also defaults to false; hosted transports must launch with `--audience hosted`, which enforces that second permission on every tool call. Local folder selection alone does not authorize a future hosted connection. `agent-requests/` and `agent-replies/` contain local transient work. They are deliberately omitted from portable backups, so restoring a workspace cannot reactivate agent access. Canonical note files remain authoritative and atomically published. The agent process does not acquire the app writer lock or write canonical data; its sole write operation publishes a reply sidecar for user review.
 
 The bridge supports at most 20,000 files / 256 MiB in a search scan, 8 MiB per note, 1,000 selected folders and 2 MiB per MCP message. It fails with an explicit size error instead of silently claiming to have searched an oversized library. This initial scan-based adapter has no independent full-text cache and is outside the keystroke path. Paths must be absolute ordinary paths, with no symlinks or Windows junctions. Do not expose the executable as an unauthenticated remote server.
 
@@ -46,3 +46,8 @@ The bridge supports at most 20,000 files / 256 MiB in a search scan, 8 MiB per n
 - Native disposable-workspace sequence: `agent-native-prepare.js`, `agent-native-submit.mjs`, `agent-native-finish.js`. The submit helper uses `output/alpha-native-state.json` and the preparation log; use it only in the documented disposable smoke setup. It tests the native UI through request, real transport reply, rendered preview, acceptance, shared Undo, cancellation and revocation.
 
 Remaining choices: which local agent to connect, exact folders to share, that agent's provider/account and spending policy. An in-app provider client, automatic agent wake-up, hosted-chat plugin, remote sync and external end-to-end model generation are not implemented or implicitly authorized.
+
+
+## Hosted-chat follow-up
+
+Redley also requested this hosted chat. The same server now supports `--audience hosted`, guarded by a separate default-off UI permission. No tunnel or custom plugin has been activated. [Hosted setup and exact readiness boundaries](hosted-chat-setup.md) records the supported path and remaining account actions. Local desktop registration does not itself install tools into a hosted thread.

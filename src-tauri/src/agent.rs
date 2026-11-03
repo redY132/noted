@@ -25,6 +25,8 @@ pub struct Access {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
+    pub allow_hosted: bool,
+    #[serde(default)]
     pub folder_ids: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -282,12 +284,12 @@ fn defs() -> Value {
     json!({"tools":tools})
 }
 pub fn call(root: &Path, name: &str, args: &Value) -> Result<Value> {
+    call_for(root, name, args, false)
+}
+fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value> {
     let a = access(root)?;
-    if !a.enabled {
-        return Err(
-            "Noted agent access is disabled. Choose folders and enable access in Noted first"
-                .into(),
-        );
+    if !a.enabled || hosted && !a.allow_hosted {
+        return Err("Noted agent access is disabled for this audience. Choose folders and explicitly allow the connection in Noted first".into());
     }
     let result = match name {
         "list_folders" => {
@@ -443,6 +445,9 @@ pub fn call(root: &Path, name: &str, args: &Value) -> Result<Value> {
     Ok(result)
 }
 pub fn serve(root: &Path) -> Result<()> {
+    serve_for(root, false)
+}
+pub fn serve_for(root: &Path, hosted: bool) -> Result<()> {
     root_check(root)?;
     let stdin = std::io::stdin();
     let mut reader = stdin.lock();
@@ -485,10 +490,11 @@ pub fn serve(root: &Path) -> Result<()> {
             "ping" => Ok(json!({})),
             "tools/list" if initialized => Ok(defs()),
             "tools/call" if initialized => {
-                let r = call(
+                let r = call_for(
                     root,
                     msg["params"]["name"].as_str().unwrap_or(""),
                     &msg["params"]["arguments"],
+                    hosted,
                 );
                 Ok(match r {
                     Ok(v) => {
@@ -524,6 +530,7 @@ mod tests {
         assert!(call(t.path(), "list_folders", &json!({})).is_err());
         s.set_agent_access(Access {
             enabled: true,
+            allow_hosted: false,
             folder_ids: vec![a.id],
         })
         .unwrap();
@@ -550,6 +557,7 @@ mod tests {
         let n = s.create_note("Private request".into(), None).unwrap();
         s.set_agent_access(Access {
             enabled: true,
+            allow_hosted: false,
             folder_ids: vec![],
         })
         .unwrap();
@@ -581,5 +589,43 @@ mod tests {
         assert!(s.formatting_reply(&r.id).is_err());
         s.cancel_formatting_request(&r.id).unwrap();
         assert!(request(t.path(), &r.id).is_err());
+    }
+}
+
+#[cfg(test)]
+mod hosted_tests {
+    use super::*;
+    #[test]
+    fn hosted_scope_requires_separate_consent_and_revokes_independently() {
+        let t = tempfile::tempdir().unwrap();
+        let mut s = Store::open(t.path()).unwrap();
+        let f = s.create_folder("Shared locally".into(), None).unwrap();
+        let n = s
+            .create_note("Local fixture".into(), Some(f.id.clone()))
+            .unwrap();
+        s.set_agent_access(Access {
+            enabled: true,
+            allow_hosted: false,
+            folder_ids: vec![f.id.clone()],
+        })
+        .unwrap();
+        assert!(call(t.path(), "get_note", &json!({"id":n.id})).is_ok());
+        assert!(call_for(t.path(), "get_note", &json!({"id":n.id}), true).is_err());
+        assert!(call_for(t.path(), "get_formatting_requests", &json!({}), true).is_err());
+        s.set_agent_access(Access {
+            enabled: true,
+            allow_hosted: true,
+            folder_ids: vec![f.id.clone()],
+        })
+        .unwrap();
+        assert!(call_for(t.path(), "get_note", &json!({"id":n.id}), true).is_ok());
+        s.set_agent_access(Access {
+            enabled: true,
+            allow_hosted: false,
+            folder_ids: vec![f.id],
+        })
+        .unwrap();
+        assert!(call_for(t.path(), "list_folders", &json!({}), true).is_err());
+        assert!(call(t.path(), "get_note", &json!({"id":n.id})).is_ok());
     }
 }

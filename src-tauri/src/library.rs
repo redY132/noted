@@ -407,6 +407,7 @@ mod recovery_backup_tests {
         s.review_action(&n.id, "dismiss").unwrap();
         s.set_agent_access(crate::agent::Access {
             enabled: true,
+            allow_hosted: false,
             folder_ids: vec![],
         })
         .unwrap();
