@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_status;
 mod assets;
 pub mod backup;
 mod definitions;
@@ -10,6 +11,7 @@ pub mod relations;
 #[cfg(feature = "semantic")]
 pub mod semantic;
 pub mod store;
+pub mod subscription;
 
 #[cfg(feature = "desktop")]
 mod desktop {
@@ -775,6 +777,57 @@ mod desktop {
         .await
     }
 
+    #[tauri::command]
+    pub async fn agent_connection_status(
+        state: State<'_, SharedStore>,
+    ) -> Result<crate::agent_status::Status, String> {
+        work(state, |s| Ok(crate::agent_status::status(&s.root))).await
+    }
+
+    #[tauri::command]
+    pub async fn subscription_status() -> Result<crate::subscription::AccountStatus, String> {
+        tauri::async_runtime::spawn_blocking(crate::subscription::account_status)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    #[tauri::command]
+    pub async fn start_subscription_formatting(
+        state: State<'_, SharedStore>,
+        service: State<'_, Arc<crate::subscription::Service>>,
+        id: String,
+        revision: u64,
+        token: String,
+        prompt: String,
+    ) -> Result<crate::subscription::JobInfo, String> {
+        let exe = tauri::async_runtime::spawn_blocking(crate::subscription::prepare_cli)
+            .await
+            .map_err(|e| e.to_string())??;
+        let (note,request,root)=work(state,move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_explicit_subscription_request(&id,prompt)?;Ok((n,request,s.root.clone()))}).await?;
+        let bridge = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .with_file_name("noted-agent.exe");
+        if !bridge.is_file() {
+            return Err(
+                "Build/install the matching Noted agent companion beside Noted first".into(),
+            );
+        }
+        service.start(note, request, root, exe, bridge)
+    }
+    #[tauri::command]
+    pub fn subscription_job(
+        service: State<'_, Arc<crate::subscription::Service>>,
+        id: String,
+    ) -> Result<crate::subscription::JobInfo, String> {
+        service.status(&id)
+    }
+    #[tauri::command]
+    pub fn cancel_subscription_job(
+        service: State<'_, Arc<crate::subscription::Service>>,
+        id: Option<String>,
+    ) -> Result<(), String> {
+        service.cancel(id.as_deref())
+    }
+
     pub fn run() {
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
@@ -810,6 +863,7 @@ mod desktop {
                     }
                 });
                 app.manage(Arc::new(crate::migration::Service::default()));
+                app.manage(Arc::new(crate::subscription::Service::default()));
                 app.manage(store);
                 app.manage(graph);
                 #[cfg(feature = "semantic")]
@@ -832,6 +886,11 @@ mod desktop {
                 publish_migration,
                 migration_reports,
                 export_migration_sources,
+                subscription_status,
+                start_subscription_formatting,
+                subscription_job,
+                cancel_subscription_job,
+                agent_connection_status,
                 agent_access,
                 set_agent_access,
                 create_formatting_request,

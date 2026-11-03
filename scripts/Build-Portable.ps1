@@ -23,7 +23,7 @@ The app uses the ordinary Noted workspace under this Windows account. Back up ex
 
 Workspace details offers checksummed backups and staged imports from exported Markdown folders, Obsidian vault copies and Logseq file graphs. Review the complete loss report before accepting. Originals remain archived; DB/EDN/Mirror, generic attachment opening, source-app history and live transclusion are not supported. Keep your original export.
 
-AI is optional. The local agent companion reads only explicitly selected saved folders or explicit formatting requests. Model inference in a connected Codex/ChatGPT client is hosted and subject to that account's limits. There is no hosted-chat connection or new in-app subscription send button in this build. The optional local semantic model needs its separately installed pack; no model pack is bundled or downloaded automatically.
+AI is optional. The local agent companion reads only explicitly selected saved folders or explicit formatting requests. Model inference in a connected Codex/ChatGPT client is hosted and subject to that account's limits. There is no hosted-chat connection. The explicit saved-note send button uses existing ChatGPT sign-in through official Codex; proposals require preview and acceptance. The optional local semantic model needs its separately installed pack; no model pack is bundled or downloaded automatically.
 
 This is a developer alpha, not a certified public release. Real inexpensive-hardware acceptance, signed installer, final license/distribution choice, and hosted plugin/account setup remain pending. See the included verification and migration documents. No personal notes, profiles, credentials or agent policy are bundled.
 '@

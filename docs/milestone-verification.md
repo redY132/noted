@@ -22,6 +22,14 @@ A real inexpensive reference computer has not been available. The connected deve
 
 The hosted chat has no live Noted connection. Private tunnel/account/workspace availability, an approved runtime credential and installation/approval of the hosted plugin remain prerequisites. None were created or enabled. Personal default sharing remains off. A local Codex configuration alone does not connect this chat.
 
-Automatic approval review rejected adding new in-app ChatGPT send-note controls and passive polling because a later direction deferred those actions. That UI edit did not execute. The unshipped native subscription/heartbeat source was preserved in ignored `output/deferred-subscription-source.json` and removed from the active build. Resuming that scope needs clarification; no indirect retry or extra model run was used. Existing request/reply/preview controls remain available to an explicitly connected agent.
 
 Next product milestones: try user-chosen exported copies after reviewing the supported dialect/size limits; add richer attachment access and source-version fixtures; decide whether to resume subscription send controls; finish the hosted account/plugin setup if available; then choose reference hardware, release budgets, license and signing/installer distribution.
+
+
+### Subscription controls resumed after scope clarification
+
+The later deferral applied to Afterglow, not Noted. The authorized Noted controls are now implemented: explicit **Send this saved note using ChatGPT**, existing official Codex ChatGPT sign-in only, fixed GPT-6.1 Sol/medium, one temporary static-note snapshot (64 KiB maximum), one running job, cancellation and a three-minute timeout. The model has only the temporary formatting-request/proposal tools; no other notes or personal sharing policy are copied. No API-key fallback, credentials or hosted-chat access is added. Proposals still require rendered preview and explicit acceptance; nothing auto-applies.
+
+Passive polling checks local job/proposal status while its dialog is open and does not initiate model calls. Transport heartbeat is separate from sharing policy and never claims this hosted chat is verified. Hosted-chat activation still requires its separate account/tunnel/plugin setup and approval. Earlier references to deferral describe the prior checkpoint, superseded by this clarification.
+
+Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.

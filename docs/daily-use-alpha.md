@@ -38,4 +38,12 @@ The real lower-end reference computer and agreed whole-app startup/memory/input 
 
 Workspace details now offers explicit exported-folder dry runs, warning acceptance and import into a separate workspace for Markdown, Obsidian and Logseq file graphs. Original bytes and source digests are archived with the loss report and included in portable backups. The original-source recovery controls verify checksums and export to a new folder. Cross-note heading/block links navigate by stable native block ID and survive note renames. See [import scope and limits](migration-plan.md).
 
-New subscription send controls were paused following automatic approval review; their unshipped source was preserved in ignored local output and removed from the active build. No background model polling or new cloud send route is enabled. Previous test totals above describe the earlier alpha; current evidence is recorded in [milestone verification](milestone-verification.md).
+
+
+### Subscription controls resumed after scope clarification
+
+The later deferral applied to Afterglow, not Noted. The authorized Noted controls are now implemented: explicit **Send this saved note using ChatGPT**, existing official Codex ChatGPT sign-in only, fixed GPT-6.1 Sol/medium, one temporary static-note snapshot (64 KiB maximum), one running job, cancellation and a three-minute timeout. The model has only the temporary formatting-request/proposal tools; no other notes or personal sharing policy are copied. No API-key fallback, credentials or hosted-chat access is added. Proposals still require rendered preview and explicit acceptance; nothing auto-applies.
+
+Passive polling checks local job/proposal status while its dialog is open and does not initiate model calls. Transport heartbeat is separate from sharing policy and never claims this hosted chat is verified. Hosted-chat activation still requires its separate account/tunnel/plugin setup and approval. Earlier references to deferral describe the prior checkpoint, superseded by this clarification.
+
+Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.

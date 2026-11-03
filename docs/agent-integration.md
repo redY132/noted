@@ -4,7 +4,7 @@ Updated November 3, 2026. The local stdio MCP server has now been exercised by a
 
 Only a disposable synthetic note was transmitted. The model searched/read its selected folder, was refused an unselected synthetic note, fetched a formatting request and queued a bold proposal. Its first malformed operation was rejected; it corrected the field and submitted a valid proposal. The canonical note stayed unchanged until the native preview/Apply/Undo smoke test. Rendered acceptance and Undo preserved the exact wording. The opt-in reproduction script is `scripts/live-subscription-smoke.mjs --run` with `NOTED_CODEX_TEST_CLI` explicitly pointing at the official client; this invokes a hosted model and uses account limits. `scripts/live-model-accept.js` checks the resulting proposal in the native fixture.
 
-The existing personal-workspace MCP registration is separate from this isolated test. No personal note was read or shared, and its default-off policy remains disabled. **This hosted chat is not connected.** There is no tunnel, runtime credential or installed hosted Noted plugin. New in-app subscription send controls were deferred and are not part of this build; the existing explicit request/reply workflow remains available through a connected agent.
+The existing personal-workspace MCP registration is separate from this isolated test. No personal note was read or shared, and its default-off policy remains disabled. **This hosted chat is not connected.** There is no tunnel, runtime credential or installed hosted Noted plugin. Explicit in-app subscription send controls are now available after scope clarification; the existing explicit request/reply workflow remains available through a connected agent.
 
 ## Connect and choose access
 
@@ -55,3 +55,12 @@ Remaining choices: which local agent to connect, exact folders to share, that ag
 ## Hosted-chat follow-up
 
 Redley also requested this hosted chat. The same server now supports `--audience hosted`, guarded by a separate default-off UI permission. No tunnel or custom plugin has been activated. [Hosted setup and exact readiness boundaries](hosted-chat-setup.md) records the supported path and remaining account actions. Local desktop registration does not itself install tools into a hosted thread.
+
+
+### Subscription controls resumed after scope clarification
+
+The later deferral applied to Afterglow, not Noted. The authorized Noted controls are now implemented: explicit **Send this saved note using ChatGPT**, existing official Codex ChatGPT sign-in only, fixed GPT-6.1 Sol/medium, one temporary static-note snapshot (64 KiB maximum), one running job, cancellation and a three-minute timeout. The model has only the temporary formatting-request/proposal tools; no other notes or personal sharing policy are copied. No API-key fallback, credentials or hosted-chat access is added. Proposals still require rendered preview and explicit acceptance; nothing auto-applies.
+
+Passive polling checks local job/proposal status while its dialog is open and does not initiate model calls. Transport heartbeat is separate from sharing policy and never claims this hosted chat is verified. Hosted-chat activation still requires its separate account/tunnel/plugin setup and approval. Earlier references to deferral describe the prior checkpoint, superseded by this clarification.
+
+Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.
