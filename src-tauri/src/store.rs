@@ -196,6 +196,15 @@ impl Store {
     }
 
     pub fn open_cached(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_cached_inner(root, false)
+    }
+    pub(crate) fn open_import_staging(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_cached_inner(root, true)
+    }
+    fn open_cached_inner(root: impl AsRef<Path>, allow_import: bool) -> Result<Self> {
+        if root.as_ref().join(".noted-import-incomplete").exists() && !allow_import {
+            return Err("This import is incomplete. Keep the source export and import into another new folder.".into());
+        }
         if root.as_ref().join(".noted-restore-incomplete").exists() {
             return Err("This restored copy is incomplete. Keep the original workspace and restore the backup to a new folder.".into());
         }
@@ -922,8 +931,8 @@ pub(crate) fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String
                                 {
                                     return false;
                                 }
-                                if let Some(id) = s.strip_prefix("noted://note/") {
-                                    return valid_id(id).is_ok();
+                                if s.starts_with("noted://note/") {
+                                    return crate::links::validate(s).is_ok();
                                 }
                                 s.strip_prefix("https://")
                                     .or_else(|| s.strip_prefix("http://"))
@@ -1079,8 +1088,8 @@ pub(crate) fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String
                     .pointer("/attrs/href")
                     .and_then(Value::as_str)
                     .ok_or("Link needs href")?;
-                if let Some(id) = href.strip_prefix("noted://note/") {
-                    valid_id(id)?;
+                if href.starts_with("noted://note/") {
+                    crate::links::validate(href)?;
                 } else if !(href.starts_with("https://") || href.starts_with("http://"))
                     || href.chars().any(char::is_control)
                 {

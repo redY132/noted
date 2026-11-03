@@ -1,14 +1,27 @@
-# Proposed migration from Obsidian and Logseq
+# Migration from Markdown, Obsidian and Logseq
 
-Assessed November 3, 2026. Redley requested assessment and documentation of this idea. **No importer is implemented by this plan, and no personal vault/graph was located, read, imported or modified.** Implementation and selecting any personal source are separate next steps.
+Updated November 3, 2026. An offline exported-folder importer is now implemented for **Markdown, Obsidian and Logseq file graphs**. No personal vault or graph was searched, read, imported or changed during development. Tests use temporary fixtures. The earlier design below records additional fidelity goals; it is not a claim that DB/EDN/Mirror, live synchronization or every source-app feature is supported.
 
-## Current capability and the first dependency
+## Delivered workflow and recovery
 
-Noted currently provides Markdown *typing shortcuts*, canonical V1/V2 JSON notes, stable whole-note links, nested folders, tags, note-owned raster assets, and its own checksummed backup/restore. Component-definition JSON import is unrelated to importing a note library. There is no general Markdown parser/importer, Obsidian adapter or Logseq adapter.
+Open **Workspace details → Import from Markdown, Obsidian or Logseq**. Choose an absolute local path to an exported copy and its format, then run a dry run. Review counts, per-file line diagnostics, fallbacks and excluded entries. The screen shows up to 200 entries per section; save the full JSON report to inspect all entries. Blockers prevent publication. Warnings require explicit acceptance. Changing source/profile invalidates the dry run, and changed source bytes are rejected before destination creation.
 
-`src/note-links.ts` and native `document::validate_href` accept `noted://note/<UUID>` without fragments. Nested editor blocks have IDs, but cross-note heading/block navigation is not implemented. Reliable block-reference migration needs a validated note-plus-block target, navigation/selection behavior and index/projection round-trip support first. A note-level fallback must be reported as degraded, not described as a preserved block reference.
+Import creates a **new workspace folder outside the source and active workspace**, validates native notes, rebuilds indexes and verifies archived bytes before removing its incomplete marker. Existing destinations are refused. Interrupted destinations remain marked and cannot open as ordinary workspaces. **Open imported workspace** starts a separate window/profile; folder sharing and component approvals start disabled. Repeating an import creates independent identities; merge/update/deduplication is not implemented.
 
-The Note model has a fixed metadata schema, and current asset storage supports PNG/JPEG/WebP/GIF with byte/dimension/frame limits. Arbitrary properties and PDF/audio/video attachments cannot be silently pushed through those interfaces. New import-provenance/archival-blob storage must also participate in portable backup/restore before migration is called recoverable.
+Every included source file is retained byte-for-byte in UUID-named, inert `.source` blobs under `imports/<batch>/`, with original relative paths, SHA-256, filesystem timestamps, source-to-note identity and a report. **Recover original imported files** exports a batch to a new folder with checksum verification. Archives and reports participate in portable backup/restore. Older Noted binaries that lack this archive allowlist cannot inspect newer backups containing import provenance; use the matching or newer build.
+
+## Supported conversion and explicit limits
+
+- A pinned CommonMark/GFM parser converts headings, paragraphs, inline marks, ordered/bullet/task lists, tables, code, dividers and links. Raw HTML/scripts, queries and math remain inert text/code. Tables retain structure/text; column alignment may use the destination style. Footnotes retain labels and quoted bodies rather than interactive footnote behavior.
+- Physical folders become native folders. Simple title/tags/aliases are mapped; raw frontmatter remains in the original archive and a readable properties block. Arbitrary YAML semantics, source-app history, journal date inference and alias search UI are not reproduced. Native creation/modification timestamps use source filesystem timestamps where available; they are not an assertion about source-app history.
+- Obsidian wikilinks, aliases, Markdown links, heading targets and caret block IDs resolve in two passes. Ambiguous identities are blocked instead of selecting the first match. Stable links use `noted://note/<UUID>#block=<ID>`; **Copy block link** copies the caret block's target. Native reference indexing groups these by whole-note identity.
+- Logseq file graphs retain outline order, page/block properties as text, UUID block references and task status words. Checkboxes carry done/not-done only. Embeds become labelled plain-text snapshots plus a source link, capped at 10,000 characters and reported as fallbacks; there is no live transclusion. DB, EDN and Markdown Mirror need separate versioned adapters and are refused as profiles.
+- Referenced valid PNG/JPEG/WebP/GIF assets are copied using existing image limits. Other attachments are archived only; they have no general inline renderer or opening UI. Remote images are not fetched. Hidden paths, app configuration, plugins, `node_modules` and Logseq's configuration folder are excluded and listed; exclusion is not archival preservation.
+- Import accepts local, non-redirected folders only, at most 10,000 files / 5,000 Markdown notes / 512 MiB original bytes, 32 MiB per file and 2 MiB per Markdown file. Expanded image copies have their own 512 MiB cap. Invalid UTF-8, unsafe paths, case-colliding paths, excessive structures and duplicate UUID identities are rejected or blocked. Unicode normalization compatibility and every dialect/version still need broader real-world exported fixtures.
+
+## Original design and remaining adapters
+
+The following proposal describes the original assessment and further acceptance goals. Delivered behavior above is authoritative for this build.
 
 ## Source profiles
 

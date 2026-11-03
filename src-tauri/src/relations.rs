@@ -169,10 +169,8 @@ pub fn open(root: &std::path::Path) -> Result<Connection> {
 pub fn index(db: &Connection, note: &Note) -> Result<()> {
     let mut refs = BTreeMap::<String, usize>::new();
     fn add(href: Option<&str>, refs: &mut BTreeMap<String, usize>) {
-        if let Some(id) = href.and_then(|h| h.strip_prefix("noted://note/")) {
-            if crate::store::valid_id(id).is_ok() {
-                *refs.entry(id.into()).or_default() += 1;
-            }
+        if let Some((id, _)) = href.and_then(crate::links::target) {
+            *refs.entry(id.into()).or_default() += 1;
         }
     }
     fn visit(n: &serde_json::Value, refs: &mut BTreeMap<String, usize>) {

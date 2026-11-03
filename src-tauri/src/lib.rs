@@ -4,6 +4,8 @@ pub mod backup;
 mod definitions;
 pub mod document;
 pub mod library;
+pub mod links;
+pub mod migration;
 pub mod relations;
 #[cfg(feature = "semantic")]
 pub mod semantic;
@@ -708,6 +710,71 @@ mod desktop {
     ) -> Result<Vec<crate::agent::Request>, String> {
         work(state, move |s| s.formatting_requests(&note_id)).await
     }
+
+    #[tauri::command]
+    pub async fn preview_migration(
+        service: State<'_, Arc<crate::migration::Service>>,
+        source: String,
+        profile: String,
+    ) -> Result<crate::migration::Report, String> {
+        let service = service.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            service.preview(std::path::Path::new(&source), &profile)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn cancel_migration(
+        service: State<'_, Arc<crate::migration::Service>>,
+        id: String,
+    ) -> Result<(), String> {
+        let service = service.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || service.cancel(&id))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn publish_migration(
+        state: State<'_, SharedStore>,
+        service: State<'_, Arc<crate::migration::Service>>,
+        id: String,
+        target: String,
+        digest: String,
+        accept_warnings: bool,
+    ) -> Result<crate::migration::Report, String> {
+        let root = work(state, |s| Ok(s.root.clone())).await?;
+        let service = service.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            service.publish(
+                &id,
+                std::path::Path::new(&target),
+                &digest,
+                accept_warnings,
+                &root,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn migration_reports(
+        state: State<'_, SharedStore>,
+    ) -> Result<Vec<crate::migration::Report>, String> {
+        work(state, |s| s.migration_reports()).await
+    }
+    #[tauri::command]
+    pub async fn export_migration_sources(
+        state: State<'_, SharedStore>,
+        batch: String,
+        target: String,
+    ) -> Result<usize, String> {
+        work(state, move |s| {
+            s.export_migration_sources(&batch, std::path::Path::new(&target))
+        })
+        .await
+    }
+
     pub fn run() {
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
@@ -742,6 +809,7 @@ mod desktop {
                         let _ = s.reconcile_batch(4);
                     }
                 });
+                app.manage(Arc::new(crate::migration::Service::default()));
                 app.manage(store);
                 app.manage(graph);
                 #[cfg(feature = "semantic")]
@@ -759,6 +827,11 @@ mod desktop {
                 review_feed,
                 review_action,
                 formatting_requests,
+                preview_migration,
+                cancel_migration,
+                publish_migration,
+                migration_reports,
+                export_migration_sources,
                 agent_access,
                 set_agent_access,
                 create_formatting_request,

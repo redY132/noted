@@ -140,3 +140,9 @@ The library now has folder rename/move, note Trash/Restore and **Recover draft /
 ## Proposed migration support
 
 Migration from Obsidian and Logseq has been assessed, including Markdown, links/anchors, folder structure, attachments, block references, source recovery and explicit loss reports. It is **planned, not implemented**. See [the migration proposal and dependencies](docs/migration-plan.md). No personal vaults are read by this feature assessment.
+
+## Exported-folder migration and live agent evidence
+
+Workspace details supports dry-run Markdown, Obsidian and Logseq file-graph imports into a separate workspace, with explicit fallback acceptance and recoverable original bytes. See [migration scope](docs/migration-plan.md). Heading/block links navigate by stable ID; imported folders start unshared.
+
+A synthetic GPT-6.1 Sol request using existing official Codex ChatGPT sign-in passed the MCP permission, queued proposal and native preview/Apply/Undo flow. Inference is hosted; no personal notes were transmitted. This hosted chat is still unconnected, and the proposed new in-app send controls are deferred. See [agent integration](docs/agent-integration.md) and [current verification/release gates](docs/milestone-verification.md).

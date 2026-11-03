@@ -183,6 +183,11 @@ async function copyPreviewAssets(source:string,target:string){
  const db=await imageDatabase();try{const records=await new Promise<PreviewImage[]>((resolve,reject)=>{const r=db.transaction('images','readonly').objectStore('images').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});for(const record of records)if(record.key.startsWith(source+'/'))await putPreviewImage({...record,key:target+record.key.slice(source.length)});}finally{db.close();}
 }
 export const api = {
+  previewMigration:(source:string,profile:string)=>call<import('./migration-types').MigrationReport>('preview_migration',{source,profile}),
+  cancelMigration:(id:string)=>call<void>('cancel_migration',{id}),
+  publishMigration:(id:string,target:string,digest:string,acceptWarnings:boolean)=>call<import('./migration-types').MigrationReport>('publish_migration',{id,target,digest,acceptWarnings}),
+  migrationReports:()=>call<import('./migration-types').MigrationReport[]>('migration_reports'),
+  exportMigrationSources:(batch:string,target:string)=>call<number>('export_migration_sources',{batch,target}),
   updateFolder:(folder:Folder,expected:Folder)=>call<Folder>('update_folder',{folder,expected}),
   trash:()=>call<NoteSummary[]>('list_trash'),
   trashNote:(note:Note)=>call<void>('trash_note',{id:note.id,revision:note.revision,token:note.revisionToken}),

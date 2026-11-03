@@ -324,8 +324,8 @@ pub fn validate_href(value: &Value) -> Result<()> {
     if s.len() > 2048 || s.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err("Invalid image link".into());
     }
-    if let Some(id) = s.strip_prefix("noted://note/") {
-        return crate::store::valid_id(id);
+    if s.starts_with("noted://note/") {
+        return crate::links::validate(s);
     }
     if s.strip_prefix("https://")
         .or_else(|| s.strip_prefix("http://"))

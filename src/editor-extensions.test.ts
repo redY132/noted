@@ -157,3 +157,9 @@ test('new marks, tables and attributes survive JSON reload; unsafe pasted styles
     assert.equal(normalizeTextColor('rgb(256, 0, 1)'), null);
   } finally { editor.destroy(); reopened?.destroy(); }
 });
+
+test('block-link navigation preserves document and the next Undo restores the preceding edit',async()=>{
+ const {focusBlock,currentBlockId}=await import('./block-links.ts');const editor=makeEditor([p('First','first'),p('Second','second')]);editor.setOptions({editorProps:{handleScrollToSelection:()=>true}}); // jsdom has no layout; native smoke verifies scrolling.
+
+ try{editor.commands.setTextSelection(2);editor.commands.insertContent('X');const before=editor.getJSON();assert.equal(focusBlock(editor,'second'),true);assert.equal(currentBlockId(editor),'second');assert.deepEqual(editor.getJSON(),before);assert.equal(focusBlock(editor,'missing'),false);assert.deepEqual(editor.getJSON(),before);assert.equal(editor.commands.undo(),true);assert.equal(editor.getText(),'First\n\nSecond');}finally{editor.destroy();}
+});

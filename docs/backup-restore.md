@@ -43,3 +43,7 @@ The packaged-app smoke exercises Create, Inspect, Restore and Open restored copy
 ## Daily-use alpha data
 
 Backups now also include `trash/*.json` and `review/*.json`. Note-owned assets and retained relationship rows remain available when a trashed note is restored. Regression coverage round-trips Trash identity, review exclusions and opaque asset bytes. `agent-access.json`, formatting requests and replies are excluded deliberately: a restored workspace starts with agent access disabled and has no inherited pending one-note grants.
+
+## Imported source recovery
+
+Backups made by the migration-capable build also retain `imports/<batchUUID>/report.json` and UUID-named `.source` blobs. Restore preserves the import report and exact archived originals; sharing and agent queues remain excluded. Use the matching or newer app to inspect these backups: older allowlists reject the new archive paths. Recover original files from Workspace details into a separate new folder, then verify the reported checksum result. Source app plugins/configuration and other explicitly excluded paths were never archived.

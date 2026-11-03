@@ -7,6 +7,8 @@ test('note and web links route without allowing file or command schemes', () => 
   assert.deepEqual(noteLinkTarget(`noted://note/${id}`), { kind: 'note', destination: id });
   assert.deepEqual(noteLinkTarget('https://example.com/a?q=1#b'), { kind: 'web', destination: 'https://example.com/a?q=1#b' });
   assert.equal(normalizeNoteLink(' HTTP://EXAMPLE.COM '), 'http://example.com/');
-  assert.equal(normalizeNoteLink('https://example.com/' + '字'.repeat(300)), null, 'encoded URLs must also fit the persisted length limit');
+  assert.equal(normalizeNoteLink('https://example.com/' + 'å­—'.repeat(300)), null, 'encoded URLs must also fit the persisted length limit');
   for (const value of ['javascript:alert(1)', 'file:///C:/secret', 'data:text/html,x', 'noted://note/../x', 'noted://note/'+id+'?command=x', 'https://user:password@example.com', 'https://exam\nple.com', 'https:\\example.com', '', null, 'https://example.com/'+ 'x'.repeat(2048)]) assert.equal(normalizeNoteLink(value), null);
 });
+
+test('block links retain note identity and reject ambiguous or executable fragments',()=>{const id='00000000-0000-4000-8000-000000000001';assert.deepEqual(noteLinkTarget(`noted://note/${id}#block=block-123`),{kind:'note',destination:id,blockId:'block-123'});for(const fragment of ['#block=','#block=../private','#block=%2f','#block=x&exec=1','#other=x'])assert.equal(noteLinkTarget(`noted://note/${id}${fragment}`),null);});

@@ -105,6 +105,13 @@ fn valid_path(path: &str) -> Result<()> {
     let allowed = match parts.as_slice() {
         ["notes", name] => name.ends_with(".json") || name.ends_with(".json.bak"),
         ["folders" | "trash" | "review", name] => name.ends_with(".json"),
+        ["imports", batch, name] => {
+            crate::store::valid_id(batch).is_ok()
+                && (name == &"report.json"
+                    || name
+                        .strip_suffix(".source")
+                        .is_some_and(|s| crate::store::valid_id(s).is_ok()))
+        }
         ["assets", _, name] => name.ends_with(".image"),
         ["schemas" | "components", _, name] => name.ends_with(".json"),
         _ => false,
@@ -114,7 +121,7 @@ fn valid_path(path: &str) -> Result<()> {
     }
     Ok(())
 }
-fn destination(path: &Path) -> Result<PathBuf> {
+pub(crate) fn destination(path: &Path) -> Result<PathBuf> {
     if !path.is_absolute() {
         return Err("Choose an absolute destination path".into());
     }
@@ -198,7 +205,16 @@ fn inventory(root: &Path) -> Result<Vec<(String, PathBuf)>> {
         Ok(())
     }
     let mut files = Vec::new();
-    for directory in ["notes", "folders", "assets", "schemas", "components", "trash", "review"] {
+    for directory in [
+        "notes",
+        "folders",
+        "assets",
+        "schemas",
+        "components",
+        "trash",
+        "review",
+        "imports",
+    ] {
         let p = root.join(directory);
         if p.exists() {
             visit(root, &p, &mut files, 1)?;

@@ -1,3 +1,4 @@
+import {noteLinkTarget} from './note-links.ts';
 import type { Folder, Note, PairState, NoteSummary } from './model.ts';
 
 export type PreviewRelations = Record<string, PairState>;
@@ -14,7 +15,7 @@ function refs(value: unknown, result = new Map<string,number>()): Map<string,num
   if (!value || typeof value !== 'object') return result;
   const node=value as {type?:string;attrs?:{href?:string};marks?:unknown[];content?:unknown[]};
   if (node.type==='link' || node.type==='localImage') {
-    const id=node.attrs?.href?.match(/^noted:\/\/note\/([0-9a-f-]{36})$/)?.[1];
+    const target=noteLinkTarget(node.attrs?.href),id=target?.kind==='note'?target.destination:undefined;
     if(id && uuid.test(id)) result.set(id,(result.get(id)||0)+1);
   }
   for(const child of [...node.marks??[],...node.content??[]]) refs(child,result);

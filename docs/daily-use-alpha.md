@@ -26,10 +26,16 @@ Preview renders the actual candidate in both themes and three widths. Apply reje
 
 ## Optional agent formatting
 
-The UI has an explicit one-note request / reply / preview / accept / Undo flow backed by a real local MCP server. A connected agent supplies the proposal; Noted itself does not launch model inference. See [agent setup, privacy and limits](agent-integration.md). It remains disabled and uninstalled until the user chooses a client and folder access.
+The UI has an explicit one-note request / reply / preview / accept / Undo flow backed by a real local MCP server. A connected agent supplies the proposal; Noted itself does not launch model inference. A real GPT-6.1 Sol call using existing ChatGPT sign-in passed on a synthetic note, including native preview, Apply and Undo; no personal note was used. See [agent setup, privacy and limits](agent-integration.md). The local Codex entry is registered; personal folder sharing remains disabled. Hosted-chat setup is still pending.
 
 ## Checks and remaining gates
 
 154 frontend tests and 62 Rust core tests passed, including preset authorship/history and portable recovery with review/Trash/assets. Both browser and packaged WebView2 smoke tests exercised all three presets, folder rename/move, conflict preservation, Trash/Restore and review exclusion/reset. The native agent flow passed with a deterministic reply transported over the real MCP executable. This is not external model-generation evidence.
 
 The real lower-end reference computer and agreed whole-app startup/memory/input budgets are still unavailable; see [reference benchmark](reference-benchmark.md). Installer packaging, license selection, provider integration and hosted-chat installation remain separate decisions. No release-performance certification is implied.
+
+## Offline migration delivery
+
+Workspace details now offers explicit exported-folder dry runs, warning acceptance and import into a separate workspace for Markdown, Obsidian and Logseq file graphs. Original bytes and source digests are archived with the loss report and included in portable backups. The original-source recovery controls verify checksums and export to a new folder. Cross-note heading/block links navigate by stable native block ID and survive note renames. See [import scope and limits](migration-plan.md).
+
+New subscription send controls were paused following automatic approval review; their unshipped source was preserved in ignored local output and removed from the active build. No background model polling or new cloud send route is enabled. Previous test totals above describe the earlier alpha; current evidence is recorded in [milestone verification](milestone-verification.md).

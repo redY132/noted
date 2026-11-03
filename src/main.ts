@@ -6,6 +6,7 @@ import { NoteSession, type Folder, type Note, type NoteSummary, type SchemaId } 
 import { installMetrics } from './metrics';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { noteLinkTarget } from './note-links';
+import {currentBlockId,focusBlock} from './block-links';
 import { componentMarkup, initializeComponentUI } from './component-ui';
 import { documentFromEditor, documentToEditor } from './document-model';
 import { initializeSchemaUI } from './schema-ui';
@@ -13,6 +14,8 @@ import { SchemaRegistry } from './document-schema';
 import { builtinComponentDefinitions } from './component-runtime-examples';
 import { ComponentRuntimeHost, installComponentDefinition } from './component-runtime';
 import {initializeBackupUI} from './workspace-backup-ui';
+import {initializeMigrationUI} from './migration-ui';
+import './migration.css';
 import {validateRenderedDocument} from './render-validation';
 import { initializeDocumentTools } from './document-tools-ui';
 import type { DocumentSchema } from './document-schema';
@@ -59,7 +62,7 @@ $('#app').innerHTML = `
     <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="recover-draft">Recover draft / keep both</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
     <section id="empty-state" class="empty-state"><h2>No note open</h2><p>Create a note or choose one from the list.</p><button id="empty-new" class="primary">Create note</button></section>
     <section id="note-pane" class="note-pane" hidden>
-      <div class="note-product-actions"><button id="open-presets">Note presets</button><button id="open-ai-formatting">Ask agent for layout</button><button id="trash-current">Move note to Trash</button></div>${formattingMarkup}
+      <div class="note-product-actions"><button id="open-presets">Note presets</button><button id="open-ai-formatting">Ask agent for layout</button><button id="copy-block-link">Copy block link</button><button id="trash-current">Move note to Trash</button></div>${formattingMarkup}
       ${componentMarkup.replace('<div class="component-toolbar"','<div id="layout-tools" class="component-toolbar"')}
       <div class="document-scroll"><article class="document" data-schema="default"><div id="note-kicker" class="document-kicker"><span id="note-date"></span></div><input id="note-title" class="note-title" aria-label="Note title" placeholder="Untitled" maxlength="300" /><div id="note-details" class="note-properties">${schemaControl}<label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div></article></div>
       <footer id="note-footer" class="editor-footer"><span id="word-count">0 words</span><span id="revision-label"></span></footer>
@@ -70,7 +73,7 @@ $('#app').innerHTML = `
   <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
-  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Noted makes no cloud AI calls, telemetry requests, or remote asset requests. A connected agent may send explicitly shared note text to its provider. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
+  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Noted makes no cloud AI calls, telemetry requests, or remote asset requests. A connected agent may send explicitly shared note text to its provider. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
 
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
@@ -109,6 +112,7 @@ const library=initializeLibrary($('#library-ui-host'),{note:()=>session?.note??n
 $('#manage-folders').onclick=()=>library.open('folders');$('#open-trash').onclick=()=>library.open('trash');$('#open-review').onclick=()=>library.open('review');$('#open-agent').onclick=()=>library.open('agent');$('#recover-draft').onclick=()=>library.open('conflict');$('#open-presets').onclick=()=>presets.open();$('#open-ai-formatting').onclick=()=>library.open('ai');$('#trash-current').onclick=()=>library.trashCurrent();
 
 initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
+initializeMigrationUI($('#workspace-migration-host'),{native:!browserPreview,api,flush,error});
 const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close()},initialLayout);
 const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
@@ -366,13 +370,15 @@ function interceptEditorLink(event: MouseEvent) {
   if (window.getSelection()?.isCollapsed === false) return;
   const target = noteLinkTarget(anchor.getAttribute('href'));
   if (!target) { error('This link is not a supported note or web address.'); return; }
-  if (target.kind === 'note') void openNote(target.destination);
+  if (target.kind === 'note') void openNote(target.destination).then(()=>{if(target.blockId&&session?.note.id===target.destination&&editor&&!focusBlock(editor,target.blockId))error('The linked block is missing. The note remains open.');});
   else if (browserPreview) window.open(target.destination, '_blank', 'noopener,noreferrer');
   else void openUrl(target.destination).catch(error);
 }
 $('#editor').addEventListener('click', interceptEditorLink, { capture: true });
 $('#editor').addEventListener('auxclick', interceptEditorLink, { capture: true });
 
+$('#copy-block-link').onmousedown=e=>e.preventDefault();
+$('#copy-block-link').onclick=()=>{const id=editor&&currentBlockId(editor),note=session?.note;if(!id||!note||!noteLinkTarget(`noted://note/${note.id}#block=${id}`)){error('Place the caret in a saved block to copy its link.');return;}void flush().then(()=>navigator.clipboard.writeText(`noted://note/${note.id}#block=${id}`)).then(()=>{const button=$('#copy-block-link');button.textContent='Link copied';setTimeout(()=>button.textContent='Copy block link',1200);}).catch(error);};
 $('#new-note').onclick = () => { void newNote(); };
 $('#empty-new').onclick = () => { void newNote(); };
 $('#daily-note').onclick = () => { void dailyNote().catch(error); };
