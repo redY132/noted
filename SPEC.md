@@ -237,7 +237,7 @@ The user supports the overall direction. Concrete serialization, editor selectio
 - Schemas define reusable rules and style tokens; individual notes refer to them and may hold permitted overrides. Artistic preferences remain separate.
 - Recommend a versioned structured JSON representation as the canonical note format, with local media stored separately and referenced by ID. Markdown input and Markdown import/export are interfaces to this model, not a second authoritative copy.
 - This trades direct plain-Markdown compatibility for explicit identity, rich layouts, and enforceable editing scopes. Basic text should export cleanly; advanced layouts and animations cannot be assumed to survive Markdown export.
-- The concrete format and handling of schema versions, inline formatting ranges, external edits, and migrations must be designed before commitment.
+- The version 2 implementation now specifies content/layout separation, immutable schema versions and lazy migration with backups; see the delivery status below and [document model](docs/document-model.md). Rich-text operations retain the supported Tiptap structures. Rich conflict resolution for external edits remains future work.
 - Imported assets are copied into the local workspace, as agreed on 2026-10-25; notes must not depend on the original external file remaining at its original path. Store asset bytes separately and reference them by stable IDs. Asset edits must respect the current-note-only editing boundary; any deduplication, versioning, and cleanup design must preserve other notes and retained revisions.
 
 ### Agreed component-based JavaScript authoring direction
@@ -379,3 +379,12 @@ The implemented slice includes directly editable text panels, copied local image
 Imported PNG/JPEG/WebP/GIF images have byte/dimension limits, note-owned storage, near-viewport loading and native validation. GIF frame count and total canvas work are also bounded. Fade, float and pulse are controlled animation presets; global pause, system reduced motion, background visibility and offscreen detection control playback. GIFs use a static poster when paused and restart when resumed; per-GIF FPS caps are not implemented. Text and image links support stable note targets and validated HTTP(S) URLs; image links use Ctrl/Cmd-click to preserve normal selection. Web links open in the system browser on explicit activation.
 
 Component operations preserve text; image insertion does not replace selected words. Existing plain notes remain readable. Arbitrary JavaScript authoring/execution, extensible component registration, AI scope enforcement, general animation timelines and asset garbage collection remain separate work; this slice is not the final document/plugin API.
+
+
+### Document V2, schemas and interactive components - approved October 31, resumed November 3, 2026
+
+The user explicitly requested implementation of the document/layout/component plan. This supersedes the earlier proposal-only status for this milestone. Approved defaults are flowing text on a free-placement root, scrolling overflow, schema suggestions by default, opt-in automatic rules, and controlled-toolkit JavaScript components. Existing note IDs, assets, connections and supported authored content remain preserved.
+
+The implementation provides separate content objects and logical reading order, nested free/column/row/grid containers, a single editor/history, lazy V1 migration with pre-V2 backups, revision-checked scoped operations, immutable schema/component definitions, schema preview/application, and an explicitly enabled QuickJS Worker runtime. The runtime uses one verified pinned WASM artifact, an independent 64 MiB total WASM ceiling, eight-context limit, bounded messages/output and a terminating host watchdog. State changes are undoable; animation is transient and pauses while typing, hidden, offscreen, on battery or under reduced motion.
+
+This is a verified prototype stage. Conservative proposal geometry checks do not prove actual rendered text height, contrast or all nested overlaps. Broad drawing/zoom tools, cloud AI, app-wide plugins and sync remain outside this milestone. Native and browser integration evidence and the remaining performance/acceptance gates are recorded in [document-model.md](docs/document-model.md).

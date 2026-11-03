@@ -222,7 +222,13 @@ pub fn index(db: &Connection, note: &Note) -> Result<()> {
         params![rowid, note.id, note.title, note.tags.join(" "), folder],
     )
     .map_err(err)?;
-    visit(&note.content, &mut refs);
+    if let Some(document) = &note.document {
+        for block in crate::document::logical_blocks(document) {
+            visit(&block, &mut refs);
+        }
+    } else {
+        visit(&note.content, &mut refs);
+    }
     db.execute("DELETE FROM note_refs WHERE source=?1", [&note.id])
         .map_err(err)?;
     for (target, count) in refs {

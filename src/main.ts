@@ -7,6 +7,14 @@ import { installMetrics } from './metrics';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { noteLinkTarget } from './note-links';
 import { componentMarkup, initializeComponentUI } from './component-ui';
+import { documentFromEditor, documentToEditor } from './document-model';
+import { initializeSchemaUI } from './schema-ui';
+import { SchemaRegistry } from './document-schema';
+import { builtinComponentDefinitions } from './component-runtime-examples';
+import { ComponentRuntimeHost, installComponentDefinition } from './component-runtime';
+import { initializeDocumentTools } from './document-tools-ui';
+import type { DocumentSchema } from './document-schema';
+import type { ComponentDefinition } from './component-runtime-types';
 import './style.css';
 import './editing.css';
 import './components.css';
@@ -54,6 +62,7 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
+  <div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog"><h2>Workspace</h2><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
@@ -82,10 +91,18 @@ let inlineSearchGeneration = 0;
 const editorExtensions = () => createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default');
 const editingUI = initializeEditingUI({ getEditor: () => editor, getSchema: () => session?.note.presentation.schemaId ?? 'default', error });
 const componentUI = initializeComponentUI({ getEditor: () => editor, getNoteId: () => session?.note.id ?? null, importAsset: (id, file) => api.importAsset(id, file), error });
+const schemaRegistry = new SchemaRegistry([], async definitions => { for (const definition of definitions) await api.saveDocumentDefinition('schema', definition); });
+const schemaUI = initializeSchemaUI($('#schema-ui-host'), {getEditor:()=>editor, registry:schemaRegistry, getLegacySchema:()=>session?.note.presentation.schemaId??'default',error});
+$('#schema-ui-host').querySelector<HTMLElement>('[data-schema-open]')!.hidden = true;
+$('#edit-schema').onclick = () => schemaUI.open();
+const documentTools=initializeDocumentTools($('#document-api-host'),{getEditor:()=>editor,getNote:()=>session?.note??null,getRuntime:()=>componentRuntime,flush,error,persistDefinition:async definition=>{await api.saveDocumentDefinition('component',definition);}});
+$('#interactive-library').onclick=()=>documentTools.openComponents();
+$('#document-operations').onclick=()=>documentTools.openOperations();
 const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close()},initialLayout);
 const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
+let componentRuntime: ComponentRuntimeHost | null = null;
 const documentSchema = getSchema(editorExtensions());
 function validateEditorDocument(note: Note) {
   const checkAttributes = (node: import('@tiptap/core').JSONContent) => {
@@ -249,8 +266,11 @@ function wordCount() {
   $('#word-count').textContent = `${count.toLocaleString()} ${count === 1 ? 'word' : 'words'}`;
 }
 function showNote(note: Note) {
+  note.document = note.document ?? documentFromEditor(note.content, note.id);
+  note.content = documentToEditor(note.document);
   validateEditorDocument(note);
   editor?.destroy();
+  componentRuntime?.destroy(); componentRuntime = new ComponentRuntimeHost();
   releaseAssets();
   const assetURLs = new Map<string, Promise<string>>();
   let disposed = false;
@@ -260,20 +280,22 @@ function showNote(note: Note) {
     if (!url) { url = api.assetUrl(note.id, assetId).then(value => { if (disposed) api.releaseAssetUrl(value); return value; }); assetURLs.set(assetId, url); }
     return url;
   };
-  session = new NoteSession(note, api.save, updateSaveState, n => { if (editor) n.content = editor.getJSON(); });
+  session = new NoteSession(note, api.save, updateSaveState, n => {
+    if (editor) { n.document = documentFromEditor(editor.getJSON(), n.id, n.document); n.content = documentToEditor(n.document); n.formatVersion = 2; }
+  });
   saveError = false;
   $('#empty-state').hidden = true;
   $('#note-pane').hidden = false;
   refreshMetadata();
   editor = new Editor({
     element: $('#editor'), content: note.content,
-    extensions: createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default', { resolveAsset }), editable: !navigating,
+    extensions: createEditorExtensions(() => session?.note.presentation.schemaId ?? 'default', { resolveAsset, runtime:componentRuntime,noteId:note.id,copyAsset:api.copyAsset,error }), editable: !navigating,
     editorProps: { attributes: { 'aria-label': 'Note content', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' } },
     onSelectionUpdate: ({ editor: current }) => { editingUI.sync(current); componentUI.sync(); },
-    onTransaction: ({ editor: current, transaction }) => { editingUI.sync(current, transaction.docChanged); componentUI.sync(); },
+    onTransaction: ({ editor: current, transaction }) => { editingUI.sync(current, transaction.docChanged); componentUI.sync(); schemaUI.sync(); },
     onUpdate: () => { edit(() => {}); clearTimeout(countTimer); countTimer = setTimeout(wordCount, 500); },
   });
-  wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); componentUI.sync(); connectionsUI.changed(); void renderList();
+  wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); componentUI.sync(); schemaUI.sync(); connectionsUI.changed(); void renderList();
 }
 async function navigate(action: () => Promise<Note>) {
   if (navigating) return;
@@ -375,7 +397,7 @@ $('#dismiss-error').onclick = () => { $('#error-banner').hidden = true; };
 $('#retry-save').onclick = () => { void flush().then(() => { $('#error-banner').hidden = true; }).catch(() => {}); };
 $('#download-draft').onclick = () => {
   if (!session) return;
-  if (editor) session.note.content = editor.getJSON();
+  if (editor) {session.note.document=documentFromEditor(editor.getJSON(),session.note.id,session.note.document);session.note.content=documentToEditor(session.note.document);session.note.formatVersion=2;}
   const url = URL.createObjectURL(new Blob([JSON.stringify(session.note, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${session.note.id}.draft.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
@@ -407,6 +429,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) void 
 
 async function start() {
   try {
+    const [schemas,components] = await Promise.all([api.listDocumentDefinitions<DocumentSchema>('schema').catch(reason=>{error(reason);return [];}),api.listDocumentDefinitions<ComponentDefinition>('component').catch(reason=>{error(reason);return [] ;})]);
+    schemaRegistry.import(schemas);
+    for(const definition of components)try{installComponentDefinition(definition);}catch(reason){error(reason);}
+    // Shipped definitions are inert data. Their exact code remains disabled until enabled by the user.
+    for(const definition of builtinComponentDefinitions)try{await api.saveDocumentDefinition('component',definition);}catch(reason){error(reason);}
     const result = await Promise.all([api.pageNotes('',undefined,0,80), api.folders(), api.status()]);
     notes = result[0].items; workspaceTotal=result[0].total; folders = result[1];
     $('#workspace-path').textContent = result[2].path;

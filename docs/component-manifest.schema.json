@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noted.local/schema/component-v1.json",
+  "title": "Noted interactive component definition v1",
+  "type": "object",
+  "required": ["manifest", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "source": { "type": "string", "minLength": 1, "maxLength": 262144 },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "id", "version", "name", "fallback", "properties", "persistentState", "transientState", "searchText"],
+      "properties": {
+        "formatVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "version": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fallback": { "type": "string", "maxLength": 8192 },
+        "properties": { "$ref": "#/$defs/fields" },
+        "persistentState": { "$ref": "#/$defs/fields" },
+        "transientState": { "$ref": "#/$defs/fields" },
+        "searchText": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "bindings": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$", "not": { "enum": ["__proto__", "prototype", "constructor"] } } },
+        "animationFps": { "type": "number", "minimum": 1, "maximum": 30 }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,79}$", "not": { "enum": ["__proto__", "prototype", "constructor"] } },
+    "fields": { "type": "object", "maxProperties": 64, "propertyNames": { "$ref": "#/$defs/id" }, "additionalProperties": { "$ref": "#/$defs/field" } },
+    "field": {
+      "type": "object", "required": ["type", "default"], "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["string", "number", "boolean"] },
+        "default": { "type": ["string", "number", "boolean"] },
+        "label": { "type": "string", "maxLength": 128 },
+        "min": { "type": "number" }, "max": { "type": "number" },
+        "choices": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 256 } }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "string" } } }, "then": { "properties": { "default": { "type": "string", "maxLength": 8192 } } } },
+        { "if": { "properties": { "type": { "const": "number" } } }, "then": { "properties": { "default": { "type": "number" } } } },
+        { "if": { "properties": { "type": { "const": "boolean" } } }, "then": { "properties": { "default": { "type": "boolean" } } } }
+      ]
+    }
+  }
+}

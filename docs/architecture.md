@@ -22,7 +22,7 @@ The prototype deliberately uses debounced document snapshots instead of implemen
 
 Each note has `formatVersion`, a UUID `id`, title, optional `folderId`, tags, revision, timestamps, structured editor content, and presentation metadata. `revisionToken` is a returned fingerprint used for optimistic concurrency, not authored note content. Internal links use `noted://note/<uuid>` so renaming or moving a note does not change its link target.
 
-Tiptap's structured document is the prototype content representation. Blocks carry stable IDs. The durable format is not yet an independently specified public plugin API; future migrations must account for supported nodes, marks, and references. Canvas layouts will eventually reference content IDs, rather than duplicate text.
+The independently versioned V2 document is authoritative on disk; Tiptap's structured document is an editing projection. Stable content IDs, logical reading order and nested layout references are persisted separately. V1 notes retain compatibility through lazy migration. See [document-model.md](document-model.md) for the contract, recovery behavior and remaining acceptance gates. This remains an experimental format rather than a public app-wide plugin API.
 
 The editor applies Markdown input shortcuts. It does not keep an independently editable Markdown copy alongside the JSON. Presentation presets change rendering independently of wording.
 
@@ -30,7 +30,7 @@ The editor applies Markdown input shortcuts. It does not keep an independently e
 
 On 2026-10-25 the user approved predictable JavaScript-defined components with explicit editable properties and operations, backed by persisted content and layout state. The visual editor and AI authoring should use a common validated editing contract. Ordinary edits must not require AI or rewriting arbitrary JavaScript; generated code is not trusted component implementation code.
 
-The requested implementation comparison retained Tiptap with a focused component layer. A separate GrapesJS core/Tiptap custom-RTE integration is implemented under `experiments/editor-comparison`; it is a development dependency, excluded from the app bundle. [Results and limitations](../experiments/editor-comparison/RESULTS.md) explain the lifecycle-cost and editing-complexity tradeoffs. No React or generated-code execution runtime was introduced.
+The requested implementation comparison retained Tiptap with a focused component layer. A separate GrapesJS core/Tiptap custom-RTE integration is implemented under `experiments/editor-comparison`; it is a development dependency, excluded from the app bundle. [Results and limitations](../experiments/editor-comparison/RESULTS.md) explain the lifecycle-cost and editing-complexity tradeoffs. The comparison introduced no React. The later document milestone adds explicitly enabled note components through the bounded QuickJS runtime described below.
 
 ## Editable components and local images
 
@@ -84,4 +84,12 @@ Authored text is tokenized into bounded overlapping windows with cached fingerpr
 
 Application code accepts validated identifiers and document data rather than frontend-supplied filesystem paths. Tauri permissions and CSP restrict the webview. No note content is sent to a remote service. Browser preview is a separate development adapter; do not mistake its storage and timings for native behavior.
 
-Local embedding inference is included as an optional discovery feature. Cloud AI, generated note-script execution and a user plugin runtime are not included. The future formatting API must expose only allowed operations on presentation, verify protected content and references, and reject stale revisions atomically.
+Local embedding inference remains optional. Explicitly enabled note components use the bundled pinned QuickJS interpreter in a Worker with one independently capped WASM memory. They cannot access browser globals, DOM, network, filesystem or app IPC. This is separate from an app-wide plugin runtime. Cloud AI is not integrated. Revision-checked document proposals now enforce independent permissions and protected content; complete rendered overlap and contrast validation remains a prerequisite for AI-generated arrangement.
+
+## Versioned document milestone
+
+`document-model.ts` and native `document.rs` separate content objects, logical reading order, layout trees and version references. A single Tiptap editor supplies text, container, schema and component-state history. `document-editor.ts` maps accepted projections into one Undo transaction while recovering selection by stable ID. Indexing and semantic extraction traverse logical content, so presentation changes do not reorder search text.
+
+Native V2 JSON omits the duplicate editor projection. Opening V1 notes migrates only in memory; saving preserves both the previous revision and an immutable pre-V2 backup. Schema/component definitions live under versioned workspace directories, separately from note data and device-only execution approvals. Imported missing definitions recover mounted placeholders without changing saved state. Declared text bindings refresh after authored text changes and Undo; ordinary selection changes do not start runtime work.
+
+See [document-model.md](document-model.md), [schema-authoring.md](schema-authoring.md) and [component-authoring.md](component-authoring.md) for contracts, limits and remaining acceptance gates.

@@ -37,7 +37,11 @@ pub struct Note {
     pub revision: u64,
     pub created_at: String,
     pub updated_at: String,
+    /// Editor transport projection. V2 files store the normalized document only.
+    #[serde(default)]
     pub content: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document: Option<Value>,
     pub presentation: Presentation,
     /// Transport-only: empty in canonical JSON; filled from raw bytes on reads.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -92,6 +96,7 @@ pub struct Store {
     reconcile: std::collections::VecDeque<PathBuf>,
     reconciling: bool,
     warnings: Vec<String>,
+    pub(crate) document_grants: crate::document::Grants,
     _lock: File,
 }
 /// A separate SQLite reader for graph/search work. It shares no Rust mutex with
@@ -180,6 +185,7 @@ impl Store {
             reconcile: Default::default(),
             reconciling: false,
             warnings: Vec::new(),
+            document_grants: Default::default(),
             _lock: File::open(self.root.join("workspace.lock")).map_err(err)?,
         }))
     }
@@ -234,6 +240,7 @@ impl Store {
             reconcile: std::collections::VecDeque::new(),
             reconciling: false,
             warnings: Vec::new(),
+            document_grants: Default::default(),
             _lock: lock,
         };
         Ok(store)
@@ -348,6 +355,7 @@ impl Store {
             created_at: timestamp.clone(),
             updated_at: timestamp,
             content: json!({"type":"doc","content":[{"type":"paragraph","attrs":{"id":Uuid::new_v4().to_string()}}]}),
+            document: None,
             presentation: Presentation {
                 schema_id: "default".into(),
             },
@@ -365,12 +373,19 @@ impl Store {
         if note.id != id {
             return Err("Note identity does not match its filename; original preserved".into());
         }
+        if let Some(document) = &note.document {
+            note.content = crate::document::project(document)?;
+        }
         self.validate(&note)?;
         note.revision_token = token(&bytes);
         Ok(note)
     }
 
     pub fn save_note(&mut self, mut note: Note, expected_revision: u64) -> Result<Note> {
+        if note.format_version == 2 {
+            note.content =
+                crate::document::project(note.document.as_ref().ok_or("V2 document required")?)?;
+        }
         self.validate(&note)?;
         let current = self.load_note(&note.id)?;
         if current.revision != expected_revision
@@ -388,6 +403,12 @@ impl Store {
             &path.with_extension("json.bak"),
             &fs::read(&path).map_err(err)?,
         )?;
+        if current.format_version == 1 && note.format_version == 2 {
+            let migration_backup = path.with_extension("pre-v2.json.bak");
+            if !migration_backup.exists() {
+                atomic_write(&migration_backup, &fs::read(&path).map_err(err)?)?;
+            }
+        }
         self.commit(note)
     }
 
@@ -409,9 +430,27 @@ impl Store {
         crate::assets::read(&self.root, note_id, asset_id)
     }
 
+    pub fn copy_image(
+        &self,
+        source_note_id: &str,
+        target_note_id: &str,
+        asset_id: &str,
+    ) -> Result<crate::assets::ImageInfo> {
+        self.load_note(target_note_id)?;
+        let source = self.read_image(source_note_id, asset_id)?;
+        crate::assets::import(&self.root, target_note_id, &source.bytes, &source.info.mime)
+    }
+
     fn commit(&mut self, mut note: Note) -> Result<Note> {
         note.revision_token.clear();
-        let bytes = serde_json::to_vec_pretty(&note).map_err(err)?;
+        let mut stored = serde_json::to_value(&note).map_err(err)?;
+        if note.format_version == 2 {
+            stored
+                .as_object_mut()
+                .ok_or("Invalid note")?
+                .remove("content");
+        }
+        let bytes = serde_json::to_vec_pretty(&stored).map_err(err)?;
         if bytes.len() as u64 > MAX_NOTE_BYTES {
             return Err("Note exceeds the prototype's 8 MiB limit".into());
         }
@@ -428,8 +467,13 @@ impl Store {
 
     fn validate(&self, note: &Note) -> Result<()> {
         valid_id(&note.id)?;
-        if note.format_version != 1 {
+        if ![1, 2].contains(&note.format_version) {
             return Err("Unsupported note format version".into());
+        }
+        if note.format_version == 2 {
+            crate::document::validate(note.document.as_ref().ok_or("V2 document required")?)?;
+        } else if note.document.is_some() {
+            return Err("V1 notes cannot contain a conflicting V2 document".into());
         }
         if note.title.len() > 1024 {
             return Err("Title is too long".into());
@@ -451,7 +495,7 @@ impl Store {
 
     fn index_note(&mut self, note: &Note) -> Result<()> {
         let tx = self.db.transaction().map_err(err)?;
-        insert_index(&tx, note)?;
+        insert_index(&tx, note, &self.root)?;
         let signature = file_signature(&self.root.join("notes").join(format!("{}.json", note.id)))?;
         tx.execute("INSERT INTO note_files VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET signature=excluded.signature",params![note.id,signature]).map_err(err)?;
         tx.commit().map_err(err)
@@ -473,7 +517,7 @@ impl Store {
             let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             match self.load_note(id) {
                 Ok(note) => {
-                    insert_index(&tx, &note)?;
+                    insert_index(&tx, &note, &self.root)?;
                     let signature = file_signature(&path)?;
                     tx.execute(
                         "INSERT INTO note_files VALUES(?1,?2)",
@@ -643,7 +687,7 @@ impl Store {
     }
 }
 
-fn insert_index(db: &Connection, note: &Note) -> Result<()> {
+fn insert_index(db: &Connection, note: &Note, root: &Path) -> Result<()> {
     db.execute(
         "INSERT INTO notes(id,summary) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary",
         params![
@@ -662,7 +706,14 @@ fn insert_index(db: &Connection, note: &Note) -> Result<()> {
     db.execute("DELETE FROM note_search WHERE rowid=?1", [rowid])
         .map_err(err)?;
     let mut body = String::new();
-    extract_text(&note.content, &mut body);
+    if let Some(document) = &note.document {
+        for node in crate::document::logical_blocks_at(document, Some(root)) {
+            extract_text(&node, &mut body);
+        }
+        body.push(' ');
+    } else {
+        extract_text(&note.content, &mut body);
+    }
     db.execute(
         "INSERT INTO note_search(rowid,id,title,body,tags) VALUES (?1,?2,?3,?4,?5)",
         params![rowid, note.id, note.title, body, note.tags.join(" ")],
@@ -710,7 +761,7 @@ fn valid_text_color(value: &Value) -> bool {
         })
 }
 
-fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Result<()> {
+pub(crate) fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Result<()> {
     if depth > 64 {
         return Err("Document nesting exceeds 64 levels".into());
     }
@@ -738,6 +789,7 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
         "text",
         "notePanel",
         "localImage",
+        "interactiveComponent",
     ]
     .contains(&kind)
     {
@@ -764,6 +816,58 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
     if let Some(attrs) = node.get("attrs") {
         for (key, value) in attrs.as_object().ok_or("Attributes must be an object")? {
             let allowed = match key.as_str() {
+                "readingOrder" => {
+                    kind == "doc"
+                        && value.as_array().is_some_and(|a| {
+                            a.len() <= crate::document::MAX_OBJECTS
+                                && a.iter().all(|v| {
+                                    v.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 200)
+                                })
+                        })
+                }
+                "schemaReference" => {
+                    kind == "doc" && crate::document::schema_reference(value).is_ok()
+                }
+                "schemaPolicy" => kind == "doc" && crate::document::schema_policy(value).is_ok(),
+                "schemaStyle" => {
+                    ["paragraph", "heading"].contains(&kind)
+                        && crate::document::schema_style(value).is_ok()
+                }
+                "schemaRef" => {
+                    ["paragraph", "heading"].contains(&kind)
+                        && crate::document::schema_reference(value).is_ok()
+                }
+                "layoutKind" => {
+                    kind == "notePanel"
+                        && value
+                            .as_str()
+                            .is_some_and(|s| ["free", "column", "row", "grid"].contains(&s))
+                }
+                "padding" | "gap" => {
+                    kind == "notePanel" && value.as_u64().is_some_and(|n| n <= 256)
+                }
+                "gridColumns" => {
+                    kind == "notePanel" && value.as_u64().is_some_and(|n| (1..=12).contains(&n))
+                }
+                "definitionId" => {
+                    kind == "interactiveComponent"
+                        && value
+                            .as_str()
+                            .is_some_and(|s| !s.is_empty() && s.len() <= 200)
+                }
+                "definitionVersion" => {
+                    kind == "interactiveComponent"
+                        && value.as_u64().is_some_and(|n| n > 0 && n <= 1_000_000)
+                }
+                "properties" | "state" => {
+                    kind == "interactiveComponent"
+                        && value.is_object()
+                        && serde_json::to_vec(value).is_ok_and(|v| v.len() <= 64 * 1024)
+                }
+                "fallback" => {
+                    kind == "interactiveComponent"
+                        && value.as_str().is_some_and(|s| s.len() <= 20_000)
+                }
                 "id" => {
                     !["doc", "text", "hardBreak"].contains(&kind)
                         && (value.is_string() || value.is_null())
@@ -784,25 +888,23 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                 }
                 "checked" => kind == "taskItem" && value.is_boolean(),
                 "width" => {
-                    ["notePanel", "localImage"].contains(&kind)
+                    ["notePanel", "localImage", "interactiveComponent"].contains(&kind)
                         && value.as_u64().is_some_and(|n| (160..=1200).contains(&n))
                 }
                 "placement" => {
-                    ["notePanel", "localImage"].contains(&kind)
-                        && value
-                            .as_str()
-                            .is_some_and(|s| s == "flow" || (s == "free" && depth == 1))
+                    ["notePanel", "localImage", "interactiveComponent"].contains(&kind)
+                        && value.as_str().is_some_and(|s| s == "flow" || s == "free")
                 }
                 "x" | "y" => {
-                    ["notePanel", "localImage"].contains(&kind)
+                    ["notePanel", "localImage", "interactiveComponent"].contains(&kind)
                         && value.as_u64().is_some_and(|n| n <= 100_000)
                 }
                 "z" => {
-                    ["notePanel", "localImage"].contains(&kind)
+                    ["notePanel", "localImage", "interactiveComponent"].contains(&kind)
                         && value.as_u64().is_some_and(|n| n <= 10_000)
                 }
                 "animation" => {
-                    ["notePanel", "localImage"].contains(&kind)
+                    ["notePanel", "localImage", "interactiveComponent"].contains(&kind)
                         && value
                             .as_str()
                             .is_some_and(|s| ["none", "fade", "float", "pulse"].contains(&s))
@@ -841,7 +943,14 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                         && value.as_str().is_some_and(|s| s.chars().count() <= 2000)
                 }
                 "align" => {
-                    ["tableCell", "tableHeader", "notePanel", "localImage"].contains(&kind)
+                    [
+                        "tableCell",
+                        "tableHeader",
+                        "notePanel",
+                        "localImage",
+                        "interactiveComponent",
+                    ]
+                    .contains(&kind)
                         && ((value.is_null() && ["tableCell", "tableHeader"].contains(&kind))
                             || value
                                 .as_str()
@@ -901,7 +1010,7 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
         return Err("Local images require a valid asset identifier".into());
     }
     if let Some(id) = node.pointer("/attrs/id").and_then(Value::as_str) {
-        if id.len() > 128 || id.is_empty() || !ids.insert(id.to_owned()) {
+        if id.len() > 200 || id.is_empty() || !ids.insert(id.to_owned()) {
             return Err("Content element IDs must be unique and nonempty".into());
         }
     }
@@ -1030,6 +1139,7 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
                 "table",
                 "notePanel",
                 "localImage",
+                "interactiveComponent",
             ]
             .contains(&child_kind),
             "paragraph" | "heading" => ["text", "hardBreak"].contains(&child_kind),
@@ -1056,6 +1166,26 @@ fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn copying_assets_creates_an_immutable_owned_copy_without_editing_notes() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let a = store.create_note("Source".into(), None).unwrap();
+        let b = store.create_note("Destination".into(), None).unwrap();
+        let image = store
+            .import_image(&a.id, include_bytes!("../icons/icon.png"), "image/png")
+            .unwrap();
+        let copied = store.copy_image(&a.id, &b.id, &image.id).unwrap();
+        assert_ne!(copied.id, image.id);
+        assert_eq!(
+            store.read_image(&a.id, &image.id).unwrap().bytes,
+            store.read_image(&b.id, &copied.id).unwrap().bytes
+        );
+        assert!(store.read_image(&a.id, &copied.id).is_err());
+        assert!(store.read_image(&b.id, &image.id).is_err());
+        assert_eq!(store.load_note(&a.id).unwrap().revision, 1);
+        assert_eq!(store.load_note(&b.id).unwrap().revision, 1);
+    }
 
     #[test]
     fn local_assets_are_copied_note_owned_and_survive_reopen() {
@@ -1165,7 +1295,10 @@ mod tests {
         let saved = store.save_note(note, 1).unwrap();
         let mut nested = saved.clone();
         nested.content = json!({"type":"doc","content":[{"type":"notePanel","content":[{"type":"notePanel","attrs":{"placement":"free"},"content":[{"type":"paragraph"}]}]}]});
-        assert!(store.save_note(nested, saved.revision).is_err());
+        assert!(
+            store.validate(&nested).is_ok(),
+            "Nested free containers are supported by V2 layouts"
+        );
         drop(store);
         let store = Store::open(temp.path()).unwrap();
         assert_eq!(store.load_note(&saved.id).unwrap().content, saved.content);

@@ -2,10 +2,15 @@ import type { Editor } from '@tiptap/core';
 import { moveComponent, selectedComponent, updateComponent, wrapInPanel, canWrapInPanel, unwrapPanel, insertLocalImage, changeComponentLayer, insertPanel } from './note-components.ts';
 import { initializeMotionControl } from './component-motion.ts';
 import { normalizeNoteLink } from './note-links.ts';
+import { groupSelection } from './document-editor.ts';
 
 export const componentMarkup = `<div class="component-toolbar" role="group" aria-label="Note components">
   <button type="button" id="make-panel" title="Group selected paragraphs into an editable panel">▧ Text panel</button>
   <button type="button" id="new-panel" title="Add an independent editable text panel">＋ New panel</button>
+  <button type="button" id="group-layout" title="Group selection, including inside another box">Group in box</button>
+  <button type="button" id="edit-schema">Schemas</button>
+  <button type="button" id="interactive-library">Interactive</button>
+  <button type="button" id="document-operations">Document API</button>
   <button type="button" id="insert-image" title="Import a PNG, JPEG, WebP, or GIF image">＋ Image / GIF</button>
   <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
   <button type="button" id="motion-control" aria-label="Pause motion">Pause motion</button>
@@ -14,6 +19,7 @@ export const componentMarkup = `<div class="component-toolbar" role="group" aria
     <label>Placement <select id="component-placement" aria-label="Component placement"><option value="flow">Guided flow</option><option value="free">Free placement</option></select></label>
     <span id="free-position-properties" class="free-position-properties" hidden><label>X <input id="component-x" aria-label="Component X" type="number" min="0" max="100000" step="10" /></label><label>Y <input id="component-y" aria-label="Component Y" type="number" min="0" max="100000" step="10" /></label><label>Layer <input id="component-z" aria-label="Component layer" type="number" min="0" max="10000" step="1" /></label><button type="button" id="component-backward" aria-label="Send component backward">Back</button><button type="button" id="component-forward" aria-label="Bring component forward">Forward</button></span>
     <label>Width <input id="component-width" aria-label="Component width" type="number" min="160" max="1200" step="10" /> px</label>
+    <span id="container-properties" class="layout-container-properties"><label>Layout <select id="container-kind" aria-label="Container layout"><option value="column">Vertical</option><option value="row">Horizontal</option><option value="grid">Grid</option><option value="free">Free</option></select></label><label>Padding <input id="container-padding" aria-label="Container padding" type="number" min="0" max="256"></label><label>Gap <input id="container-gap" aria-label="Container gap" type="number" min="0" max="256"></label><label>Columns <input id="container-gridColumns" aria-label="Grid columns" type="number" min="1" max="12"></label></span>
     <label><span class="sr-only">Component alignment</span><select id="component-align" aria-label="Component alignment"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
     <label id="component-tone-label"><span class="sr-only">Panel appearance</span><select id="component-tone" aria-label="Panel appearance"><option value="plain">Plain</option><option value="soft">Soft</option><option value="accent">Accent</option></select></label>
     <label id="component-alt-label">Description <input id="component-alt" aria-label="Image description" maxlength="2000" placeholder="Describe the image" /></label>
@@ -31,6 +37,9 @@ export function initializeComponentUI({ getEditor, getNoteId, importAsset, error
   initializeMotionControl($<HTMLButtonElement>('#motion-control'));
   $('#make-panel').addEventListener('click', () => run(editor => { if (!wrapInPanel(editor)) error('Select ordinary paragraphs outside a list, table, or existing panel to create a panel.'); }));
   $('#new-panel').addEventListener('click', () => run(editor => { insertPanel(editor); }));
+  $('#group-layout').addEventListener('click', () => run(editor => { if (!groupSelection(editor)) error('Select blocks in the same container to group them.'); }));
+  $('#container-kind').addEventListener('change', () => run(editor => { updateComponent(editor, {layoutKind:$<HTMLSelectElement>('#container-kind').value as 'free'|'column'|'row'|'grid'}); }));
+  for (const key of ['padding','gap','gridColumns'] as const) $(`#container-${key}`).addEventListener('change', () => run(editor => { if(!updateComponent(editor, {[key]: Number($<HTMLInputElement>(`#container-${key}`).value)})) sync(); }));
   $('#insert-image').addEventListener('click', () => $('#image-file').click());
   $('#image-file').addEventListener('change', async () => {
     const input = $<HTMLInputElement>('#image-file'); const file = input.files?.[0]; input.value = '';
@@ -86,7 +95,9 @@ export function initializeComponentUI({ getEditor, getNoteId, importAsset, error
     $<HTMLButtonElement>('#component-forward').disabled = component.node.attrs.z >= 10000;
     $<HTMLSelectElement>('#component-align').disabled = free;
     const image = component.node.type.name === 'localImage';
-    $('#component-tone-label').hidden = image; $('#component-alt-label').hidden = !image; $('#component-link-label').hidden = !image; $('#unwrap-panel').hidden = image;
+    const panel = component.node.type.name === 'notePanel';
+    $('#component-tone-label').hidden = !panel; $('#container-properties').hidden = !panel; $('#component-alt-label').hidden = !image; $('#component-link-label').hidden = !image; $('#unwrap-panel').hidden = !panel;
+    if(panel){setValue('#container-kind', component.node.attrs.layoutKind ?? 'column');for(const key of ['padding','gap','gridColumns'])setValue(`#container-${key}`,String(component.node.attrs[key]));}
     setValue('#component-tone', component.node.attrs.tone ?? 'soft'); setValue('#component-alt', component.node.attrs.alt ?? ''); setValue('#component-link', component.node.attrs.href ?? '');
     const position = editor.state.doc.resolve(component.position);
     $<HTMLButtonElement>('#component-up').disabled = position.index() === 0;

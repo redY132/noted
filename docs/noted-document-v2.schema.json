@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noted.local/schemas/noted-document-v2.json",
+  "title": "NotedDocumentV2",
+  "$comment": "Native/TypeScript validation additionally requires every content ID exactly once in readingOrder and layout, unique layout/node IDs, supported rich-text attributes and safe links, bounded nesting, and owned asset references.",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "objects", "readingOrder", "layout", "styles"],
+  "properties": {
+    "version": { "const": 2 },
+    "objects": { "type": "object", "maxProperties": 100000, "propertyNames": { "$ref": "#/$defs/id" }, "additionalProperties": { "$ref": "#/$defs/contentObject" } },
+    "readingOrder": { "type": "array", "maxItems": 100000, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "layout": { "allOf": [{ "$ref": "#/$defs/container" }, { "properties": { "id": { "const": "root" }, "kind": { "const": "free" } } }] },
+    "styles": { "type": "object", "propertyNames": { "$ref": "#/$defs/id" }, "additionalProperties": { "$ref": "#/$defs/style" } },
+    "schemaRef": { "$ref": "#/$defs/versionReference" },
+    "schemaPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["mode", "enabledRules"],
+      "properties": {
+        "mode": { "enum": ["suggest", "automatic"] },
+        "enabledRules": { "type": "array", "uniqueItems": true, "maxItems": 6, "items": { "enum": ["fontFamily", "fontSize", "lineHeight", "color", "spacing", "indent"] } }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 200, "not": { "enum": ["__proto__", "prototype", "constructor"] } },
+    "versionReference": {
+      "type": "object", "additionalProperties": false, "required": ["id", "version"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "version": { "type": "integer", "minimum": 1, "maximum": 1000000 } }
+    },
+    "style": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 160, "maximum": 1200 },
+        "align": { "enum": ["left", "center", "right"] },
+        "tone": { "enum": ["plain", "soft", "accent"] },
+        "placement": { "enum": ["flow", "free"] },
+        "x": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "y": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "z": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "animation": { "enum": ["none", "fade", "float", "pulse"] },
+        "padding": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "gap": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "gridColumns": { "type": "integer", "minimum": 1, "maximum": 12 }
+      }
+    },
+    "layout": { "oneOf": [{ "$ref": "#/$defs/item" }, { "$ref": "#/$defs/container" }] },
+    "item": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "contentId"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "const": "item" }, "contentId": { "$ref": "#/$defs/id" }, "style": { "$ref": "#/$defs/style" } }
+    },
+    "container": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "children"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "enum": ["free", "column", "row", "grid"] }, "children": { "type": "array", "items": { "$ref": "#/$defs/layout" } }, "style": { "$ref": "#/$defs/style" } }
+    },
+    "contentObject": { "oneOf": [{ "$ref": "#/$defs/richText" }, { "$ref": "#/$defs/image" }, { "$ref": "#/$defs/component" }] },
+    "richText": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "content"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "const": "richText" },
+        "content": { "allOf": [{ "$ref": "#/$defs/textNode" }, { "properties": { "type": { "not": { "enum": ["doc", "text", "notePanel", "localImage", "interactiveComponent"] } } } }] }
+      }
+    },
+    "image": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "assetId", "alt"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "const": "image" }, "assetId": { "type": "string" }, "alt": { "type": "string" }, "href": { "type": ["string", "null"] } }
+    },
+    "component": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "definition", "props", "state", "fallback"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "const": "component" }, "definition": { "$ref": "#/$defs/versionReference" }, "props": { "type": "object" }, "state": { "type": "object" }, "fallback": { "type": "string", "maxLength": 20000 } }
+    },
+    "textNode": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": { "enum": ["paragraph", "heading", "bulletList", "orderedList", "listItem", "taskList", "taskItem", "table", "tableRow", "tableCell", "tableHeader", "blockquote", "codeBlock", "horizontalRule", "hardBreak", "text", "localImage", "notePanel", "interactiveComponent"] },
+        "attrs": { "type": "object" }, "text": { "type": "string" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/textNode" } },
+        "marks": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["type"], "properties": { "type": { "enum": ["bold", "italic", "underline", "strike", "highlight", "code", "subscript", "superscript", "textStyle", "link"] }, "attrs": { "type": "object" } } } }
+      }
+    }
+  }
+}

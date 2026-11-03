@@ -242,7 +242,7 @@ test('free placement preserves words, extends the scroll surface, persists and r
   } finally { editor.destroy(); }
 });
 
-test('free placement extracts a nested image without losing panel words and undo restores exact nesting', () => {
+test('free placement keeps a nested image in its container without changing words or logical order', () => {
   const image = { type: 'localImage', attrs: { id: 'img', assetId: crypto.randomUUID(), alt: 'Diagram', width: 480 } };
   const panel = panelFixture('Before image', 'panel'); panel.content!.push(image, paragraph('After image'));
   const editor = make([panel, paragraph('Following panel')]);
@@ -250,9 +250,9 @@ test('free placement extracts a nested image without losing panel words and undo
     const before = editor.getJSON(); const words = editor.state.doc.textContent;
     editor.commands.setNodeSelection(1 + editor.state.doc.firstChild!.child(0).nodeSize);
     assert.equal(updateComponent(editor, { placement: 'free', x: 900, y: 500 }), true);
-    assert.equal(editor.state.doc.child(1).type.name, 'localImage');
+    assert.equal(editor.state.doc.firstChild!.child(1).type.name, 'localImage');
     assert.equal(editor.state.doc.textContent, words);
-    assert.equal(selectedComponent(editor)!.position, editor.state.doc.firstChild!.nodeSize);
+    assert.equal(selectedComponent(editor)!.position, 1 + editor.state.doc.firstChild!.child(0).nodeSize);
     editor.commands.undo(); assert.deepEqual(editor.getJSON(), before);
   } finally { editor.destroy(); }
 });

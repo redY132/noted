@@ -17,6 +17,7 @@
     "bench:editor": "vite preview --config experiments/editor-comparison/vite.config.ts"
   },
   "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-opener": "2.7.2",
     "@tiptap/core": "3.32.0",
@@ -30,7 +31,8 @@
     "@tiptap/extension-unique-id": "3.32.0",
     "@tiptap/pm": "3.32.0",
     "@tiptap/starter-kit": "3.32.0",
-    "d3-force": "^3.0.0"
+    "d3-force": "^3.0.0",
+    "quickjs-emscripten-core": "0.32.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.4",

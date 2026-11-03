@@ -4,17 +4,18 @@ import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { attachComponentMotion, attachImagePlayback } from './component-motion.ts';
 import { normalizeNoteLink } from './note-links.ts';
+import { retainLogicalOrder } from './document-editor.ts';
 
 export const MIN_COMPONENT_WIDTH = 160;
 export const MAX_COMPONENT_WIDTH = 1200;
 export const MAX_COMPONENT_POSITION = 100000;
 export const MAX_COMPONENT_LAYER = 10000;
-export type ComponentOptions = { resolveAsset?: (assetId: string) => Promise<string> };
-export type ComponentProperties = { width?: number; align?: 'left' | 'center' | 'right'; tone?: 'plain' | 'soft' | 'accent'; alt?: string; placement?: 'flow' | 'free'; x?: number; y?: number; z?: number; animation?: 'none' | 'fade' | 'float' | 'pulse'; href?: string | null };
+export type ComponentOptions = { noteId?:string; copyAsset?:(source:string,target:string,asset:string)=>Promise<{id:string}>; error?:(error:unknown)=>void; resolveAsset?: (assetId: string) => Promise<string>; runtime?: import('./component-runtime').ComponentRuntimeHost };
+export type ComponentProperties = { width?: number; align?: 'left' | 'center' | 'right'; tone?: 'plain' | 'soft' | 'accent'; alt?: string; placement?: 'flow' | 'free'; x?: number; y?: number; z?: number; animation?: 'none' | 'fade' | 'float' | 'pulse'; href?: string | null; layoutKind?: 'free' | 'column' | 'row' | 'grid'; padding?: number; gap?: number; gridColumns?: number };
 const validWidth = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= MIN_COMPONENT_WIDTH && value <= MAX_COMPONENT_WIDTH;
 const validCoordinate = (value: unknown, limit = MAX_COMPONENT_POSITION) => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= limit;
 const coordinateAttribute = (key: string, limit = MAX_COMPONENT_POSITION) => ({ default: 0, parseHTML: (element: HTMLElement) => { const n = Number(element.dataset[key]); return validCoordinate(n, limit) ? n : 0; } });
-const layoutAttributes = (width: number) => ({
+export const layoutAttributes = (width: number) => ({
   width: { default: width, parseHTML: (element: HTMLElement) => { const n = Number(element.dataset.width); return validWidth(n) ? n : width; } },
   align: { default: 'left', parseHTML: (element: HTMLElement) => ['left', 'center', 'right'].includes(element.dataset.align ?? '') ? element.dataset.align : 'left' },
   placement: { default: 'flow', parseHTML: (element: HTMLElement) => element.dataset.placement === 'free' ? 'free' : 'flow' },
@@ -22,7 +23,7 @@ const layoutAttributes = (width: number) => ({
   animation: { default: 'none', parseHTML: (element: HTMLElement) => ['none', 'fade', 'float', 'pulse'].includes(element.dataset.animation ?? '') ? element.dataset.animation : 'none' },
 });
 const serializedLayout = (node: DocumentNode) => ({ 'data-width': node.attrs.width, 'data-align': node.attrs.align, 'data-placement': node.attrs.placement, 'data-x': node.attrs.x, 'data-y': node.attrs.y, 'data-z': node.attrs.z, 'data-animation': node.attrs.animation });
-function applyLayout(element: HTMLElement, node: DocumentNode) {
+export function applyLayout(element: HTMLElement, node: DocumentNode) {
   element.style.width = `${validWidth(node.attrs.width) ? node.attrs.width : 640}px`;
   element.dataset.align = node.attrs.align;
   element.dataset.tone = node.attrs.tone ?? 'plain';
@@ -30,12 +31,18 @@ function applyLayout(element: HTMLElement, node: DocumentNode) {
   element.style.left = node.attrs.placement === 'free' ? `${node.attrs.x}px` : '';
   element.style.top = node.attrs.placement === 'free' ? `${node.attrs.y}px` : '';
   element.style.zIndex = node.attrs.placement === 'free' ? String(node.attrs.z) : '';
+  if (node.type.name === 'notePanel') {
+    element.dataset.layoutKind = node.attrs.layoutKind ?? 'column';
+    element.style.padding = `${node.attrs.padding ?? 16}px`;
+    element.style.setProperty('--layout-gap', `${node.attrs.gap ?? 12}px`);
+    element.style.setProperty('--grid-columns', String(node.attrs.gridColumns ?? 2));
+  }
 }
 
 type ExtentEntry = { dom: HTMLElement; node: () => DocumentNode };
 const extentManagers = new WeakMap<Editor, { entries: Set<ExtentEntry>; schedule: () => void; layoutObserver?: ResizeObserver }>();
 /** Only free components participate; ordinary text edits never scan the document. */
-function trackExtent(editor: Editor, dom: HTMLElement, node: () => DocumentNode) {
+export function trackExtent(editor: Editor, dom: HTMLElement, node: () => DocumentNode) {
   let manager = extentManagers.get(editor);
   if (!manager) {
     const entries = new Set<ExtentEntry>(); let queued = false;
@@ -44,14 +51,26 @@ function trackExtent(editor: Editor, dom: HTMLElement, node: () => DocumentNode)
       queueMicrotask(() => {
         queued = false; if (editor.isDestroyed) return;
         let width = 0, height = 0;
+        const nested = new Map<HTMLElement, {width:number;height:number}>();
         for (const entry of entries) {
           const value = entry.node();
           if (value.attrs.placement !== 'free') continue;
           const previewX = Number.parseFloat(entry.dom.style.left), previewY = Number.parseFloat(entry.dom.style.top);
           const x = Number.isFinite(previewX) ? previewX : value.attrs.x;
           const y = Number.isFinite(previewY) ? previewY : value.attrs.y;
+          const parent = entry.dom.parentElement;
+          if (parent?.classList.contains('note-panel-content')) {
+            const size = nested.get(parent) ?? {width:0,height:0};
+            size.width = Math.max(size.width, x + entry.dom.offsetWidth + 24);
+            size.height = Math.max(size.height, y + entry.dom.offsetHeight + 24);
+            nested.set(parent, size); continue;
+          }
           width = Math.max(width, x + (Number.parseFloat(entry.dom.style.width) || value.attrs.width) + 80);
           height = Math.max(height, y + Math.max(entry.dom.offsetHeight, 80) + 160);
+        }
+        for (const entry of entries) {
+          const panel = entry.dom.querySelector<HTMLElement>(':scope > .note-panel-content');
+          if (panel) { const size = nested.get(panel); panel.style.minHeight = size ? `${size.height}px` : ''; panel.style.minWidth = size ? `${size.width}px` : ''; }
         }
         editor.view.dom.style.setProperty('--free-width', `${width}px`);
         editor.view.dom.style.setProperty('--free-height', `${height}px`);
@@ -80,7 +99,7 @@ function trackExtent(editor: Editor, dom: HTMLElement, node: () => DocumentNode)
 /** All changes use the active editor's transaction/history, including programmatic callers. */
 export function selectedComponent(editor: Editor): { node: DocumentNode; position: number } | null {
   const { selection } = editor.state;
-  if (selection instanceof NodeSelection && ['notePanel', 'localImage'].includes(selection.node.type.name)) return { node: selection.node, position: selection.from };
+  if (selection instanceof NodeSelection && ['notePanel', 'localImage', 'interactiveComponent'].includes(selection.node.type.name)) return { node: selection.node, position: selection.from };
   for (let depth = selection.$from.depth; depth > 0; depth--) {
     const node = selection.$from.node(depth);
     if (node.type.name === 'notePanel') return { node, position: selection.$from.before(depth) };
@@ -90,7 +109,7 @@ export function selectedComponent(editor: Editor): { node: DocumentNode; positio
 export function updateComponent(editor: Editor, properties: ComponentProperties): boolean {
   const selected = selectedComponent(editor);
   if (!selected || !editor.isEditable) return false;
-  if (Object.keys(properties).some(key => !['width', 'align', 'tone', 'alt', 'placement', 'x', 'y', 'z', 'animation', 'href'].includes(key))) return false;
+  if (Object.keys(properties).some(key => !['width', 'align', 'tone', 'alt', 'placement', 'x', 'y', 'z', 'animation', 'href', 'layoutKind', 'padding', 'gap', 'gridColumns'].includes(key))) return false;
   if (properties.width !== undefined && !validWidth(properties.width)) return false;
   if (properties.align !== undefined && !['left', 'center', 'right'].includes(properties.align)) return false;
   if (properties.tone !== undefined && (selected.node.type.name !== 'notePanel' || !['plain', 'soft', 'accent'].includes(properties.tone))) return false;
@@ -101,6 +120,8 @@ export function updateComponent(editor: Editor, properties: ComponentProperties)
   if (properties.z !== undefined && !validCoordinate(properties.z, MAX_COMPONENT_LAYER)) return false;
   if (properties.animation !== undefined && !['none', 'fade', 'float', 'pulse'].includes(properties.animation)) return false;
   if (properties.href !== undefined && (selected.node.type.name !== 'localImage' || (properties.href !== null && normalizeNoteLink(properties.href) === null))) return false;
+  if (properties.layoutKind !== undefined && (selected.node.type.name !== 'notePanel' || !['free','column','row','grid'].includes(properties.layoutKind))) return false;
+  for (const key of ['padding','gap','gridColumns'] as const) if (properties[key] !== undefined && (selected.node.type.name !== 'notePanel' || !validCoordinate(properties[key], key === 'gridColumns' ? 12 : 256) || (key === 'gridColumns' && properties[key]! < 1))) return false;
   const normalized = properties.href === undefined ? properties : { ...properties, href: normalizeNoteLink(properties.href) };
   const changed = Object.fromEntries(Object.entries(normalized).filter(([key, value]) => value !== undefined && selected.node.attrs[key] !== value));
   if (!Object.keys(changed).length) return false;
@@ -111,17 +132,8 @@ export function updateComponent(editor: Editor, properties: ComponentProperties)
     if (properties.y === undefined) changed.y = Math.max(0, Math.min(MAX_COMPONENT_POSITION, Math.round((rect?.top ?? root.top) - root.top)));
   }
   const attrs = { ...selected.node.attrs, ...changed };
-  const resolved = editor.state.doc.resolve(selected.position);
   const tr = closeHistory(editor.state.tr);
-  if (attrs.placement === 'free' && resolved.depth > 0) {
-    // Free items use document coordinates. Extracting an image from a panel
-    // never duplicates or changes the panel's remaining text.
-    const afterParent = resolved.after(1);
-    tr.delete(selected.position, selected.position + selected.node.nodeSize);
-    const destination = tr.mapping.map(afterParent, -1);
-    tr.insert(destination, selected.node.type.create(attrs, selected.node.content, selected.node.marks));
-    tr.setSelection(NodeSelection.create(tr.doc, destination));
-  } else tr.setNodeMarkup(selected.position, undefined, attrs);
+  tr.setNodeMarkup(selected.position, undefined, attrs);
   editor.view.dispatch(tr);
   return true;
 }
@@ -154,7 +166,7 @@ export function moveComponent(editor: Editor, direction: -1 | 1): boolean {
   const adjacent = resolved.parent.child(adjacentIndex);
   const from = direction < 0 ? selected.position - adjacent.nodeSize : selected.position;
   const to = direction < 0 ? selected.position + selected.node.nodeSize : selected.position + selected.node.nodeSize + adjacent.nodeSize;
-  const tr = closeHistory(editor.state.tr).replaceWith(from, to, direction < 0 ? [selected.node, adjacent] : [adjacent, selected.node]);
+  const tr = retainLogicalOrder(editor, closeHistory(editor.state.tr)).replaceWith(from, to, direction < 0 ? [selected.node, adjacent] : [adjacent, selected.node]);
   tr.setSelection(NodeSelection.create(tr.doc, direction < 0 ? from : from + adjacent.nodeSize));
   editor.view.dispatch(tr);
   return true;
@@ -183,7 +195,7 @@ export function wrapInPanel(editor: Editor): boolean {
 export function unwrapPanel(editor: Editor): boolean {
   const selected = selectedComponent(editor);
   if (!selected || selected.node.type.name !== 'notePanel' || !editor.isEditable) return false;
-  const tr = closeHistory(editor.state.tr).replaceWith(selected.position, selected.position + selected.node.nodeSize, selected.node.content);
+  const tr = retainLogicalOrder(editor, closeHistory(editor.state.tr)).replaceWith(selected.position, selected.position + selected.node.nodeSize, selected.node.content);
   tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(selected.position + 1, tr.doc.content.size))));
   editor.view.dispatch(tr);
   return true;
@@ -200,7 +212,7 @@ export function panelFixture(text: string, id: string, width = 640): JSONContent
   return { type: 'notePanel', attrs: { id, width, align: 'left', tone: 'soft' }, content: [{ type: 'paragraph', attrs: { id: crypto.randomUUID() }, content: text ? [{ type: 'text', text }] : undefined }] };
 }
 
-function resizeHandle(editor: Editor, dom: HTMLElement, getPos: () => number | undefined, getNode: () => DocumentNode, changed: () => void) {
+export function resizeHandle(editor: Editor, dom: HTMLElement, getPos: () => number | undefined, getNode: () => DocumentNode, changed: () => void) {
   const handle = document.createElement('button');
   handle.type = 'button'; handle.className = 'component-resize'; handle.contentEditable = 'false';
   handle.setAttribute('aria-label', 'Resize component'); handle.title = 'Drag to resize, or use component width above';
@@ -228,7 +240,7 @@ function resizeHandle(editor: Editor, dom: HTMLElement, getPos: () => number | u
   return () => cleanup?.();
 }
 
-function moveHandle(editor: Editor, dom: HTMLElement, getPos: () => number | undefined, getNode: () => DocumentNode, changed: () => void) {
+export function moveHandle(editor: Editor, dom: HTMLElement, getPos: () => number | undefined, getNode: () => DocumentNode, changed: () => void) {
   const handle = document.createElement('button');
   handle.type = 'button'; handle.className = 'component-move'; handle.contentEditable = 'false'; handle.textContent = '✥';
   handle.setAttribute('aria-label', 'Move freely'); handle.title = 'Drag to position; arrow keys move 10 px (Alt: 1 px)';
@@ -279,7 +291,7 @@ function moveHandle(editor: Editor, dom: HTMLElement, getPos: () => number | und
 
 export const NotePanel = TiptapNode.create({
   name: 'notePanel', group: 'block', content: 'block+', defining: true, draggable: true,
-  addAttributes: () => ({ ...layoutAttributes(640), tone: { default: 'soft', parseHTML: element => ['plain', 'soft', 'accent'].includes(element.dataset.tone ?? '') ? element.dataset.tone : 'soft' } }),
+  addAttributes: () => ({ ...layoutAttributes(640), layoutKind: { default: 'column' }, padding: { default: 16 }, gap: { default: 12 }, gridColumns: { default: 2 }, tone: { default: 'soft', parseHTML: element => ['plain', 'soft', 'accent'].includes(element.dataset.tone ?? '') ? element.dataset.tone : 'soft' } }),
   parseHTML: () => [{ tag: 'section[data-note-panel]' }],
   renderHTML: ({ node }) => ['section', { 'data-note-panel': '', ...serializedLayout(node), 'data-tone': node.attrs.tone }, 0],
   addNodeView() {
@@ -306,7 +318,7 @@ export const LocalImage = TiptapNode.create<ComponentOptions>({
   addAttributes: () => ({ ...layoutAttributes(480), assetId: { default: '' }, alt: { default: '' }, href: { default: null, parseHTML: element => normalizeNoteLink(element.getAttribute('data-href')) } }),
   // Only our own inert local reference is imported; pasted remote <img> never fetches a URL.
   parseHTML: () => [{ tag: 'figure[data-local-asset]', getAttrs: element => ({ assetId: element.getAttribute('data-local-asset'), alt: element.getAttribute('data-alt') ?? '' }) }],
-  renderHTML: ({ node }) => ['figure', { 'data-local-asset': node.attrs.assetId, 'data-alt': node.attrs.alt, 'data-href': node.attrs.href, ...serializedLayout(node) }, node.attrs.alt || 'Local image'],
+  renderHTML({ node }) { return ['figure', { 'data-local-asset': node.attrs.assetId, 'data-asset-owner':this.options.noteId??'', 'data-alt': node.attrs.alt, 'data-href': node.attrs.href, ...serializedLayout(node) }, node.attrs.alt || 'Local image']; },
   addNodeView() {
     return ({ node, editor, getPos }) => {
       let current = node; let disposed = false; let generation = 0; let visible = typeof IntersectionObserver === 'undefined';

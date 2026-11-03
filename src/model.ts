@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core';
+import type { NotedDocumentV2 } from './document-model';
 
 export type SchemaId = 'default' | 'compact' | 'outline';
 export interface Folder { id: string; name: string; parentId: string | null }
@@ -7,7 +8,7 @@ export interface NoteSummary {
   revision: number; createdAt: string; updatedAt: string;
 }
 export interface Note extends NoteSummary {
-  formatVersion: 1; revisionToken: string; content: JSONContent;
+  formatVersion: 1 | 2; revisionToken: string; content: JSONContent; document?: NotedDocumentV2;
   presentation: { schemaId: SchemaId };
 }
 export interface WorkspaceStatus { path: string; warnings: string[]; indexing?: boolean }

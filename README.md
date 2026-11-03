@@ -61,6 +61,12 @@ The formatting toolbar reflects the caret or selection, including mixed formatti
 
 See the [editor audit](docs/editor-feature-audit.md) for the source-backed comparison, delivered scope, tests and remaining gaps. This is not full Logseq/Obsidian feature parity or a complete configurable schema engine.
 
+**Document foundation:** notes now save as version 2, separating content objects, logical reading order and nested layout containers. Existing notes convert in memory and migrate only on their next successful save, retaining a pre-migration backup. See [document model and delivery status](docs/document-model.md).
+
+Show **Layout tools** in View to use **Group in box**, nested vertical/horizontal/free/grid layouts, padding, gap and column controls. **Schemas** edits reusable, immutable versions with previewable suggestions and individually enabled automatic rules. **Interactive** imports or authors counter/flashcard-style components; each exact code version starts disabled and requires explicit Enable. Saved state shares text/layout Undo. Missing definitions and failed execution retain readable fallback and state. See [schema authoring](docs/schema-authoring.md) and [component authoring](docs/component-authoring.md).
+
+The advanced **Document API** dialog previews revision-checked operation batches with separate formatting, arrangement, reading-order, content and state permissions. It is a local developer interface; rendered-layout and contrast acceptance gates remain before AI integration.
+
 **Editable components:** select paragraphs and choose **Text panel**, or add an independent **New panel**. Panels and copied PNG/JPEG/WebP/GIF images support guided flow or free placement, width, coordinates and layers. Use drag/resize handles or numeric controls; layout and text share undo/redo. Motion presets and GIFs respect pause and reduced-motion settings. Images are limited to 10 MiB and 32 megapixels, with additional GIF frame/work limits.
 
 ## Connections and local discovery
@@ -103,13 +109,13 @@ npm run desktop
 
 Note files are structured JSON, linked by stable UUID rather than filename or title. `index.sqlite3` and semantic indexes are rebuildable. `relations.sqlite3` contains authoritative connections and dismissals and must be included in a consistent workspace backup; Workspace details can also export these as JSON. The native store uses revision checks and file fingerprints to reject stale saves, and preserves a previous-file backup. This is not a substitute for user backups or encryption. External editing should be done with the app closed until a richer conflict-resolution workflow exists.
 
-The prototype has no cloud AI connection, telemetry, remote fonts, sync, plugin execution, or remote media fetching. Editor assets and the inference runtime are bundled; model weights are a separate explicit download/offline installation. Future AI formatting must go through validated scoped operations; the prototype's human editing command is not an AI-safe API.
+The prototype has no cloud AI connection, telemetry, remote fonts, sync, app-wide plugin execution, or remote media fetching. Explicitly enabled note components run in the bundled bounded QuickJS Worker. Editor assets and the inference runtime are bundled; model weights are a separate explicit download/offline installation. Future AI formatting must go through validated scoped operations; the prototype's human editing command is not an AI-safe API.
 
 ## Current boundaries
 
 - The JSON format is experimental and subject to migration as the document model develops.
 - Markdown shortcuts cover the editor's supported constructs; this is not a complete Markdown round-trip implementation.
-- Presentation presets demonstrate deterministic formatting. A general user-defined schema engine, automatic schema enforcement UI, and content-preserving AI operations remain future work.
+- Presentation presets demonstrate deterministic formatting. The small body/heading schema editor includes opt-in automatic rules; broader schema behaviors and cloud AI integration remain future work.
 - Zoomable drawing/canvas tools, folder overviews, animation FPS controls, flashbacks, and sync remain on the roadmap.
 - See [architecture](docs/architecture.md) and [performance](docs/performance.md) for decisions, limitations, and verification scope.
 

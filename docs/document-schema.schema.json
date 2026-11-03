@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noted.local/schemas/document-schema-v1.json",
+  "title": "Noted immutable document schema version",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "id", "version", "name", "rules"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$" },
+    "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "\\S" },
+    "rules": {
+      "type": "object", "additionalProperties": false, "required": ["body"],
+      "properties": {
+        "body": { "$ref": "#/$defs/style" },
+        "heading1": { "$ref": "#/$defs/style" },
+        "heading2": { "$ref": "#/$defs/style" },
+        "heading3": { "$ref": "#/$defs/style" },
+        "heading4": { "$ref": "#/$defs/style" },
+        "heading5": { "$ref": "#/$defs/style" },
+        "heading6": { "$ref": "#/$defs/style" }
+      }
+    }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object", "additionalProperties": false, "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$" },
+        "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false, "required": ["mode", "enabledRules"],
+      "properties": {
+        "mode": { "enum": ["suggest", "automatic"] },
+        "enabledRules": { "type": "array", "maxItems": 6, "uniqueItems": true, "items": { "enum": ["fontFamily", "fontSize", "lineHeight", "color", "spacing", "indent"] } }
+      }
+    },
+    "style": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "fontFamily": { "enum": ["system", "serif", "mono"] },
+        "fontSize": { "type": "integer", "minimum": 10, "maximum": 96 },
+        "lineHeight": { "type": "number", "minimum": 1, "maximum": 3 },
+        "color": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^#[a-fA-F0-9]{6}$" }] },
+        "spacing": { "type": "integer", "minimum": 0, "maximum": 96 },
+        "indent": { "type": "integer", "minimum": 0, "maximum": 8 }
+      }
+    }
+  }
+}

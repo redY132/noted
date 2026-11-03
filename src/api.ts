@@ -3,6 +3,7 @@ import type { Folder, ImageAsset, ImageAssetData, Note, NoteSummary, WorkspaceSt
 import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions } from './image-assets';
 import { registerImageSource, unregisterImageSource } from './component-motion';
 import { previewRelationOperation, type PreviewRelations } from './relations-preview';
+import { documentFromEditor, documentToEditor, previewDocumentOperations, type DocumentPermission, type DocumentOperation } from './document-model';
 import type { Page, PairState, PairMutation, PickerNote, ConnectionEntry, ReferenceEntry, RelatedNote, ConnectionSearchPage, ConnectionSearchScope } from './model';
 
 export const browserPreview = !isTauri();
@@ -16,7 +17,8 @@ function read(): PreviewStore {
   return data;
 }
 function persist(store: PreviewStore) { localStorage.setItem(key, JSON.stringify(store)); }
-const summary = ({ content: _content, presentation: _presentation, formatVersion: _formatVersion, revisionToken: _token, ...note }: Note): NoteSummary => note;
+const summary = ({ content: _content, document: _document, presentation: _presentation, formatVersion: _formatVersion, revisionToken: _token, ...note }: Note): NoteSummary => note;
+const documentGrants = new Map<string, { id: string; revision: number; token: string; scopes: DocumentPermission[] }>();
 function plainText(value: unknown): string {
   if (!value || typeof value !== 'object') return '';
   const node = value as { text?: string; content?: unknown[] };
@@ -33,6 +35,29 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
   }
   let result: unknown;
   switch (command) {
+    case 'list_document_definitions': result=JSON.parse(localStorage.getItem(`noted-preview-definitions-${args.kind}`)??'[]');break;
+    case 'save_document_definition': {
+      const definition=args.definition as Record<string,unknown>,identity=(args.kind==='component'?definition.manifest:definition) as {id:string;version:number};
+      const key=`noted-preview-definitions-${args.kind}`,definitions=JSON.parse(localStorage.getItem(key)??'[]') as Record<string,unknown>[];
+      const existing=definitions.find(def=>{const ref=(args.kind==='component'?def.manifest:def) as {id:string;version:number};return ref.id===identity.id&&ref.version===identity.version;});
+      if(existing&&JSON.stringify(existing)!==JSON.stringify(definition))throw new Error('This definition version already exists. Publish a new version.');
+      if(!existing){definitions.push(definition);localStorage.setItem(key,JSON.stringify(definitions));}result=definition;break;
+    }
+    case 'authorize_document_operations': {
+      const note = store.notes.find(n => n.id === args.id); if (!note) throw new Error('Note is missing.');
+      const grantId = crypto.randomUUID(); documentGrants.set(grantId, { id: note.id, revision: note.revision, token: note.revisionToken, scopes: args.scopes as DocumentPermission[] });
+      result = grantId; break;
+    }
+    case 'preview_document_operations':
+    case 'apply_document_operations': {
+      const note = store.notes.find(n => n.id === args.id), grant = documentGrants.get(String(args.grantId));
+      if (!note || !grant || grant.id !== note.id || grant.revision !== note.revision || grant.token !== note.revisionToken || args.expectedRevision !== note.revision || args.revisionToken !== note.revisionToken) throw new Error('This proposal is stale or has no permission.');
+      const document = previewDocumentOperations(note.document ?? documentFromEditor(note.content, note.id), args.operations as DocumentOperation[], new Set(grant.scopes));
+      const content = documentToEditor(document);
+      if (command === 'preview_document_operations') result = { document, content, baseRevision: note.revision };
+      else { Object.assign(note, { document, content, formatVersion: 2, revision: note.revision + 1, revisionToken: crypto.randomUUID(), updatedAt: new Date().toISOString() }); persist(store); result = note; documentGrants.delete(String(args.grantId)); }
+      break;
+    }
     case 'workspace_status': result = { path: 'Browser preview storage · separate from your desktop notes', warnings: [] }; break;
     case 'list_notes': result = store.notes.map(summary); break;
     case 'list_folders': result = store.folders; break;
@@ -138,6 +163,15 @@ async function assetUrl(noteId: string, assetId: string): Promise<string> {
 }
 function releaseAssetUrl(url: string) { unregisterImageSource(url); URL.revokeObjectURL(url); }
 export const api = {
+  listDocumentDefinitions: <T>(kind:'schema'|'component')=>call<T[]>('list_document_definitions',{kind}),
+  saveDocumentDefinition: <T>(kind:'schema'|'component',definition:T)=>call<T>('save_document_definition',{kind,definition}),
+  copyAsset: async(sourceNoteId:string,targetNoteId:string,assetId:string):Promise<ImageAsset>=>{
+    if(!browserPreview)return invoke<ImageAsset>('copy_image',{sourceNoteId,targetNoteId,assetId});
+    const original=await getPreviewImage(imageKey(sourceNoteId,assetId));const info={id:crypto.randomUUID(),mime:original.mime,byteLength:original.byteLength,width:original.width,height:original.height};await putPreviewImage({...info,key:imageKey(targetNoteId,info.id),bytes:original.bytes});return info;
+  },
+  authorizeDocumentOperations: (id: string, scopes: DocumentPermission[]) => call<string>('authorize_document_operations', { id, scopes }),
+  previewDocumentOperations: (note: Note, operations: DocumentOperation[], grantId: string) => call<{document: import('./document-model').NotedDocumentV2;content: import('@tiptap/core').JSONContent;baseRevision:number}>('preview_document_operations', { id: note.id, expectedRevision: note.revision, revisionToken: note.revisionToken, operations, grantId }),
+  applyDocumentOperations: (note: Note, operations: DocumentOperation[], grantId: string) => call<Note>('apply_document_operations', { id: note.id, expectedRevision: note.revision, revisionToken: note.revisionToken, operations, grantId }),
   exportRelations: () => call<{formatVersion:2;pairs:PairState[]}>('export_relations'),
   pageNotes: (query = '', folderId?: string, cursor?: number | null, limit = 80) => call<Page<NoteSummary>>('list_notes_page', {query,folderId,cursor,limit}),
   picker: (sourceId: string, query = '', cursor?: number | null, limit = 40) => call<Page<PickerNote>>('picker_notes', {sourceId,query,cursor,limit}),

@@ -11,6 +11,10 @@ import { TableKit } from '@tiptap/extension-table';
 import { Color, TextStyle } from '@tiptap/extension-text-style';
 import type { SchemaId } from './model.ts';
 import { NotePanel, LocalImage, type ComponentOptions } from './note-components.ts';
+import { DocumentOrder } from './document-editor.ts';
+import { SchemaPresentation } from './document-schema.ts';
+import { InteractiveComponent } from './interactive-components.ts';
+import { AssetClipboard } from './asset-clipboard.ts';
 
 export const MAX_INDENT = 8;
 export const INDENT_STEP_EM = 2;
@@ -176,6 +180,7 @@ export const SchemaIndentation = Extension.create<{ getSchemaId: () => SchemaId 
 export function createEditorExtensions(getSchemaId: () => SchemaId = () => 'default', componentOptions: ComponentOptions = {}): Extensions {
   return [
     StarterKit.configure({
+      trailingNode: false,
       codeBlock: { enableTabIndentation: true },
       link: { openOnClick: false, autolink: false, protocols: ['noted'], HTMLAttributes: { target: null, rel: null } },
     }),
@@ -189,8 +194,12 @@ export function createEditorExtensions(getSchemaId: () => SchemaId = () => 'defa
     SafeColor,
     TableKit.configure({ table: { resizable: false } }),
     SchemaIndentation.configure({ getSchemaId }),
+    DocumentOrder,
+    SchemaPresentation,
     NotePanel,
     LocalImage.configure(componentOptions),
-    UniqueID.configure({ types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'taskList', 'taskItem', 'table', 'tableRow', 'tableCell', 'tableHeader', 'notePanel', 'localImage'] }),
+    InteractiveComponent.configure(componentOptions),
+    AssetClipboard.configure(componentOptions),
+    UniqueID.configure({ types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'taskList', 'taskItem', 'table', 'tableRow', 'tableCell', 'tableHeader', 'notePanel', 'localImage', 'interactiveComponent'] }),
   ];
 }

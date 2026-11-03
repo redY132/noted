@@ -1,4 +1,6 @@
 mod assets;
+mod definitions;
+pub mod document;
 pub mod relations;
 #[cfg(feature = "semantic")]
 pub mod semantic;
@@ -92,6 +94,89 @@ mod desktop {
         asset_id: String,
     ) -> Result<crate::assets::ImageData, String> {
         work(state, move |s| s.read_image(&note_id, &asset_id)).await
+    }
+    #[tauri::command]
+    pub async fn copy_image(
+        state: State<'_, SharedStore>,
+        source_note_id: String,
+        target_note_id: String,
+        asset_id: String,
+    ) -> Result<crate::assets::ImageInfo, String> {
+        work(state, move |s| {
+            s.copy_image(&source_note_id, &target_note_id, &asset_id)
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn list_document_definitions(
+        state: State<'_, SharedStore>,
+        kind: String,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        work(state, move |s| s.list_document_definitions(&kind)).await
+    }
+    #[tauri::command]
+    pub async fn save_document_definition(
+        state: State<'_, SharedStore>,
+        kind: String,
+        definition: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        work(state, move |s| {
+            s.save_document_definition(&kind, &definition)
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn authorize_document_operations(
+        state: State<'_, SharedStore>,
+        id: String,
+        scopes: Vec<crate::document::Permission>,
+    ) -> Result<String, String> {
+        work(state, move |s| s.authorize_document_operations(&id, scopes)).await
+    }
+    #[tauri::command]
+    pub async fn preview_document_operations(
+        state: State<'_, SharedStore>,
+        id: String,
+        expected_revision: u64,
+        revision_token: String,
+        operations: Vec<crate::document::Operation>,
+        grant_id: String,
+    ) -> Result<crate::document::Preview, String> {
+        work(state, move |s| {
+            s.preview_document_operations(
+                &id,
+                expected_revision,
+                &revision_token,
+                &operations,
+                &grant_id,
+            )
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn apply_document_operations(
+        state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
+        id: String,
+        expected_revision: u64,
+        revision_token: String,
+        operations: Vec<crate::document::Operation>,
+        grant_id: String,
+    ) -> Result<Note, String> {
+        let result = work(state, move |s| {
+            s.apply_document_operations(
+                &id,
+                expected_revision,
+                &revision_token,
+                &operations,
+                &grant_id,
+            )
+        })
+        .await;
+        if result.is_ok() {
+            semantic.invalidate_scope();
+        }
+        result
     }
     #[tauri::command]
     pub async fn save_note(
@@ -431,6 +516,12 @@ mod desktop {
                 load_note,
                 import_image,
                 read_image,
+                copy_image,
+                list_document_definitions,
+                save_document_definition,
+                authorize_document_operations,
+                preview_document_operations,
+                apply_document_operations,
                 save_note,
                 search_notes,
                 workspace_status,

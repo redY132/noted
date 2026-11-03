@@ -551,13 +551,22 @@ fn text_of(node: &Value, out: &mut String) {
     }
 }
 pub fn authored_text(note: &Value) -> String {
+    authored_text_at(note, None)
+}
+fn authored_text_at(note: &Value, root: Option<&Path>) -> String {
     let mut text = note
         .get("title")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
     text.push('\n');
-    text_of(&note["content"], &mut text);
+    if note["formatVersion"] == 2 && note["document"]["version"] == 2 {
+        for block in crate::document::logical_blocks_at(&note["document"], root) {
+            text_of(&block, &mut text);
+        }
+    } else {
+        text_of(&note["content"], &mut text);
+    }
     text
 }
 fn note_text(root: &Path, id: &str) -> Result<String> {
@@ -582,7 +591,7 @@ fn note_text(root: &Path, id: &str) -> Result<String> {
     if n.get("id").and_then(Value::as_str) != Some(id) {
         return Err("Note identity does not match its file".into());
     }
-    Ok(authored_text(&n))
+    Ok(authored_text_at(&n, Some(root)))
 }
 fn chunks(model: &TextEmbedding, text: &str) -> Result<Vec<String>> {
     let mut tokenizer = model.tokenizer.clone();
@@ -1061,12 +1070,16 @@ impl Engine {
             }
         }
         let mut candidates: Vec<_> = scores.into_iter().collect();
-        candidates.sort_by(|a,b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        candidates.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         let mut matches = vec![];
         for (note_id, score) in candidates {
-            if note_text(root, &note_id).is_ok_and(|text| !self.needs(&note_id, &hash(text.as_bytes()))) {
+            if note_text(root, &note_id)
+                .is_ok_and(|text| !self.needs(&note_id, &hash(text.as_bytes())))
+            {
                 matches.push(SemanticMatch { note_id, score });
-                if matches.len() == 120 { break; }
+                if matches.len() == 120 {
+                    break;
+                }
             }
         }
         // Do not publish a result computed against relationships that changed.
@@ -1796,6 +1809,29 @@ fn private_memory() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn v2_migration_and_visual_rearrangement_reuse_identical_semantic_text() {
+        let legacy = serde_json::json!({"formatVersion":1,"id":"00000000-0000-0000-0000-000000000001","title":"Memory","content":{"type":"doc","content":[
+            {"type":"heading","attrs":{"id":"title","level":2},"content":[{"type":"text","text":"A thoughtful day"}]},
+            {"type":"notePanel","attrs":{"id":"box","placement":"free","x":1200,"y":600},"content":[{"type":"paragraph","attrs":{"id":"body"},"content":[{"type":"text","text":"Walking through the old garden."}]}]},
+            {"type":"localImage","attrs":{"id":"photo","assetId":"00000000-0000-0000-0000-000000000002","alt":"A picture"}}
+        ]}});
+        let old = authored_text(&legacy);
+        let mut migrated = legacy.clone();
+        migrated["formatVersion"] = serde_json::json!(2);
+        migrated["document"] =
+            crate::document::migrate(legacy["id"].as_str().unwrap(), &legacy["content"]);
+        assert_eq!(authored_text(&migrated), old);
+        migrated["document"]["layout"]["children"]
+            .as_array_mut()
+            .unwrap()
+            .reverse();
+        assert_eq!(
+            authored_text(&migrated),
+            old,
+            "Presentation does not invalidate reusable embedding fingerprints"
+        );
+    }
     fn query_service(root: &Path) -> (SemanticService, mpsc::Receiver<Command>) {
         safe_directory(&root.join("semantic")).unwrap();
         let (tx, rx) = mpsc::channel();
