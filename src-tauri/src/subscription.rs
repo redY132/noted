@@ -174,6 +174,12 @@ impl Service {
             .current
             .lock()
             .map_err(|_| "Subscription job lock failed")?;
+        if let Some(j) = current.as_ref() {
+            let i = j.info.lock().map_err(|_| "Subscription job lock failed")?;
+            if i.request_id == request.id && ["running", "completed"].contains(&i.phase.as_str()) {
+                return Ok(i.clone());
+            }
+        }
         if current
             .as_ref()
             .is_some_and(|j| j.info.lock().map(|i| i.phase == "running").unwrap_or(true))
@@ -417,5 +423,43 @@ mod tests {
         let service = Service::default();
         assert!(service.status("missing").is_err());
         assert!(service.cancel(None).is_ok());
+    }
+    #[test]
+    fn repeated_start_reuses_owned_job_without_launching_another_client() {
+        let t = tempfile::tempdir().unwrap();
+        let mut store = crate::store::Store::open(t.path()).unwrap();
+        let n = store.create_note("Fixture".into(), None).unwrap();
+        let r = store
+            .create_explicit_subscription_request(&n.id, "Make bold".into())
+            .unwrap();
+        for phase in ["running", "completed"] {
+            let info = JobInfo {
+                id: "owned".into(),
+                note_id: n.id.clone(),
+                request_id: r.id.clone(),
+                phase: phase.into(),
+                message: "Fixture".into(),
+            };
+            let service = Service {
+                current: Mutex::new(Some(Arc::new(Job {
+                    info: Mutex::new(info),
+                    cancelled: AtomicBool::new(false),
+                    process: Mutex::new(None),
+                }))),
+            };
+            assert_eq!(
+                service
+                    .start(
+                        n.clone(),
+                        r.clone(),
+                        store.root.clone(),
+                        PathBuf::from("MUST_NOT_RUN.exe"),
+                        PathBuf::from("MUST_NOT_RUN.exe")
+                    )
+                    .unwrap()
+                    .id,
+                "owned"
+            );
+        }
     }
 }

@@ -155,3 +155,7 @@ The later deferral applied to Afterglow, not Noted. The authorized Noted control
 Passive polling checks local job/proposal status while its dialog is open and does not initiate model calls. Transport heartbeat is separate from sharing policy and never claims this hosted chat is verified. Hosted-chat activation still requires its separate account/tunnel/plugin setup and approval. Earlier references to deferral describe the prior checkpoint, superseded by this clarification.
 
 Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.
+
+## Simplified AI formatting
+
+Choose **Format with AI**, describe the change, then **Generate proposal**. A validated current/proposed comparison opens automatically; choose **Apply** or **Reject**, with visible Undo after Apply. External-agent requests and technical JSON remain under Advanced. Duplicate requests are reused and inactive history is labelled. No background model generation or new sharing is enabled. See [workflow and verification](docs/ai-formatting.md). Restart with the updated native build after saving any open work.

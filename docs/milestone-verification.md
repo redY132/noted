@@ -1,5 +1,7 @@
 # Milestone verification — November 3, 2026
 
+Current UI: **Format with AI → Describe change → Generate proposal → visual comparison → Apply / Reject**, with visible Undo. External requests and technical JSON are under Advanced. See [current AI workflow](ai-formatting.md), which supersedes earlier control labels and the two-preview sequence below.
+
 ## Delivered and exercised
 
 - A real GPT-6.1 Sol call using existing official Codex **ChatGPT sign-in**, medium effort and only a temporary synthetic note. The model was refused an unselected synthetic UUID, corrected a validator-rejected operation, and queued a valid proposal. No API key was used or created. No personal note was read. Native rendered preview, Apply, save and Undo preserved wording. Evidence: ignored `output/live-subscription-result.log`, `live-model-events.jsonl`, `live-model-native-accept.log`; opt-in reproduction scripts are committed.
@@ -33,3 +35,5 @@ The later deferral applied to Afterglow, not Noted. The authorized Noted control
 Passive polling checks local job/proposal status while its dialog is open and does not initiate model calls. Transport heartbeat is separate from sharing policy and never claims this hosted chat is verified. Hosted-chat activation still requires its separate account/tunnel/plugin setup and approval. Earlier references to deferral describe the prior checkpoint, superseded by this clarification.
 
 Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.
+
+Latest simplified-formatting validation: 165 frontend tests, 85 native tests passed (four optional tests ignored), production frontend/Windows builds passed, and cached plus real synthetic generation flows passed native visual comparison, Apply/Undo, Reject, Close/reopen, stale rejection and retry. The real test used an explicit Generate click with no personal note or sharing changes. Details: ai-formatting.md; ignored evidence: output/simple-ai-*.log.

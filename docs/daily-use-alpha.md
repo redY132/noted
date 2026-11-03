@@ -1,5 +1,7 @@
 # Daily-use alpha
 
+Current UI: **Format with AI → Describe change → Generate proposal → visual comparison → Apply / Reject**, with visible Undo. External requests and technical JSON are under Advanced. See [current AI workflow](ai-formatting.md), which supersedes earlier control labels and the two-preview sequence below.
+
 Implemented November 3, 2026. This extends the existing write → shape → revisit workflow without changing canonical note IDs or adding background cloud calls.
 
 ## Library and recovery

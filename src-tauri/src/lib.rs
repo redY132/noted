@@ -709,7 +709,7 @@ mod desktop {
     pub async fn formatting_requests(
         state: State<'_, SharedStore>,
         note_id: String,
-    ) -> Result<Vec<crate::agent::Request>, String> {
+    ) -> Result<Vec<crate::agent::RequestInfo>, String> {
         work(state, move |s| s.formatting_requests(&note_id)).await
     }
 
@@ -799,10 +799,7 @@ mod desktop {
         token: String,
         prompt: String,
     ) -> Result<crate::subscription::JobInfo, String> {
-        let exe = tauri::async_runtime::spawn_blocking(crate::subscription::prepare_cli)
-            .await
-            .map_err(|e| e.to_string())??;
-        let (note,request,root)=work(state,move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_explicit_subscription_request(&id,prompt)?;Ok((n,request,s.root.clone()))}).await?;
+        let (note,request,root)=work(state.clone(),move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_explicit_subscription_request(&id,prompt)?;Ok((n,request,s.root.clone()))}).await?;
         let bridge = std::env::current_exe()
             .map_err(|e| e.to_string())?
             .with_file_name("noted-agent.exe");
@@ -811,6 +808,24 @@ mod desktop {
                 "Build/install the matching Noted agent companion beside Noted first".into(),
             );
         }
+        let cached = work(state, {
+            let id = request.id.clone();
+            move |s| s.formatting_reply(&id)
+        })
+        .await?;
+        if cached.is_some() {
+            return Ok(crate::subscription::JobInfo {
+                id: request.id.clone(),
+                note_id: note.id,
+                request_id: request.id,
+                phase: "completed".into(),
+                message: "Existing proposal is ready to review. No new model job was started."
+                    .into(),
+            });
+        }
+        let exe = tauri::async_runtime::spawn_blocking(crate::subscription::prepare_cli)
+            .await
+            .map_err(|e| e.to_string())??;
         service.start(note, request, root, exe, bridge)
     }
     #[tauri::command]

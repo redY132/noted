@@ -39,6 +39,14 @@ pub struct Request {
     pub prompt: String,
     pub expires_at: String,
 }
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestInfo {
+    #[serde(flatten)]
+    pub request: Request,
+    pub status: String,
+}
+
 fn read(path: &Path, max: u64) -> Result<Vec<u8>> {
     ordinary(path, false)?;
     let f = fs::File::open(path).map_err(err)?;
@@ -170,6 +178,12 @@ impl Store {
         {
             return Err("Agent formatting currently supports static notes only".into());
         }
+        let prompt = prompt.trim().to_string();
+        if let Some(existing) = self.formatting_requests(id)?.into_iter().find(|r| {
+            ["waiting", "ready"].contains(&r.status.as_str()) && r.request.prompt.trim() == prompt
+        }) {
+            return Ok(existing.request);
+        }
         let r = Request {
             id: uuid::Uuid::new_v4().to_string(),
             note_id: id.into(),
@@ -185,12 +199,12 @@ impl Store {
         )?;
         Ok(r)
     }
-    pub fn formatting_requests(&self, note_id: &str) -> Result<Vec<Request>> {
+    pub fn formatting_requests(&self, note_id: &str) -> Result<Vec<RequestInfo>> {
         valid_id(note_id)?;
         let dir = self.root.join("agent-requests");
-        let mut requests = vec![];
+        let mut requests: Vec<Request> = vec![];
         if !dir.exists() {
-            return Ok(requests);
+            return Ok(vec![]);
         }
         ordinary(&dir, true)?;
         for entry in fs::read_dir(dir).map_err(err)?.take(1000) {
@@ -203,8 +217,64 @@ impl Store {
                 requests.push(r);
             }
         }
-        requests.sort_by(|a, b| b.expires_at.cmp(&a.expires_at));
-        Ok(requests)
+        let n = self.load_note(note_id)?;
+        let mut rows: Vec<RequestInfo> = requests
+            .into_iter()
+            .map(|r| {
+                let status = if chrono::DateTime::parse_from_rfc3339(&r.expires_at)
+                    .map(|t| t < Utc::now())
+                    .unwrap_or(true)
+                {
+                    "expired"
+                } else if r.revision != n.revision || r.revision_token != n.revision_token {
+                    "outdated"
+                } else {
+                    let path = self
+                        .root
+                        .join("agent-replies")
+                        .join(format!("{}.json", r.id));
+                    if !path.exists() {
+                        "waiting"
+                    } else {
+                        let checked = (|| -> Result<()> {
+                            valid_id(&r.id)?;
+                            ordinary(&self.root.join("agent-replies"), true)?;
+                            let v: Value =
+                                serde_json::from_slice(&read(&path, 1024 * 1024)?).map_err(err)?;
+                            validate_reply(&n, &v)
+                        })();
+                        if checked.is_ok() {
+                            "ready"
+                        } else {
+                            "invalid"
+                        }
+                    }
+                };
+                RequestInfo {
+                    request: r,
+                    status: status.into(),
+                }
+            })
+            .collect();
+        rows.sort_by_key(|r| {
+            (
+                match r.status.as_str() {
+                    "ready" => 0,
+                    "waiting" => 1,
+                    _ => 2,
+                },
+                std::cmp::Reverse(r.request.expires_at.clone()),
+            )
+        });
+        let mut seen = HashSet::new();
+        for row in &mut rows {
+            if ["ready", "waiting"].contains(&row.status.as_str())
+                && !seen.insert(row.request.prompt.trim().to_string())
+            {
+                row.status = "duplicate".into();
+            }
+        }
+        Ok(rows)
     }
     pub fn formatting_reply(&self, id: &str) -> Result<Option<Value>> {
         let (_, n) = request(&self.root, id)?;
@@ -393,31 +463,72 @@ fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value
             let mut requests = vec![];
             if dir.exists() {
                 ordinary(&dir, true)?;
-                for entry in fs::read_dir(dir).map_err(err)?.take(1000) {
+                let mut pending = vec![];
+                let mut answered = HashSet::new();
+                for entry in fs::read_dir(&dir).map_err(err)?.take(1000) {
                     let p = entry.map_err(err)?.path();
                     if p.extension().and_then(|s| s.to_str()) != Some("json") {
                         continue;
                     }
-                    if let Some(id) = p.file_stem().and_then(|s| s.to_str()) {
-                        if let Ok((r, n)) = request(root, id) {
-                            if root
-                                .join("agent-replies")
-                                .join(format!("{id}.json"))
-                                .exists()
-                            {
-                                continue;
-                            }
-                            let d = n
-                                .document
-                                .clone()
-                                .unwrap_or_else(|| crate::document::migrate(&n.id, &n.content));
-                            if serde_json::to_vec(&d).map_err(err)?.len() > 512 * 1024 {
-                                continue;
-                            }
-                            requests.push(json!({"request":r,"title":n.title,"document":d}));
-                            if requests.len() == 3 {
-                                break;
-                            }
+                    let Some(id) = p.file_stem().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if valid_id(id).is_err() {
+                        continue;
+                    }
+                    let r: Request = serde_json::from_slice(&read(&p, 65536)?).map_err(err)?;
+                    if r.id != id {
+                        continue;
+                    }
+                    let key = (
+                        r.note_id.clone(),
+                        r.revision_token.clone(),
+                        r.prompt.trim().to_string(),
+                    );
+                    if root
+                        .join("agent-replies")
+                        .join(format!("{id}.json"))
+                        .exists()
+                    {
+                        let valid = (|| -> Result<()> {
+                            let (_, n) = request(root, id)?;
+                            ordinary(&root.join("agent-replies"), true)?;
+                            let reply: Value = serde_json::from_slice(&read(
+                                &root.join("agent-replies").join(format!("{id}.json")),
+                                1024 * 1024,
+                            )?)
+                            .map_err(err)?;
+                            validate_reply(&n, &reply)
+                        })();
+                        if valid.is_ok() {
+                            answered.insert(key);
+                        }
+                    } else {
+                        pending.push(r);
+                    }
+                }
+                pending.sort_by(|a, b| b.expires_at.cmp(&a.expires_at));
+                let mut seen = HashSet::new();
+                for candidate in pending {
+                    let key = (
+                        candidate.note_id.clone(),
+                        candidate.revision_token.clone(),
+                        candidate.prompt.trim().to_string(),
+                    );
+                    if answered.contains(&key) || !seen.insert(key) {
+                        continue;
+                    }
+                    if let Ok((r, n)) = request(root, &candidate.id) {
+                        let d = n
+                            .document
+                            .clone()
+                            .unwrap_or_else(|| crate::document::migrate(&n.id, &n.content));
+                        if serde_json::to_vec(&d).map_err(err)?.len() > 512 * 1024 {
+                            continue;
+                        }
+                        requests.push(json!({"request":r,"title":n.title,"document":d}));
+                        if requests.len() == 3 {
+                            break;
                         }
                     }
                 }
@@ -634,5 +745,103 @@ mod hosted_tests {
         .unwrap();
         assert!(call_for(t.path(), "list_folders", &json!({}), true).is_err());
         assert!(call(t.path(), "get_note", &json!({"id":n.id})).is_ok());
+    }
+    #[test]
+    fn duplicate_requests_are_reused_and_history_distinguishes_stale_entries() {
+        let t = tempfile::tempdir().unwrap();
+        let mut s = Store::open(t.path()).unwrap();
+        let n = s.create_note("Fixture".into(), None).unwrap();
+        let first = s
+            .create_explicit_subscription_request(&n.id, "  Make spacious  ".into())
+            .unwrap();
+        let same = s
+            .create_explicit_subscription_request(&n.id, "Make spacious".into())
+            .unwrap();
+        assert_eq!(first.id, same.id);
+        assert_eq!(s.formatting_requests(&n.id).unwrap().len(), 1);
+        let mut legacy = first.clone();
+        legacy.id = uuid::Uuid::new_v4().to_string();
+        legacy.expires_at = (Utc::now() + Duration::hours(25)).to_rfc3339();
+        atomic_write(
+            &s.root
+                .join("agent-requests")
+                .join(format!("{}.json", legacy.id)),
+            &serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        s.set_agent_access(Access {
+            enabled: true,
+            allow_hosted: false,
+            folder_ids: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            call(&s.root, "get_formatting_requests", &json!({})).unwrap()["requests"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let rows = s.formatting_requests(&n.id).unwrap();
+        assert_eq!(rows.iter().filter(|r| r.status == "duplicate").count(), 1);
+        let cid = crate::document::migrate(&n.id, &n.content)["readingOrder"][0].clone();
+        let reply = json!({"summary":"Centered","operations":[{"type":"format","id":cid,"content":{"type":"paragraph","attrs":{"id":cid,"textAlign":"center"}}}]});
+        fs::create_dir_all(s.root.join("agent-replies")).unwrap();
+        atomic_write(
+            &s.root
+                .join("agent-replies")
+                .join(format!("{}.json", first.id)),
+            &serde_json::to_vec(&reply).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            call(&s.root, "get_formatting_requests", &json!({})).unwrap()["requests"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        let reused = s
+            .create_explicit_subscription_request(&n.id, "Make spacious".into())
+            .unwrap();
+        assert_eq!(reused.id, first.id);
+        assert_eq!(s.formatting_requests(&n.id).unwrap()[0].status, "ready");
+        let mut expired_answer = first.clone();
+        expired_answer.expires_at = (Utc::now() - Duration::seconds(1)).to_rfc3339();
+        atomic_write(
+            &s.root
+                .join("agent-requests")
+                .join(format!("{}.json", first.id)),
+            &serde_json::to_vec(&expired_answer).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            call(&s.root, "get_formatting_requests", &json!({})).unwrap()["requests"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let mut changed = n;
+        changed.title = "Changed".into();
+        s.commit(changed).unwrap();
+        assert!(s
+            .formatting_requests(&first.note_id)
+            .unwrap()
+            .iter()
+            .all(|r| ["outdated", "expired"].contains(&r.status.as_str())));
+        legacy.expires_at = (Utc::now() - Duration::seconds(1)).to_rfc3339();
+        atomic_write(
+            &s.root
+                .join("agent-requests")
+                .join(format!("{}.json", legacy.id)),
+            &serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        assert!(s
+            .formatting_requests(&first.note_id)
+            .unwrap()
+            .iter()
+            .any(|r| r.status == "expired"));
     }
 }
