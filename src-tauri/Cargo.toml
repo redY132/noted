@@ -2,6 +2,7 @@
 name = "noted"
 version = "0.1.0"
 edition = "2021"
+default-run = "noted"
 description = "Offline-first Noted desktop prototype"
 
 [lib]
@@ -12,6 +13,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "noted"
 path = "src/main.rs"
 required-features = ["desktop"]
+
+[[bin]]
+name = "noted-agent"
+path = "src/bin/noted-agent.rs"
 
 [[example]]
 name = "semantic_benchmark"

@@ -69,5 +69,5 @@ export function initializeDocumentTools(host:HTMLElement,options:{getEditor:()=>
   });
   operations.addEventListener('close',invalidate);
   $('[data-operations-copy]').onclick=()=>run(async()=>{const editor=options.getEditor(),note=options.getNote();if(editor&&note)await navigator.clipboard.writeText(JSON.stringify(documentFromEditor(editor.getJSON(),note.id,note.document),null,2));});
-  return {openComponents:()=>run(async()=>{await fill();components.showModal();}),openOperations:()=>{invalidate();operations.showModal();}};
+  return {openComponents:()=>run(async()=>{await fill();components.showModal();}),openOperations:()=>{invalidate();operations.showModal();},openProposal:(batch:DocumentOperation[])=>{invalidate();$<HTMLTextAreaElement>('[data-operations-source]').value=JSON.stringify(batch,null,2);for(const input of host.querySelectorAll<HTMLInputElement>('[data-operation-permission]'))input.checked=['formatting','arrangement'].includes(input.dataset.operationPermission!);operations.showModal();}};
 }

@@ -149,3 +149,8 @@ The portable kit was exercised on the connected Ryzen 9 8945HS/31.3 GiB machine 
 Maximum sampled summed private memory was 831.9 MiB. Process-to-debug-endpoint and automated-editor-ready observations were approximately 2.2/5.1 seconds with instrumentation; these are not normal cold-start measurements. Actual cheap-device and physical key-to-paint acceptance remain blocked. [reference-benchmark.md](reference-benchmark.md) describes the kit, evidence, limits and exact missing hardware.
 
 [Rendered proposal validation](rendered-validation.md) and [consistent backup/restore](backup-restore.md) now have browser/native workflow checks and corruption/recovery regressions. They run on demand and do not insert rendered validation into the ordinary typing path.
+
+
+## Daily-use alpha checks — November 3, 2026
+
+The new library/review/preset/agent paths passed 154 frontend and 61 core tests plus browser and packaged native smoke flows. The local MCP protocol was tested through the actual executable, including Unicode chunking, privacy canaries, live revocation and unchanged canonical bytes after submission. Native request → MCP fixture reply → render validation → acceptance → Undo also passed. These are correctness/integration observations, not inference-quality or performance certification. No new lower-end hardware measurement is claimed. Review and bounded agent scans run only on explicit use, outside the keystroke path; large-library agent scan performance remains to be measured on the reference host.

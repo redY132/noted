@@ -95,7 +95,7 @@ pub struct Store {
     pub(crate) relations: Connection,
     reconcile: std::collections::VecDeque<PathBuf>,
     reconciling: bool,
-    warnings: Vec<String>,
+    pub(crate) warnings: Vec<String>,
     pub(crate) document_grants: crate::document::Grants,
     _lock: File,
 }
@@ -444,7 +444,7 @@ impl Store {
         crate::assets::import(&self.root, target_note_id, &source.bytes, &source.info.mime)
     }
 
-    fn commit(&mut self, mut note: Note) -> Result<Note> {
+    pub(crate) fn commit(&mut self, mut note: Note) -> Result<Note> {
         note.revision_token.clear();
         let mut stored = serde_json::to_value(&note).map_err(err)?;
         if note.format_version == 2 {
@@ -468,7 +468,7 @@ impl Store {
         Ok(note)
     }
 
-    fn validate(&self, note: &Note) -> Result<()> {
+    pub(crate) fn validate(&self, note: &Note) -> Result<()> {
         valid_id(&note.id)?;
         if ![1, 2].contains(&note.format_version) {
             return Err("Unsupported note format version".into());
@@ -496,7 +496,7 @@ impl Store {
         Ok(())
     }
 
-    fn index_note(&mut self, note: &Note) -> Result<()> {
+    pub(crate) fn index_note(&mut self, note: &Note) -> Result<()> {
         let tx = self.db.transaction().map_err(err)?;
         insert_index(&tx, note, &self.root)?;
         let signature = file_signature(&self.root.join("notes").join(format!("{}.json", note.id)))?;
@@ -619,7 +619,7 @@ impl Store {
         }
         Ok(())
     }
-    fn remove_indexed_note(&mut self, id: &str) -> Result<()> {
+    pub(crate) fn remove_indexed_note(&mut self, id: &str) -> Result<()> {
         let tx = self.db.transaction().map_err(err)?;
         tx.execute(
             "DELETE FROM note_search WHERE rowid=(SELECT rowid FROM notes WHERE id=?1)",

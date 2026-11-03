@@ -38,3 +38,8 @@ Current bounds are 32 MiB per file, 8 GiB of file payload, 200,000 files and 2,0
 Native core tests cover a live snapshot with relationships, exact JSON/assets/definition restoration, migration backups, action revisions, rebuilt search, derived-data/approval exclusion, corrupt payloads and relationship rows, stale inspection, hostile schema, unsafe paths, existing destinations and incomplete-copy guards.
 
 The packaged-app smoke exercises Create, Inspect, Restore and Open restored copy against disposable fixtures and compares the active workspace before/after. Run `scripts/backup-native-smoke.js` with Playwright CLI only against a disposable `NOTED_WORKSPACE` and a separate WebView profile. It intentionally creates a saved connection and a backup. Logs, screenshots and restored copies remain under ignored `output/`.
+
+
+## Daily-use alpha data
+
+Backups now also include `trash/*.json` and `review/*.json`. Note-owned assets and retained relationship rows remain available when a trashed note is restored. Regression coverage round-trips Trash identity, review exclusions and opaque asset bytes. `agent-access.json`, formatting requests and replies are excluded deliberately: a restored workspace starts with agent access disabled and has no inherited pending one-note grants.

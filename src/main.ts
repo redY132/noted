@@ -17,6 +17,9 @@ import {validateRenderedDocument} from './render-validation';
 import { initializeDocumentTools } from './document-tools-ui';
 import type { DocumentSchema } from './document-schema';
 import type { ComponentDefinition } from './component-runtime-types';
+import {initializeLibrary} from './library-ui';
+import {initializePresets} from './presets-ui';
+import './library.css';
 import './style.css';
 import './editing.css';
 import './components.css';
@@ -42,7 +45,7 @@ $('#app').innerHTML = `
     <button class="primary" id="new-note"><span>＋</span> New note <kbd>Ctrl N</kbd></button>
     <nav class="navigation"><button class="nav-item selected" id="all-notes"><span>▤</span> All notes <small id="total-count">0</small></button><button class="nav-item" id="daily-note"><span>◷</span> Today’s note</button></nav>
     <div class="section-label">YOUR FOLDERS<button id="add-folder" aria-label="Create folder" title="Create folder">＋</button></div>
-    <div id="folders" class="folders"></div>
+    <div id="folders" class="folders"></div><div class="library-actions"><button id="manage-folders">Manage folders</button><button id="open-trash">Trash</button><button id="open-review">Review notes</button><button id="open-agent">Agent access</button></div>
     <div class="sidebar-bottom"><span class="local-dot"></span><span id="workspace-label">Local workspace</span><button id="workspace-info" aria-label="Workspace details" title="Workspace details">ⓘ</button></div>
   </aside>
   <section id="notes-panel" class="note-list-panel" aria-label="Notes">
@@ -53,10 +56,10 @@ $('#app').innerHTML = `
   </section>
   <main class="workspace">
     ${shellTopbar}
-    <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
+    <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="recover-draft">Recover draft / keep both</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
     <section id="empty-state" class="empty-state"><h2>No note open</h2><p>Create a note or choose one from the list.</p><button id="empty-new" class="primary">Create note</button></section>
     <section id="note-pane" class="note-pane" hidden>
-      ${formattingMarkup}
+      <div class="note-product-actions"><button id="open-presets">Note presets</button><button id="open-ai-formatting">Ask agent for layout</button><button id="trash-current">Move note to Trash</button></div>${formattingMarkup}
       ${componentMarkup.replace('<div class="component-toolbar"','<div id="layout-tools" class="component-toolbar"')}
       <div class="document-scroll"><article class="document" data-schema="default"><div id="note-kicker" class="document-kicker"><span id="note-date"></span></div><input id="note-title" class="note-title" aria-label="Note title" placeholder="Untitled" maxlength="300" /><div id="note-details" class="note-properties">${schemaControl}<label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div></article></div>
       <footer id="note-footer" class="editor-footer"><span id="word-count">0 words</span><span id="revision-label"></span></footer>
@@ -64,10 +67,10 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
-  <div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div>
+  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
-  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
+  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Noted makes no cloud AI calls, telemetry requests, or remote asset requests. A connected agent may send explicitly shared note text to its provider. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
 
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
@@ -100,6 +103,11 @@ $('#edit-schema').onclick = () => schemaUI.open();
 const documentTools=initializeDocumentTools($('#document-api-host'),{getEditor:()=>editor,getNote:()=>session?.note??null,getRuntime:()=>componentRuntime,flush,error,persistDefinition:async definition=>{await api.saveDocumentDefinition('component',definition);}});
 $('#interactive-library').onclick=()=>documentTools.openComponents();
 $('#document-operations').onclick=()=>documentTools.openOperations();
+const presets=initializePresets($('#presets-ui-host'),{editor:()=>editor,note:()=>session?.note??null,flush,error});
+async function refreshLibrary(){const page=await api.pageNotes('',undefined,0,80);notes=page.items;folders=await api.folders();renderFolders();await renderList();if(session)refreshMetadata();connectionsUI.changed();}
+const library=initializeLibrary($('#library-ui-host'),{note:()=>session?.note??null,editor:()=>editor,folders:()=>folders,flush,open:openNote,adopt:note=>{clearTimeout(saveTimer);showNote(note);$('#error-banner').hidden=true;},closed:()=>{clearTimeout(saveTimer);clearTimeout(countTimer);editor?.destroy();editor=null;componentRuntime?.destroy();componentRuntime=null;releaseAssets();session=null;saveError=false;$('#note-pane').hidden=true;$('#empty-state').hidden=false;updateSaveState();},refresh:refreshLibrary,error,proposal:ops=>documentTools.openProposal(ops)});
+$('#manage-folders').onclick=()=>library.open('folders');$('#open-trash').onclick=()=>library.open('trash');$('#open-review').onclick=()=>library.open('review');$('#open-agent').onclick=()=>library.open('agent');$('#recover-draft').onclick=()=>library.open('conflict');$('#open-presets').onclick=()=>presets.open();$('#open-ai-formatting').onclick=()=>library.open('ai');$('#trash-current').onclick=()=>library.trashCurrent();
+
 initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
 const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close()},initialLayout);
 const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});

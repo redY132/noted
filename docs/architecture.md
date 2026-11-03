@@ -100,3 +100,10 @@ See [document-model.md](document-model.md), [schema-authoring.md](schema-authori
 The trusted renderer creates inert editor projections in isolated Shadow DOM using bundled styles. It validates actual text/image/container geometry, projection fidelity and contrast in light/dark themes at narrow/current/wide widths. It does not mount a component runtime. Native proposal grants bind the reviewed candidate digest to a one-use renderer token; changed documents or operation batches cannot reuse it. This attestation channel and unrestricted save remain trusted application APIs and must never be exposed to an AI integration. Dynamic-component proposals fail closed. See [rendered-validation.md](rendered-validation.md).
 
 The backup service holds the same writer mutex as note/asset/definition/relation writes, streams original files into a versioned SQLite archive, and copies typed authoritative relationship rows with independent checksums. Restore validates/extracts privately, reserves a new destination and guards incomplete copies before opening them. Existing workspaces are never merged or replaced. Separate profiles prevent portable imports from inheriting execution approvals. See [backup-restore.md](backup-restore.md).
+
+
+## Daily-use lifecycle and agent boundary
+
+`library.rs` provides serialized folder changes, reversible note publication into `trash/`, safe non-overwriting restoration, recovered-draft asset copies and per-note `review/` state. `presets-ui.ts` uses inert render validation before a single editor transaction. Library/review actions do not run during typing.
+
+The separate `noted-agent` binary implements bounded stdio MCP in `agent.rs`. It reads only selected-folder text or explicit, unexpired one-note formatting requests, writes only proposal sidecars, and has no acceptance/render-grant commands. It does not hold the app writer lock or mutate canonical note JSON. The native app owns selected-folder policy and request creation; only trusted UI preview/acceptance can apply a proposal. Client installation, remote adapters and external inference are distinct operations. See [agent integration](agent-integration.md).

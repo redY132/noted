@@ -104,7 +104,7 @@ fn valid_path(path: &str) -> Result<()> {
     }
     let allowed = match parts.as_slice() {
         ["notes", name] => name.ends_with(".json") || name.ends_with(".json.bak"),
-        ["folders", name] => name.ends_with(".json"),
+        ["folders" | "trash" | "review", name] => name.ends_with(".json"),
         ["assets", _, name] => name.ends_with(".image"),
         ["schemas" | "components", _, name] => name.ends_with(".json"),
         _ => false,
@@ -198,7 +198,7 @@ fn inventory(root: &Path) -> Result<Vec<(String, PathBuf)>> {
         Ok(())
     }
     let mut files = Vec::new();
-    for directory in ["notes", "folders", "assets", "schemas", "components"] {
+    for directory in ["notes", "folders", "assets", "schemas", "components", "trash", "review"] {
         let p = root.join(directory);
         if p.exists() {
             visit(root, &p, &mut files, 1)?;

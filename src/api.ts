@@ -35,6 +35,17 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
   }
   let result: unknown;
   switch (command) {
+
+    case 'update_folder': {
+      const folder=args.folder as Folder,expected=args.expected as Folder,index=store.folders.findIndex(f=>f.id===folder.id);if(index<0||JSON.stringify(store.folders[index])!==JSON.stringify(expected))throw new Error('Folder changed elsewhere. Reopen its settings.');if(!folder.name.trim()||folder.name.length>100)throw new Error('A folder needs a name.');const seen=new Set([folder.id]);let parent=folder.parentId;while(parent){if(seen.has(parent))throw new Error('A folder cannot move inside itself or a descendant.');seen.add(parent);const next=store.folders.find(f=>f.id===parent);if(!next)throw new Error('Parent is missing.');parent=next.parentId;}store.folders[index]=folder;persist(store);result=folder;break;
+    }
+    case 'list_trash':result=JSON.parse(localStorage.getItem('noted-preview-trash')??'[]').map(summary);break;
+    case 'trash_note':{const index=store.notes.findIndex(n=>n.id===args.id),n=store.notes[index];if(!n||n.revision!==args.revision||n.revisionToken!==args.token)throw new Error('Note changed. Reload before moving to Trash.');const trash=JSON.parse(localStorage.getItem('noted-preview-trash')??'[]') as Note[];if(trash.some(t=>t.id===n.id))throw new Error('A copy already exists in Trash.');trash.push(n);localStorage.setItem('noted-preview-trash',JSON.stringify(trash));store.notes.splice(index,1);persist(store);break;}
+    case 'restore_note':{const trash=JSON.parse(localStorage.getItem('noted-preview-trash')??'[]') as Note[],index=trash.findIndex(n=>n.id===args.id);if(index<0)throw new Error('Trashed note missing.');if(store.notes.some(n=>n.id===args.id))throw new Error('An active copy exists; nothing replaced.');result=trash[index];store.notes.push(trash[index]);persist(store);trash.splice(index,1);localStorage.setItem('noted-preview-trash',JSON.stringify(trash));break;}
+    case 'recover_draft':{const draft=structuredClone(args.draft as Note),oldId=draft.id;draft.id=crypto.randomUUID();draft.revision=1;draft.revisionToken=crypto.randomUUID();draft.title=draft.title.slice(0,240)+' (recovered draft)';draft.createdAt=draft.updatedAt=new Date().toISOString();if(draft.folderId&&!store.folders.some(f=>f.id===draft.folderId))draft.folderId=null;await copyPreviewAssets(oldId,draft.id);store.notes.push(draft);persist(store);result=draft;break;}
+    case 'review_action':{const id=String(args.id);if(!store.notes.some(n=>n.id===id))throw new Error('Note is missing.');const states=JSON.parse(localStorage.getItem('noted-preview-review')??'{}') as Record<string,{dismissed?:boolean;snoozeUntil?:string;reviewedAt?:string}>;const s=states[id]??{};if(args.action==='reset')delete states[id];else{if(args.action==='dismiss')s.dismissed=true;else if(args.action==='snooze')s.snoozeUntil=new Date(Date.now()+86400000).toISOString();else if(args.action==='reviewed'){s.reviewedAt=new Date().toISOString();delete s.snoozeUntil;}else throw new Error('Unknown review action.');states[id]=s;}localStorage.setItem('noted-preview-review',JSON.stringify(states));break;}
+    case 'review_feed':{const states=JSON.parse(localStorage.getItem('noted-preview-review')??'{}') as Record<string,{dismissed?:boolean;snoozeUntil?:string;reviewedAt?:string}>;const today=new Date().toISOString().slice(0,10);result=store.notes.filter(n=>{const s=states[n.id]??{};return (!args.folderId||n.folderId===args.folderId)&&(!args.tag||n.tags.some(t=>t.toLowerCase()===String(args.tag).toLowerCase()))&&(args.includeHidden||!s.dismissed&&(!s.snoozeUntil||s.snoozeUntil<new Date().toISOString())&&s.reviewedAt?.slice(0,10)!==today);}).sort((a,b)=>(states[a.id]?.reviewedAt??a.updatedAt).localeCompare(states[b.id]?.reviewedAt??b.updatedAt)).slice(0,30).map(note=>({note:summary(note),reasons:[states[note.id]?.dismissed?'Excluded from review':states[note.id]?.snoozeUntil?'Snoozed':'Resurfaced from your saved notes',...(note.tags.length?['Tags: '+note.tags.join(', ')]:[])]}));break;}
+
     case 'list_document_definitions': result=JSON.parse(localStorage.getItem(`noted-preview-definitions-${args.kind}`)??'[]');break;
     case 'save_document_definition': {
       const definition=args.definition as Record<string,unknown>,identity=(args.kind==='component'?definition.manifest:definition) as {id:string;version:number};
@@ -167,7 +178,25 @@ async function assetUrl(noteId: string, assetId: string): Promise<string> {
   return url;
 }
 function releaseAssetUrl(url: string) { unregisterImageSource(url); URL.revokeObjectURL(url); }
+
+async function copyPreviewAssets(source:string,target:string){
+ const db=await imageDatabase();try{const records=await new Promise<PreviewImage[]>((resolve,reject)=>{const r=db.transaction('images','readonly').objectStore('images').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});for(const record of records)if(record.key.startsWith(source+'/'))await putPreviewImage({...record,key:target+record.key.slice(source.length)});}finally{db.close();}
+}
 export const api = {
+  updateFolder:(folder:Folder,expected:Folder)=>call<Folder>('update_folder',{folder,expected}),
+  trash:()=>call<NoteSummary[]>('list_trash'),
+  trashNote:(note:Note)=>call<void>('trash_note',{id:note.id,revision:note.revision,token:note.revisionToken}),
+  restoreNote:(id:string)=>call<Note>('restore_note',{id}),
+  recoverDraft:(draft:Note)=>call<Note>('recover_draft',{draft}),
+  reviewFeed:(folderId:string|null,tag:string,includeHidden=false)=>call<{note:NoteSummary;reasons:string[]}[]>('review_feed',{folderId,tag,includeHidden}),
+  reviewAction:(id:string,action:string)=>call<void>('review_action',{id,action}),
+  agentAccess:()=>call<{enabled:boolean;folderIds:string[]}>('agent_access'),
+  setAgentAccess:(access:{enabled:boolean;folderIds:string[]})=>call<{enabled:boolean;folderIds:string[]}>('set_agent_access',{access}),
+  agentConfiguration:()=>call<string>('agent_configuration'),
+  createFormattingRequest:(id:string,prompt:string)=>call<{id:string;noteId:string;expiresAt:string}>('create_formatting_request',{id,prompt}),
+  formattingRequests:(noteId:string)=>call<{id:string;noteId:string;prompt:string;expiresAt:string}[]>('formatting_requests',{noteId}),
+  formattingReply:(id:string)=>call<{summary:string;operations:DocumentOperation[]}|null>('formatting_reply',{id}),
+  cancelFormattingRequest:(id:string)=>call<void>('cancel_formatting_request',{id}),
   backupDefaults:()=>call<{backupPath:string;restorePath:string}>('backup_defaults'),
   createBackup:(path:string)=>call<import('./workspace-backup-types').BackupSummary>('create_workspace_backup',{path}),
   inspectBackup:(path:string)=>call<import('./workspace-backup-types').BackupSummary>('inspect_workspace_backup',{path}),

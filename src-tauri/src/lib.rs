@@ -1,7 +1,9 @@
+pub mod agent;
 mod assets;
 pub mod backup;
 mod definitions;
 pub mod document;
+pub mod library;
 pub mod relations;
 #[cfg(feature = "semantic")]
 pub mod semantic;
@@ -578,6 +580,134 @@ mod desktop {
         .map_err(|e| e.to_string())?
     }
 
+    #[tauri::command]
+    pub async fn update_folder(
+        state: State<'_, SharedStore>,
+        folder: Folder,
+        expected: Folder,
+    ) -> Result<Folder, String> {
+        work(state, move |s| s.update_folder(folder, expected)).await
+    }
+    #[tauri::command]
+    pub async fn list_trash(state: State<'_, SharedStore>) -> Result<Vec<NoteSummary>, String> {
+        work(state, |s| s.list_trash()).await
+    }
+    #[tauri::command]
+    pub async fn trash_note(
+        state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
+        id: String,
+        revision: u64,
+        token: String,
+    ) -> Result<(), String> {
+        let r = work(state, move |s| s.trash_note(&id, revision, &token)).await;
+        if r.is_ok() {
+            semantic.invalidate_scope();
+        }
+        r
+    }
+    #[tauri::command]
+    pub async fn restore_note(
+        state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
+        id: String,
+    ) -> Result<Note, String> {
+        let r = work(state, move |s| s.restore_note(&id)).await;
+        if r.is_ok() {
+            semantic.invalidate_scope();
+        }
+        r
+    }
+    #[tauri::command]
+    pub async fn recover_draft(
+        state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
+        draft: Note,
+    ) -> Result<Note, String> {
+        let r = work(state, move |s| s.recover_draft(draft)).await;
+        if r.is_ok() {
+            semantic.invalidate_scope();
+        }
+        r
+    }
+    #[tauri::command]
+    pub async fn review_feed(
+        state: State<'_, SharedStore>,
+        folder_id: Option<String>,
+        tag: String,
+        include_hidden: bool,
+    ) -> Result<Vec<crate::library::ReviewItem>, String> {
+        work(state, move |s| {
+            s.review_feed(folder_id, tag, include_hidden)
+        })
+        .await
+    }
+    #[tauri::command]
+    pub async fn review_action(
+        state: State<'_, SharedStore>,
+        id: String,
+        action: String,
+    ) -> Result<(), String> {
+        work(state, move |s| s.review_action(&id, &action)).await
+    }
+
+    #[tauri::command]
+    pub async fn agent_access(
+        state: State<'_, SharedStore>,
+    ) -> Result<crate::agent::Access, String> {
+        work(state, |s| s.agent_access()).await
+    }
+    #[tauri::command]
+    pub async fn set_agent_access(
+        state: State<'_, SharedStore>,
+        access: crate::agent::Access,
+    ) -> Result<crate::agent::Access, String> {
+        work(state, move |s| s.set_agent_access(access)).await
+    }
+    #[tauri::command]
+    pub async fn create_formatting_request(
+        state: State<'_, SharedStore>,
+        id: String,
+        prompt: String,
+    ) -> Result<crate::agent::Request, String> {
+        work(state, move |s| s.create_formatting_request(&id, prompt)).await
+    }
+    #[tauri::command]
+    pub async fn formatting_reply(
+        state: State<'_, SharedStore>,
+        id: String,
+    ) -> Result<Option<serde_json::Value>, String> {
+        work(state, move |s| s.formatting_reply(&id)).await
+    }
+    #[tauri::command]
+    pub async fn cancel_formatting_request(
+        state: State<'_, SharedStore>,
+        id: String,
+    ) -> Result<(), String> {
+        work(state, move |s| s.cancel_formatting_request(&id)).await
+    }
+    #[tauri::command]
+    pub async fn agent_configuration(state: State<'_, SharedStore>) -> Result<String, String> {
+        work(state, |s| {
+            let exe = std::env::current_exe()
+                .map_err(|e| e.to_string())?
+                .with_file_name("noted-agent.exe");
+            Ok(format!(
+                "[mcp_servers.noted]\ncommand = {}\nargs = [\"--workspace\", {}]\n",
+                serde_json::to_string(&crate::backup::display_path(&exe)).unwrap(),
+                serde_json::to_string(&crate::backup::display_path(&s.root)).unwrap()
+            ))
+        })
+        .await
+    }
+
+    #[tauri::command]
+    pub async fn formatting_requests(
+        state: State<'_, SharedStore>,
+        note_id: String,
+    ) -> Result<Vec<crate::agent::Request>, String> {
+        work(state, move |s| s.formatting_requests(&note_id)).await
+    }
     pub fn run() {
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
@@ -621,6 +751,20 @@ mod desktop {
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
+                update_folder,
+                list_trash,
+                trash_note,
+                restore_note,
+                recover_draft,
+                review_feed,
+                review_action,
+                formatting_requests,
+                agent_access,
+                set_agent_access,
+                create_formatting_request,
+                formatting_reply,
+                cancel_formatting_request,
+                agent_configuration,
                 backup_defaults,
                 create_workspace_backup,
                 inspect_workspace_backup,
