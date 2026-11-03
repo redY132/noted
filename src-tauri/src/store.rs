@@ -196,6 +196,9 @@ impl Store {
     }
 
     pub fn open_cached(root: impl AsRef<Path>) -> Result<Self> {
+        if root.as_ref().join(".noted-restore-incomplete").exists() {
+            return Err("This restored copy is incomplete. Keep the original workspace and restore the backup to a new folder.".into());
+        }
         fs::create_dir_all(root.as_ref()).map_err(err)?;
         let root = root.as_ref().canonicalize().map_err(err)?;
         for name in ["notes", "folders"] {

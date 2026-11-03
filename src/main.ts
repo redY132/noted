@@ -12,6 +12,8 @@ import { initializeSchemaUI } from './schema-ui';
 import { SchemaRegistry } from './document-schema';
 import { builtinComponentDefinitions } from './component-runtime-examples';
 import { ComponentRuntimeHost, installComponentDefinition } from './component-runtime';
+import {initializeBackupUI} from './workspace-backup-ui';
+import {validateRenderedDocument} from './render-validation';
 import { initializeDocumentTools } from './document-tools-ui';
 import type { DocumentSchema } from './document-schema';
 import type { ComponentDefinition } from './component-runtime-types';
@@ -65,7 +67,7 @@ $('#app').innerHTML = `
   <div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
-  <dialog id="workspace-dialog"><h2>Workspace</h2><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
+  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">This prototype uses no cloud AI, telemetry, remote fonts, or remote assets. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
 
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
@@ -92,12 +94,13 @@ const editorExtensions = () => createEditorExtensions(() => session?.note.presen
 const editingUI = initializeEditingUI({ getEditor: () => editor, getSchema: () => session?.note.presentation.schemaId ?? 'default', error });
 const componentUI = initializeComponentUI({ getEditor: () => editor, getNoteId: () => session?.note.id ?? null, importAsset: (id, file) => api.importAsset(id, file), error });
 const schemaRegistry = new SchemaRegistry([], async definitions => { for (const definition of definitions) await api.saveDocumentDefinition('schema', definition); });
-const schemaUI = initializeSchemaUI($('#schema-ui-host'), {getEditor:()=>editor, registry:schemaRegistry, getLegacySchema:()=>session?.note.presentation.schemaId??'default',error});
+const schemaUI = initializeSchemaUI($('#schema-ui-host'), {getEditor:()=>editor, registry:schemaRegistry,validate:async (target,content)=>{const note=session?.note;if(!note)throw new Error('Open a note first.');const candidate=documentFromEditor(content,note.id,note.document);const rendered=await validateRenderedDocument({editor:target,document:candidate,content,noteId:note.id,schemaId:note.presentation.schemaId,resolveAsset:id=>api.assetUrl(note.id,id),releaseAsset:api.releaseAssetUrl});rendered.dispose();}, getLegacySchema:()=>session?.note.presentation.schemaId??'default',error});
 $('#schema-ui-host').querySelector<HTMLElement>('[data-schema-open]')!.hidden = true;
 $('#edit-schema').onclick = () => schemaUI.open();
 const documentTools=initializeDocumentTools($('#document-api-host'),{getEditor:()=>editor,getNote:()=>session?.note??null,getRuntime:()=>componentRuntime,flush,error,persistDefinition:async definition=>{await api.saveDocumentDefinition('component',definition);}});
 $('#interactive-library').onclick=()=>documentTools.openComponents();
 $('#document-operations').onclick=()=>documentTools.openOperations();
+initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
 const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close()},initialLayout);
 const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});

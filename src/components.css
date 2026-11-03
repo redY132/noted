@@ -62,3 +62,7 @@
 .document-tool-dialog .tool-scope { display:inline-flex; flex-direction:row; margin-right:14px; }
 .document-tool-dialog fieldset { border:1px solid var(--ui-border); }
 .document-tool-dialog details { margin-top:16px; }
+
+.rendered-proposal-preview{max-height:320px;overflow:auto;border:1px solid var(--ui-border);margin-block:12px}.rendered-proposal-preview:empty{display:none}
+
+#workspace-dialog{width:min(760px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto}.backup-tools{font:13px/1.5 system-ui}.backup-tools label{display:flex;flex-direction:column;gap:5px;margin-block:12px}.backup-tools input{width:100%;padding:7px;background:var(--ui-subtle);color:var(--ui-text);border:1px solid var(--ui-border);border-radius:4px}.backup-tools button{padding:7px 10px;border:1px solid var(--ui-border);border-radius:4px;margin:4px}.backup-actions{display:flex;flex-wrap:wrap;gap:6px}

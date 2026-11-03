@@ -21,7 +21,7 @@ export function contrastRatio(first: string, second: string) {
 export function accentForeground(accent: string) {
   return contrastRatio(accent, '#000000') >= contrastRatio(accent, '#ffffff') ? '#000000' : '#ffffff';
 }
-function readableAccent(accent: string, background: string, dark: boolean) {
+export function readableAccent(accent: string, background: string, dark: boolean) {
   const initial = rgb(accent), goal = dark ? 255 : 0;
   for (let step = 0; step <= 20; step++) {
     const color = '#' + initial.map(c => Math.round(c + (goal - c) * step / 20).toString(16).padStart(2, '0')).join('');

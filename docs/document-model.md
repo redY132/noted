@@ -20,7 +20,7 @@ Show Layout tools in View. Use **Group in box**, then select its layout kind, pa
 
 **Document API** accepts previewable operation batches. Trusted UI grants are separate from proposal JSON and tied to a note/revision/fingerprint. Formatting, spatial arrangement, logical reorganization, content and component state have independent permissions. Invalid/stale batches make no changes; accepted projection changes are one Undo step. Formatting preserves authored words, links, asset IDs, task state, structure and protected attributes. Content permission cannot introduce component code or change its state without the separate scope. An operation grant is not an execution approval.
 
-Both browser and native proposal paths check effective style overrides, bounded canvas extents and estimated sibling overlap. These are conservative estimates, not a rendered geometry or contrast proof. The developer API must not be presented as a completed AI formatting boundary.
+Both proposal paths perform native/data checks followed by a trusted inert render. The renderer checks real geometry, clipping, decoded assets, projection fidelity and text contrast in both themes at multiple widths. Native commits require a digest-bound one-use render token. Automated proposals containing dynamic components are blocked, and AI is not connected. See [rendered validation](rendered-validation.md).
 
 ## Verification and remaining work
 
@@ -34,8 +34,8 @@ To reproduce the browser checks, generate `output/vite-document.config.ts` with 
 
 Recommended next work, in order:
 
-1. Complete rendered proposal validation for actual text/component bounds, nested overlap and contrast; retain a visible preview and atomic rejection. Test varied viewport sizes and long text before connecting AI.
-2. Validate the packaged release with long notes, large canvases and eight active components on the agreed inexpensive reference laptop. Record actual key-to-paint, cold startup, process-tree memory and long-session behavior. The under-50 ms p95 writing target is still an acceptance gate.
-3. Add a user-facing consistent backup/export and restore flow including definitions, assets and relations, followed by migration/conflict recovery UI. Keep device execution approvals out of portable imports.
+1. Finish physical reference-hardware acceptance; the only available machine is the Ryzen 9 development laptop. The portable kit and precise blocker are documented in [reference-benchmark.md](reference-benchmark.md).
+2. Define a stable viewport/overflow contract for dynamic components before allowing automated proposals on widget-containing notes. Current proposals fail closed; direct human interaction remains available.
+3. A consistent [backup/restore workflow](backup-restore.md) is now implemented. Future work includes richer conflict recovery UI and a stable component viewport contract before lifting automated-widget proposal restrictions.
 
 Cloud AI, sync, full HTML/DOM widgets and app-wide plugin execution remain outside this stage.

@@ -1,6 +1,7 @@
 //! Versioned, inert document data. Neither validation nor indexing runs scripts.
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 
 type Result<T> = std::result::Result<T, String>;
@@ -604,6 +605,8 @@ pub struct Grant {
     pub revision: u64,
     pub token: String,
     pub permissions: HashSet<Permission>,
+    pub preview_digest: Option<String>,
+    pub render_token: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -611,6 +614,7 @@ pub struct Preview {
     pub document: Value,
     pub content: Value,
     pub base_revision: u64,
+    pub document_digest: String,
 }
 
 fn authored_signature(n: &Value) -> Value {
@@ -999,6 +1003,8 @@ impl crate::store::Store {
                 revision: note.revision,
                 token: note.revision_token,
                 permissions: scopes.into_iter().collect(),
+                preview_digest: None,
+                render_token: None,
             },
         );
         Ok(grant_id)
@@ -1033,6 +1039,10 @@ impl crate::store::Store {
         Ok((
             note,
             Preview {
+                document_digest: format!(
+                    "{:x}",
+                    Sha256::digest(serde_json::to_vec(&document).map_err(|e| e.to_string())?)
+                ),
                 document,
                 content,
                 base_revision: expected_revision,
@@ -1040,15 +1050,68 @@ impl crate::store::Store {
         ))
     }
     pub fn preview_document_operations(
-        &self,
+        &mut self,
         id: &str,
         expected_revision: u64,
         revision_token: &str,
         operations: &[Operation],
         grant_id: &str,
     ) -> Result<Preview> {
-        self.document_operation_preview(id, expected_revision, revision_token, operations, grant_id)
-            .map(|(_, p)| p)
+        let (_, preview) = self.document_operation_preview(
+            id,
+            expected_revision,
+            revision_token,
+            operations,
+            grant_id,
+        )?;
+        let grant = self
+            .document_grants
+            .get_mut(grant_id)
+            .ok_or("Missing grant")?;
+        grant.preview_digest = Some(preview.document_digest.clone());
+        grant.render_token = None;
+        Ok(preview)
+    }
+    /// Only the trusted renderer may attest a checked preview. Never expose this channel to AI or components.
+    pub fn approve_document_render(
+        &mut self,
+        grant_id: &str,
+        digest: &str,
+        report: &Value,
+    ) -> Result<String> {
+        let grant = self
+            .document_grants
+            .get_mut(grant_id)
+            .ok_or("Missing permission grant")?;
+        if grant.preview_digest.as_deref() != Some(digest) || report["version"] != 1 {
+            return Err("Rendered preview does not match this proposal".into());
+        }
+        let profiles = report["profiles"]
+            .as_array()
+            .filter(|p| p.len() >= 4 && p.len() <= 8)
+            .ok_or("Both themes and multiple widths must be rendered")?;
+        let mut themes = HashSet::new();
+        let mut widths = HashSet::new();
+        for profile in profiles {
+            let theme = profile["theme"].as_str().ok_or("Invalid render theme")?;
+            let width = profile["width"]
+                .as_u64()
+                .filter(|w| (160..=100000).contains(w))
+                .ok_or("Invalid render width")?;
+            if !["light", "dark"].contains(&theme)
+                || !profile["textBoxes"].as_u64().is_some_and(|n| n <= 50000)
+            {
+                return Err("Invalid render report".into());
+            }
+            themes.insert(theme);
+            widths.insert(width);
+        }
+        if themes.len() != 2 || widths.len() < 2 {
+            return Err("Both themes and multiple widths must be validated".into());
+        }
+        let token = uuid::Uuid::new_v4().to_string();
+        grant.render_token = Some(token.clone());
+        Ok(token)
     }
     pub fn apply_document_operations(
         &mut self,
@@ -1057,6 +1120,7 @@ impl crate::store::Store {
         revision_token: &str,
         operations: &[Operation],
         grant_id: &str,
+        render_token: Option<&str>,
     ) -> Result<crate::store::Note> {
         let (mut note, preview) = self.document_operation_preview(
             id,
@@ -1065,6 +1129,16 @@ impl crate::store::Store {
             operations,
             grant_id,
         )?;
+        let grant = self.document_grants.get(grant_id).ok_or("Missing grant")?;
+        if render_token.is_none()
+            || grant.render_token.as_deref() != render_token
+            || grant.preview_digest.as_deref() != Some(&preview.document_digest)
+        {
+            return Err(
+                "A matching trusted rendered preview is required before applying this proposal"
+                    .into(),
+            );
+        }
         note.format_version = 2;
         note.document = Some(preview.document);
         note.content = preview.content;
@@ -1231,7 +1305,8 @@ mod tests {
                 note.revision,
                 &note.revision_token,
                 &[good.clone(), bad],
-                &grant
+                &grant,
+                None
             )
             .is_err());
         assert_eq!(std::fs::read(&path).unwrap(), original);
@@ -1246,6 +1321,20 @@ mod tests {
             .unwrap();
         assert_eq!(preview.base_revision, note.revision);
         assert_eq!(std::fs::read(&path).unwrap(), original);
+        let report = json!({"version":1,"profiles":[{"theme":"light","width":360,"textBoxes":1},{"theme":"light","width":1200,"textBoxes":1},{"theme":"dark","width":360,"textBoxes":1},{"theme":"dark","width":1200,"textBoxes":1}]});
+        assert!(store
+            .apply_document_operations(
+                &note.id,
+                note.revision,
+                &note.revision_token,
+                &[good.clone()],
+                &grant,
+                None
+            )
+            .is_err());
+        let render = store
+            .approve_document_render(&grant, &preview.document_digest, &report)
+            .unwrap();
         let saved = store
             .apply_document_operations(
                 &note.id,
@@ -1253,6 +1342,7 @@ mod tests {
                 &note.revision_token,
                 &[good.clone()],
                 &grant,
+                Some(&render),
             )
             .unwrap();
         assert_eq!(saved.format_version, 2);
@@ -1267,7 +1357,8 @@ mod tests {
                 note.revision,
                 &note.revision_token,
                 &[good],
-                &grant
+                &grant,
+                None
             )
             .is_err());
         let mut latest = saved.clone();

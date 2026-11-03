@@ -1,4 +1,5 @@
 mod assets;
+pub mod backup;
 mod definitions;
 pub mod document;
 pub mod relations;
@@ -162,6 +163,7 @@ mod desktop {
         revision_token: String,
         operations: Vec<crate::document::Operation>,
         grant_id: String,
+        render_token: String,
     ) -> Result<Note, String> {
         let result = work(state, move |s| {
             s.apply_document_operations(
@@ -170,6 +172,7 @@ mod desktop {
                 &revision_token,
                 &operations,
                 &grant_id,
+                Some(&render_token),
             )
         })
         .await;
@@ -474,6 +477,107 @@ mod desktop {
         work(state, |s| s.export_relations()).await
     }
 
+    #[tauri::command]
+    pub async fn approve_document_render(
+        state: State<'_, SharedStore>,
+        grant_id: String,
+        digest: String,
+        report: serde_json::Value,
+    ) -> Result<String, String> {
+        work(state, move |s| {
+            s.approve_document_render(&grant_id, &digest, &report)
+        })
+        .await
+    }
+
+    #[tauri::command]
+    pub async fn backup_defaults(
+        state: State<'_, SharedStore>,
+    ) -> Result<serde_json::Value, String> {
+        work(state,|s|{let parent=s.root.parent().ok_or("Workspace parent is missing")?;let folder=parent.join("Backups");std::fs::create_dir_all(&folder).map_err(|e|e.to_string())?;if folder.canonicalize().map_err(|e|e.to_string())?!=folder{return Err("Backup folder cannot be redirected".into());}let stamp=chrono::Utc::now().format("%Y%m%d-%H%M%S");let suffix=uuid::Uuid::new_v4().to_string();Ok(serde_json::json!({"backupPath":crate::backup::display_path(&folder.join(format!("Noted-{stamp}-{}.noted-backup",&suffix[..8]))),"restorePath":crate::backup::display_path(&parent.join(format!("Restored-Noted-{stamp}-{}",&suffix[..8])))}))}).await
+    }
+    #[tauri::command]
+    pub async fn create_workspace_backup(
+        state: State<'_, SharedStore>,
+        path: String,
+    ) -> Result<crate::backup::Summary, String> {
+        work(state, move |s| s.create_backup(std::path::Path::new(&path))).await
+    }
+    #[tauri::command]
+    pub async fn inspect_workspace_backup(path: String) -> Result<crate::backup::Summary, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::backup::inspect_backup(std::path::Path::new(&path))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub async fn restore_workspace_backup(
+        state: State<'_, SharedStore>,
+        path: String,
+        target: String,
+        digest: String,
+    ) -> Result<crate::backup::Summary, String> {
+        let active = work(state, |s| Ok(s.root.clone())).await?;
+        tauri::async_runtime::spawn_blocking(move || {
+            if std::path::Path::new(&target)
+                .parent()
+                .ok_or("Restore parent is missing")?
+                .canonicalize()
+                .map_err(|e| e.to_string())?
+                .starts_with(active)
+            {
+                return Err("Restore outside the active workspace".into());
+            }
+            crate::backup::restore_backup(
+                std::path::Path::new(&path),
+                std::path::Path::new(&target),
+                &digest,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[tauri::command]
+    pub fn reveal_workspace_backup(path: String) -> Result<(), String> {
+        let path = std::path::Path::new(&path);
+        if path.extension().and_then(|s| s.to_str()) != Some("noted-backup") || !path.is_file() {
+            return Err("Choose a saved Noted backup".into());
+        }
+        tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+    }
+    #[tauri::command]
+    pub async fn open_restored_workspace(
+        app: tauri::AppHandle,
+        path: String,
+    ) -> Result<(), String> {
+        let profile = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("restored-profiles")
+            .join(uuid::Uuid::new_v4().to_string());
+        tauri::async_runtime::spawn_blocking(move || {
+            let target = std::path::Path::new(&path)
+                .canonicalize()
+                .map_err(|e| e.to_string())?;
+            if !target.join("notes").is_dir() || !target.join("relations.sqlite3").is_file() {
+                return Err("Choose a complete restored workspace".into());
+            }
+            drop(Store::open_cached(&target)?);
+            std::fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
+            std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+                .env("NOTED_WORKSPACE", target)
+                .env("WEBVIEW2_USER_DATA_FOLDER", profile)
+                .env_remove("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
     pub fn run() {
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
@@ -482,6 +586,14 @@ mod desktop {
                     Some(path) => std::path::PathBuf::from(path),
                     None => app.path().app_data_dir()?.join("workspace"),
                 };
+                if std::env::var_os("NOTED_WORKSPACE").is_some() {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.set_title(&format!(
+                            "Noted — {}",
+                            root.file_name().unwrap_or_default().to_string_lossy()
+                        ));
+                    }
+                }
                 let store = Store::open_cached(root.clone()).map_err(std::io::Error::other)?;
                 let graph = Arc::new(Mutex::new(
                     store.read_view().map_err(std::io::Error::other)?,
@@ -509,6 +621,12 @@ mod desktop {
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
+                backup_defaults,
+                create_workspace_backup,
+                inspect_workspace_backup,
+                restore_workspace_backup,
+                reveal_workspace_backup,
+                open_restored_workspace,
                 list_notes,
                 list_folders,
                 create_folder,
@@ -522,6 +640,7 @@ mod desktop {
                 authorize_document_operations,
                 preview_document_operations,
                 apply_document_operations,
+                approve_document_render,
                 save_note,
                 search_notes,
                 workspace_status,

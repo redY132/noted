@@ -150,6 +150,8 @@ export function previewSchema(editor: Editor, schema: DocumentSchema, policy: Sc
   editor.state.doc.descendants((node, position) => { const change = suggestion(node, position, schema, policy); if (change) changes.push(change); });
   return changes;
 }
+/** Inert candidate for rendered validation; never dispatches or touches history. */
+export function schemaProjection(editor:Editor,schema:DocumentSchema,policy:SchemaPolicy){const transaction=editor.state.tr;for(const change of previewSchema(editor,schema,policy)){const node=transaction.doc.nodeAt(change.position)!;transaction.setNodeMarkup(change.position,undefined,{...node.attrs,schemaStyle:change.after,schemaRef:{id:schema.id,version:schema.version},indent:change.indent});}return transaction.doc.toJSON();}
 /** One transaction, preserving selection, words, links, assets, and content order. */
 export function applySchema(editor: Editor, schema: DocumentSchema, policy: SchemaPolicy = { mode: 'suggest', enabledRules: [] }, expectedDoc?: PMNode): number {
   if (!editor.isEditable) return 0;

@@ -388,3 +388,12 @@ The user explicitly requested implementation of the document/layout/component pl
 The implementation provides separate content objects and logical reading order, nested free/column/row/grid containers, a single editor/history, lazy V1 migration with pre-V2 backups, revision-checked scoped operations, immutable schema/component definitions, schema preview/application, and an explicitly enabled QuickJS Worker runtime. The runtime uses one verified pinned WASM artifact, an independent 64 MiB total WASM ceiling, eight-context limit, bounded messages/output and a terminating host watchdog. State changes are undoable; animation is transient and pauses while typing, hidden, offscreen, on battery or under reduced motion.
 
 This is a verified prototype stage. Conservative proposal geometry checks do not prove actual rendered text height, contrast or all nested overlaps. Broad drawing/zoom tools, cloud AI, app-wide plugins and sync remain outside this milestone. Native and browser integration evidence and the remaining performance/acceptance gates are recorded in [document-model.md](docs/document-model.md).
+
+
+### Render validation, portable recovery and hardware gates - November 3, 2026
+
+The user requested all three follow-up tasks. The prototype now provides actual rendered geometry/contrast validation for supported inert proposals and schema suggestions, with digest-bound one-use native approval. Dynamic-component proposals are explicitly refused because arbitrary future widget states cannot be proven by a static render. Direct human editing/component interaction remains supported; cloud AI is not connected.
+
+Workspace backups now preserve original notes/recovery copies, assets, definitions and every saved relationship/revision in a checksummed archive. Restore is deliberately side by side into a new folder and fresh profile; existing destinations, profiles and personal notes are not overwritten or imported as execution approval. Partial copies are guarded against opening.
+
+Actual inexpensive-hardware acceptance remains blocked: only the Ryzen 9 8945HS/31.3 GiB Windows development machine is connected, and the target configuration/resource budgets remain unresolved. A checksummed portable benchmark kit now records actual host information and explicitly distinguishes CPU sensitivity tests from real reference hardware. Current-host scheduling observations and sampled memory are evidence, not certification. See [the hardware report](docs/reference-benchmark.md).

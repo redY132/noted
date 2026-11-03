@@ -1,6 +1,7 @@
+import type { JSONContent } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { applySchema, bindSchemaRegistry, BUILTIN_SCHEMAS, previewSchema, SCHEMA_STYLE_KEYS, SCHEMA_TARGETS, SchemaRegistry, schemaStyleCSS, setSchemaReference, validSchemaPolicy, validSchemaReference, validateDocumentSchema, type DocumentSchema, type SchemaPolicy, type SchemaReference, type SchemaStyle, type SchemaStyleKey, type SchemaTarget } from './document-schema.ts';
+import { applySchema, schemaProjection, bindSchemaRegistry, BUILTIN_SCHEMAS, previewSchema, SCHEMA_STYLE_KEYS, SCHEMA_TARGETS, SchemaRegistry, schemaStyleCSS, setSchemaReference, validSchemaPolicy, validSchemaReference, validateDocumentSchema, type DocumentSchema, type SchemaPolicy, type SchemaReference, type SchemaStyle, type SchemaStyleKey, type SchemaTarget } from './document-schema.ts';
 
 export const schemaEditorMarkup = `<button type="button" data-schema-open aria-haspopup="dialog" title="Edit reusable note schemas">Schemas…</button>
 <dialog class="schema-editor" aria-label="Note schemas">
@@ -38,6 +39,7 @@ interface Options {
   /** Legacy preset used when an old note has no explicit pinned version. */
   getLegacySchema?: () => string;
   error: (error: unknown) => void;
+  validate?:(editor:Editor,content:JSONContent)=>Promise<void>;
   changed?: (reference: SchemaReference, policy: SchemaPolicy) => void;
 }
 /** Mount outside collapsible toolbar regions so an open dialog stays usable. */
@@ -48,6 +50,7 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
   const dialog = $<HTMLDialogElement>('dialog'), picker = $<HTMLSelectElement>('[data-schema-version]');
   let draft = structuredClone(BUILTIN_SCHEMAS[0]), target: SchemaTarget = 'body';
   let sourceDirty = false, preview: { doc: PMNode; editor: Editor; schema: DocumentSchema; policy: SchemaPolicy } | null = null;
+  let previewEpoch=0;
   let boundEditor: Editor | null = null;
   const status = (message: string) => { $('[data-schema-status]').textContent = message; };
   const run = (fn: () => void | Promise<void>) => Promise.resolve().then(fn).catch(options.error);
@@ -55,7 +58,7 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
     ? editor.state.doc.attrs.schemaReference : { id: options.getLegacySchema?.() ?? 'default', version: 1 };
   const policy = (editor: Editor): SchemaPolicy => validSchemaPolicy(editor.state.doc.attrs.schemaPolicy)
     ? editor.state.doc.attrs.schemaPolicy : { mode: 'suggest', enabledRules: [] };
-  function invalidatePreview() { preview = null; $<HTMLButtonElement>('[data-schema-apply]').disabled = true; $('[data-schema-preview-content]').replaceChildren(); }
+  function invalidatePreview() { previewEpoch++;preview = null; $<HTMLButtonElement>('[data-schema-apply]').disabled = true; $('[data-schema-preview-content]').replaceChildren(); }
   function writeSource() { $<HTMLTextAreaElement>('[data-schema-source]').value = JSON.stringify(draft, null, 2); sourceDirty = false; invalidatePreview(); }
   function readSource() {
     if (sourceDirty) { const value: unknown = JSON.parse($<HTMLTextAreaElement>('[data-schema-source]').value); validateDocumentSchema(value); draft = structuredClone(value); fillForm(); sourceDirty = false; }
@@ -113,26 +116,29 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
     await options.registry.publish(definition); draft = structuredClone(definition); fillPicker(definition); fillForm(); writeSource();
     status(`Saved ${definition.name} v${definition.version}. Existing notes keep their selected versions. Choose “Use this version” to update this note.`);
   }));
-  $('[data-schema-pin]').addEventListener('click', () => run(() => {
+  $('[data-schema-pin]').addEventListener('click', () => run(async () => {
     const editor = options.getEditor(); if (!editor) return;
     const definition = readSource(), saved = options.registry.get(definition);
     if (!saved || JSON.stringify(saved) !== JSON.stringify(definition)) throw new Error('Save this definition as a new version before using it.');
     const ref = { id: saved.id, version: saved.version }, nextPolicy = selectedPolicy();
+    if(nextPolicy.mode==='automatic'){const baseline=editor.state.doc,ticket=previewEpoch;await options.validate?.(editor,schemaProjection(editor,saved,nextPolicy));if(ticket!==previewEpoch||editor!==options.getEditor()||editor.state.doc!==baseline)throw new Error('The note changed. Preview the schema again.');}
     setSchemaReference(editor, ref, nextPolicy); options.changed?.(ref, nextPolicy);
     $('[data-schema-pin-label]').textContent = `This note: ${saved.name} v${saved.version}`; invalidatePreview(); status('Version selected. Preview its suggestions before applying them.');
   }));
-  $('[data-schema-policy]').addEventListener('click', () => run(() => {
+  $('[data-schema-policy]').addEventListener('click', () => run(async () => {
     const editor = options.getEditor(); if (!editor) return;
     const ref = reference(editor), nextPolicy = selectedPolicy();
     if (nextPolicy.mode === 'automatic' && !nextPolicy.enabledRules.length) throw new Error('Select at least one rule to enforce automatically.');
+    if(nextPolicy.mode==='automatic'){const schema=options.registry.get(ref);if(!schema)throw new Error('The selected schema definition is unavailable.');const baseline=editor.state.doc;await options.validate?.(editor,schemaProjection(editor,schema,nextPolicy));if(editor!==options.getEditor()||editor.state.doc!==baseline)throw new Error('The note changed. Check the rules again.');}
     setSchemaReference(editor, ref, nextPolicy); options.changed?.(ref, nextPolicy); invalidatePreview();
     status(nextPolicy.mode === 'automatic' ? 'Only the selected rules will be enforced after edits. Use Preview to apply them to the existing note.' : 'Suggestion mode enabled. Explicit formatting is preserved.');
   }));
-  $('[data-schema-preview]').addEventListener('click', () => run(() => {
+  $('[data-schema-preview]').addEventListener('click', () => run(async () => {
     const editor = options.getEditor(); if (!editor) return;
     const definition = readSource(), nextPolicy = selectedPolicy();
     const saved = options.registry.get(definition);
     if (!saved || JSON.stringify(saved) !== JSON.stringify(definition)) throw new Error('Save the definition before applying its suggestions.');
+    const baseline=editor.state.doc;await options.validate?.(editor,schemaProjection(editor,saved,nextPolicy));if(editor!==options.getEditor()||editor.state.doc!==baseline)throw new Error('The note changed during rendered validation. Preview again.');
     const changes = previewSchema(editor, saved, nextPolicy), content = $('[data-schema-preview-content]'); content.replaceChildren();
     for (const change of changes.slice(0, 5)) {
       const sample = document.createElement('div'), label = document.createElement('small');
@@ -143,9 +149,10 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
     $<HTMLButtonElement>('[data-schema-apply]').disabled = changes.length === 0;
     status(`${changes.length} block${changes.length === 1 ? '' : 's'} would change. Words, links, assets, and reading order stay the same. Undo restores the previous formatting.`);
   }));
-  $('[data-schema-apply]').addEventListener('click', () => run(() => {
+  $('[data-schema-apply]').addEventListener('click', () => run(async () => {
     if (!preview || preview.editor !== options.getEditor()) throw new Error('Preview this note again before applying.');
-    const changes = applySchema(preview.editor, preview.schema, preview.policy, preview.doc); invalidatePreview(); status(`Applied to ${changes} blocks. Undo is available in the editor.`);
+    const next=preview;await options.validate?.(next.editor,schemaProjection(next.editor,next.schema,next.policy));if(preview!==next||next.editor!==options.getEditor())throw new Error('Preview the current note again.');
+    const changes = applySchema(next.editor, next.schema, next.policy, next.doc); invalidatePreview(); status(`Applied to ${changes} blocks. Undo is available in the editor.`);
   }));
   return {
     open: show,

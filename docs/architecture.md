@@ -93,3 +93,10 @@ Local embedding inference remains optional. Explicitly enabled note components u
 Native V2 JSON omits the duplicate editor projection. Opening V1 notes migrates only in memory; saving preserves both the previous revision and an immutable pre-V2 backup. Schema/component definitions live under versioned workspace directories, separately from note data and device-only execution approvals. Imported missing definitions recover mounted placeholders without changing saved state. Declared text bindings refresh after authored text changes and Undo; ordinary selection changes do not start runtime work.
 
 See [document-model.md](document-model.md), [schema-authoring.md](schema-authoring.md) and [component-authoring.md](component-authoring.md) for contracts, limits and remaining acceptance gates.
+
+
+## Validated proposals and workspace snapshots
+
+The trusted renderer creates inert editor projections in isolated Shadow DOM using bundled styles. It validates actual text/image/container geometry, projection fidelity and contrast in light/dark themes at narrow/current/wide widths. It does not mount a component runtime. Native proposal grants bind the reviewed candidate digest to a one-use renderer token; changed documents or operation batches cannot reuse it. This attestation channel and unrestricted save remain trusted application APIs and must never be exposed to an AI integration. Dynamic-component proposals fail closed. See [rendered-validation.md](rendered-validation.md).
+
+The backup service holds the same writer mutex as note/asset/definition/relation writes, streams original files into a versioned SQLite archive, and copies typed authoritative relationship rows with independent checksums. Restore validates/extracts privately, reserves a new destination and guards incomplete copies before opening them. Existing workspaces are never merged or replaced. Separate profiles prevent portable imports from inheriting execution approvals. See [backup-restore.md](backup-restore.md).

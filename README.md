@@ -65,7 +65,7 @@ See the [editor audit](docs/editor-feature-audit.md) for the source-backed compa
 
 Show **Layout tools** in View to use **Group in box**, nested vertical/horizontal/free/grid layouts, padding, gap and column controls. **Schemas** edits reusable, immutable versions with previewable suggestions and individually enabled automatic rules. **Interactive** imports or authors counter/flashcard-style components; each exact code version starts disabled and requires explicit Enable. Saved state shares text/layout Undo. Missing definitions and failed execution retain readable fallback and state. See [schema authoring](docs/schema-authoring.md) and [component authoring](docs/component-authoring.md).
 
-The advanced **Document API** dialog previews revision-checked operation batches with separate formatting, arrangement, reading-order, content and state permissions. It is a local developer interface; rendered-layout and contrast acceptance gates remain before AI integration.
+The advanced **Document API** dialog previews revision-checked operation batches with separate formatting, arrangement, reading-order, content and state permissions. It is a local developer interface. Accepted proposals require an inert rendered preview with geometry and contrast checks in both themes and multiple widths. Dynamic component proposals are refused; see [rendered validation](docs/rendered-validation.md).
 
 **Editable components:** select paragraphs and choose **Text panel**, or add an independent **New panel**. Panels and copied PNG/JPEG/WebP/GIF images support guided flow or free placement, width, coordinates and layers. Use drag/resize handles or numeric controls; layout and text share undo/redo. Motion presets and GIFs respect pause and reduced-motion settings. Images are limited to 10 MiB and 32 megapixels, with additional GIF frame/work limits.
 
@@ -110,6 +110,14 @@ npm run desktop
 Note files are structured JSON, linked by stable UUID rather than filename or title. `index.sqlite3` and semantic indexes are rebuildable. `relations.sqlite3` contains authoritative connections and dismissals and must be included in a consistent workspace backup; Workspace details can also export these as JSON. The native store uses revision checks and file fingerprints to reject stale saves, and preserves a previous-file backup. This is not a substitute for user backups or encryption. External editing should be done with the app closed until a richer conflict-resolution workflow exists.
 
 The prototype has no cloud AI connection, telemetry, remote fonts, sync, app-wide plugin execution, or remote media fetching. Explicitly enabled note components run in the bundled bounded QuickJS Worker. Editor assets and the inference runtime are bundled; model weights are a separate explicit download/offline installation. Future AI formatting must go through validated scoped operations; the prototype's human editing command is not an AI-safe API.
+
+## Backup and restore
+
+Open **View → Workspace details → Backup and restore** in the desktop app. Create a new .noted-backup archive, inspect it, and restore to a **new folder**. Notes, assets, schema/component definitions and saved connections are preserved together. Existing destinations are never replaced. **Open restored copy** uses a separate window and fresh profile, so imported component code starts disabled. See [backup/restore](docs/backup-restore.md) for recovery warnings and limits.
+
+## Reference hardware testing
+
+The [portable benchmark kit](docs/reference-benchmark.md) records actual hardware, instrumented startup, sampled process memory, writing workloads and eight active components. Build it with **npm run bench:reference:kit** after the release build. Tests on this Ryzen 9 machine do not certify an inexpensive laptop. A separate physical reference device and agreed resource budgets remain required.
 
 ## Current boundaries
 

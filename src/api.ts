@@ -18,7 +18,7 @@ function read(): PreviewStore {
 }
 function persist(store: PreviewStore) { localStorage.setItem(key, JSON.stringify(store)); }
 const summary = ({ content: _content, document: _document, presentation: _presentation, formatVersion: _formatVersion, revisionToken: _token, ...note }: Note): NoteSummary => note;
-const documentGrants = new Map<string, { id: string; revision: number; token: string; scopes: DocumentPermission[] }>();
+const documentGrants = new Map<string, { id: string; revision: number; token: string; scopes: DocumentPermission[];previewDigest?:string;renderToken?:string }>();
 function plainText(value: unknown): string {
   if (!value || typeof value !== 'object') return '';
   const node = value as { text?: string; content?: unknown[] };
@@ -48,13 +48,18 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
       const grantId = crypto.randomUUID(); documentGrants.set(grantId, { id: note.id, revision: note.revision, token: note.revisionToken, scopes: args.scopes as DocumentPermission[] });
       result = grantId; break;
     }
+    case 'approve_document_render': {
+      const grant=documentGrants.get(String(args.grantId));if(!grant||grant.previewDigest!==args.digest)throw new Error('Rendered preview does not match this proposal.');grant.renderToken=crypto.randomUUID();result=grant.renderToken;break;
+    }
     case 'preview_document_operations':
     case 'apply_document_operations': {
       const note = store.notes.find(n => n.id === args.id), grant = documentGrants.get(String(args.grantId));
       if (!note || !grant || grant.id !== note.id || grant.revision !== note.revision || grant.token !== note.revisionToken || args.expectedRevision !== note.revision || args.revisionToken !== note.revisionToken) throw new Error('This proposal is stale or has no permission.');
       const document = previewDocumentOperations(note.document ?? documentFromEditor(note.content, note.id), args.operations as DocumentOperation[], new Set(grant.scopes));
       const content = documentToEditor(document);
-      if (command === 'preview_document_operations') result = { document, content, baseRevision: note.revision };
+      const documentDigest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(document)))),b=>b.toString(16).padStart(2,'0')).join('');
+      if(command==='apply_document_operations'&&(!args.renderToken||grant.renderToken!==args.renderToken||grant.previewDigest!==documentDigest))throw new Error('A matching trusted rendered preview is required.');
+      if (command === 'preview_document_operations') {grant.previewDigest=documentDigest;grant.renderToken=undefined;result = { document, content, baseRevision: note.revision,documentDigest };}
       else { Object.assign(note, { document, content, formatVersion: 2, revision: note.revision + 1, revisionToken: crypto.randomUUID(), updatedAt: new Date().toISOString() }); persist(store); result = note; documentGrants.delete(String(args.grantId)); }
       break;
     }
@@ -163,15 +168,22 @@ async function assetUrl(noteId: string, assetId: string): Promise<string> {
 }
 function releaseAssetUrl(url: string) { unregisterImageSource(url); URL.revokeObjectURL(url); }
 export const api = {
+  backupDefaults:()=>call<{backupPath:string;restorePath:string}>('backup_defaults'),
+  createBackup:(path:string)=>call<import('./workspace-backup-types').BackupSummary>('create_workspace_backup',{path}),
+  inspectBackup:(path:string)=>call<import('./workspace-backup-types').BackupSummary>('inspect_workspace_backup',{path}),
+  restoreBackup:(path:string,target:string,digest:string)=>call<import('./workspace-backup-types').BackupSummary>('restore_workspace_backup',{path,target,digest}),
+  revealBackup:(path:string)=>call<void>('reveal_workspace_backup',{path}),
+  openRestoredWorkspace:(path:string)=>call<void>('open_restored_workspace',{path}),
   listDocumentDefinitions: <T>(kind:'schema'|'component')=>call<T[]>('list_document_definitions',{kind}),
   saveDocumentDefinition: <T>(kind:'schema'|'component',definition:T)=>call<T>('save_document_definition',{kind,definition}),
   copyAsset: async(sourceNoteId:string,targetNoteId:string,assetId:string):Promise<ImageAsset>=>{
     if(!browserPreview)return invoke<ImageAsset>('copy_image',{sourceNoteId,targetNoteId,assetId});
     const original=await getPreviewImage(imageKey(sourceNoteId,assetId));const info={id:crypto.randomUUID(),mime:original.mime,byteLength:original.byteLength,width:original.width,height:original.height};await putPreviewImage({...info,key:imageKey(targetNoteId,info.id),bytes:original.bytes});return info;
   },
+  approveDocumentRender:(grantId:string,digest:string,report:unknown)=>call<string>('approve_document_render',{grantId,digest,report}),
   authorizeDocumentOperations: (id: string, scopes: DocumentPermission[]) => call<string>('authorize_document_operations', { id, scopes }),
-  previewDocumentOperations: (note: Note, operations: DocumentOperation[], grantId: string) => call<{document: import('./document-model').NotedDocumentV2;content: import('@tiptap/core').JSONContent;baseRevision:number}>('preview_document_operations', { id: note.id, expectedRevision: note.revision, revisionToken: note.revisionToken, operations, grantId }),
-  applyDocumentOperations: (note: Note, operations: DocumentOperation[], grantId: string) => call<Note>('apply_document_operations', { id: note.id, expectedRevision: note.revision, revisionToken: note.revisionToken, operations, grantId }),
+  previewDocumentOperations: (note: Note, operations: DocumentOperation[], grantId: string) => call<{document: import('./document-model').NotedDocumentV2;content: import('@tiptap/core').JSONContent;baseRevision:number;documentDigest:string}>('preview_document_operations', { id: note.id, expectedRevision: note.revision, revisionToken: note.revisionToken, operations, grantId }),
+  applyDocumentOperations: (note: Note, operations: DocumentOperation[], grantId: string, renderToken:string) => call<Note>('apply_document_operations', { id: note.id, expectedRevision: note.revision, revisionToken: note.revisionToken, operations, grantId,renderToken }),
   exportRelations: () => call<{formatVersion:2;pairs:PairState[]}>('export_relations'),
   pageNotes: (query = '', folderId?: string, cursor?: number | null, limit = 80) => call<Page<NoteSummary>>('list_notes_page', {query,folderId,cursor,limit}),
   picker: (sourceId: string, query = '', cursor?: number | null, limit = 40) => call<Page<PickerNote>>('picker_notes', {sourceId,query,cursor,limit}),
