@@ -35,10 +35,20 @@ fn version(v: &Value) -> Result<(&str, u64)> {
     }
     Ok((id, n))
 }
-fn schema(v: &Value) -> Result<()> {
+pub(crate) fn schema(v: &Value) -> Result<()> {
     version(v)?;
-    if !only(v, &["formatVersion", "id", "version", "name", "rules"])
-        || v["formatVersion"] != 1
+    if !only(
+        v,
+        &[
+            "formatVersion",
+            "id",
+            "version",
+            "name",
+            "rules",
+            "layout",
+            "guide",
+        ],
+    ) || ![Some(1), Some(2)].contains(&v["formatVersion"].as_u64())
         || !v["name"]
             .as_str()
             .is_some_and(|s| !s.trim().is_empty() && s.len() <= 100)
@@ -51,6 +61,29 @@ fn schema(v: &Value) -> Result<()> {
         || v["rules"].get("body").is_none()
     {
         return Err("Invalid schema definition".into());
+    }
+    if v["formatVersion"] == 1 && (v.get("layout").is_some() || v.get("guide").is_some()) {
+        return Err("Layout and guidance require schema formatVersion 2".into());
+    }
+    if v.get("layout").is_some_and(|v| v != "free") {
+        return Err("Unsupported schema layout policy".into());
+    }
+    if let Some(g) = v.get("guide") {
+        if !only(g, &["title", "document"])
+            || !g["title"]
+                .as_str()
+                .is_some_and(|s| !s.trim().is_empty() && s.len() <= 240)
+            || serde_json::to_vec(&g["document"]).map_err(err)?.len() > 128 * 1024
+        {
+            return Err("Invalid or oversized full-document guide (128 KiB maximum)".into());
+        }
+        crate::document::validate(&g["document"])?;
+        if g["document"]["objects"]
+            .as_object()
+            .is_some_and(|o| o.values().any(|v| v["kind"] == "component"))
+        {
+            return Err("Use a static guidance document without executable components".into());
+        }
     }
     for s in v["rules"].as_object().unwrap().values() {
         crate::document::schema_style(s)?;

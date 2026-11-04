@@ -1,7 +1,10 @@
+import {applyEditorProjection} from './document-editor.ts';
+import {documentFromEditor} from './document-model.ts';
 import type { JSONContent } from '@tiptap/core';
+import type {Note} from './model.ts';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { applySchema, schemaProjection, bindSchemaRegistry, BUILTIN_SCHEMAS, previewSchema, SCHEMA_STYLE_KEYS, SCHEMA_TARGETS, SchemaRegistry, schemaStyleCSS, setSchemaReference, validSchemaPolicy, validSchemaReference, validateDocumentSchema, type DocumentSchema, type SchemaPolicy, type SchemaReference, type SchemaStyle, type SchemaStyleKey, type SchemaTarget } from './document-schema.ts';
+import { applySchema, schemaProjection, needsFreePlacement, sameDocumentSchema, bindSchemaRegistry, BUILTIN_SCHEMAS, previewSchema, SCHEMA_STYLE_KEYS, SCHEMA_TARGETS, SchemaRegistry, schemaStyleCSS, setSchemaReference, validSchemaPolicy, validSchemaReference, validateDocumentSchema, type DocumentSchema, type SchemaPolicy, type SchemaReference, type SchemaStyle, type SchemaStyleKey, type SchemaTarget } from './document-schema.ts';
 
 export const schemaEditorMarkup = `<button type="button" data-schema-open aria-haspopup="dialog" title="Edit reusable note schemas">Schemas…</button>
 <dialog class="schema-editor" aria-label="Note schemas">
@@ -17,11 +20,11 @@ export const schemaEditorMarkup = `<button type="button" data-schema-open aria-h
   <label>Block spacing (px)<input data-style="spacing" type="number" min="0" max="96" step="1" placeholder="Inherit" /></label>
   <label>Indent level<input data-style="indent" type="number" min="0" max="8" step="1" placeholder="Inherit" /></label>
  </div>
- <details><summary>Editable text definition</summary><textarea data-schema-source aria-label="Schema JSON definition" rows="10" spellcheck="false"></textarea></details>
+ <label>Layout policy<select data-schema-layout aria-label="Schema layout policy"><option value="">Typography rules only</option><option value="free">Free placement</option></select></label><p>Free placement creates independent movable panels when Preview / Apply is accepted. It never continuously rearranges your writing.</p><div class="schema-fields"><button type="button" data-schema-capture>Use this whole document as guidance</button><button type="button" data-schema-ai>AI adherence suggestions</button></div><p data-schema-guide-status></p><details><summary>Editable text definition</summary><textarea data-schema-source aria-label="Schema JSON definition" rows="10" spellcheck="false"></textarea></details>
  <div class="schema-fields"><button type="button" data-schema-publish>Save as new version</button><span data-schema-pin-label></span></div>
  <fieldset><legend>Automatic rules for this note</legend><label><input data-schema-auto type="checkbox" /> Enforce selected rules automatically</label><div class="schema-rule-checks">${SCHEMA_STYLE_KEYS.map(key => `<label><input type="checkbox" data-enforce="${key}" /> ${({ fontFamily: 'Typeface', fontSize: 'Size', lineHeight: 'Line height', color: 'Color', spacing: 'Spacing', indent: 'Indentation' } as Record<string, string>)[key]}</label>`).join('')}</div><button type="button" data-schema-policy>Save rule preferences</button></fieldset>
  <div class="schema-fields"><button type="button" data-schema-preview>Preview suggestions</button><button type="button" data-schema-apply disabled>Apply preview</button></div>
- <div data-schema-preview-content class="schema-preview" aria-label="Schema preview"></div>
+ <div class="rendered-proposal-preview" role="region" tabindex="0" aria-label="Schema proposal preview" data-schema-preview-content></div>
  <p data-schema-status role="status" aria-live="polite"></p>
 </dialog>`;
 
@@ -35,11 +38,13 @@ export function localSchemaRegistry(storage: Pick<Storage, 'getItem' | 'setItem'
 }
 interface Options {
   getEditor: () => Editor | null;
+  getNote?:()=>Note|null;
+  askAI?:()=>void;
   registry: SchemaRegistry;
   /** Legacy preset used when an old note has no explicit pinned version. */
   getLegacySchema?: () => string;
   error: (error: unknown) => void;
-  validate?:(editor:Editor,content:JSONContent)=>Promise<void>;
+  validate?:(editor:Editor,content:JSONContent,previewHost?:HTMLElement)=>Promise<void|{dispose:()=>void}>;
   changed?: (reference: SchemaReference, policy: SchemaPolicy) => void;
 }
 /** Mount outside collapsible toolbar regions so an open dialog stays usable. */
@@ -49,7 +54,7 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
   const $ = <T extends HTMLElement>(selector: string) => host.querySelector<T>(selector)!;
   const dialog = $<HTMLDialogElement>('dialog'), picker = $<HTMLSelectElement>('[data-schema-version]');
   let draft = structuredClone(BUILTIN_SCHEMAS[0]), target: SchemaTarget = 'body';
-  let sourceDirty = false, preview: { doc: PMNode; editor: Editor; schema: DocumentSchema; policy: SchemaPolicy } | null = null;
+  let sourceDirty = false, preview: { doc: PMNode; editor: Editor; schema: DocumentSchema; policy: SchemaPolicy;content:JSONContent;count:number } | null = null;
   let previewEpoch=0;
   let boundEditor: Editor | null = null;
   const status = (message: string) => { $('[data-schema-status]').textContent = message; };
@@ -58,7 +63,8 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
     ? editor.state.doc.attrs.schemaReference : { id: options.getLegacySchema?.() ?? 'default', version: 1 };
   const policy = (editor: Editor): SchemaPolicy => validSchemaPolicy(editor.state.doc.attrs.schemaPolicy)
     ? editor.state.doc.attrs.schemaPolicy : { mode: 'suggest', enabledRules: [] };
-  function invalidatePreview() { previewEpoch++;preview = null; $<HTMLButtonElement>('[data-schema-apply]').disabled = true; $('[data-schema-preview-content]').replaceChildren(); }
+  let renderedPreview:{dispose:()=>void}|void;
+  function invalidatePreview() { renderedPreview?.dispose();renderedPreview=undefined; previewEpoch++;preview = null; $<HTMLButtonElement>('[data-schema-apply]').disabled = true; $('[data-schema-preview-content]').replaceChildren(); }
   function writeSource() { $<HTMLTextAreaElement>('[data-schema-source]').value = JSON.stringify(draft, null, 2); sourceDirty = false; invalidatePreview(); }
   function readSource() {
     if (sourceDirty) { const value: unknown = JSON.parse($<HTMLTextAreaElement>('[data-schema-source]').value); validateDocumentSchema(value); draft = structuredClone(value); fillForm(); sourceDirty = false; }
@@ -67,6 +73,7 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
   }
   function fillForm() {
     $<HTMLInputElement>('[data-schema-name]').value = draft.name;
+    $<HTMLSelectElement>('[data-schema-layout]').value=draft.layout??'';$('[data-schema-guide-status]').textContent=draft.guide?`Full document guide: ${draft.guide.title}. This is a local immutable snapshot. Sending it to AI requires fresh consent for each request.`:'No document guide attached.';
     const rule = draft.rules[target] ?? {};
     for (const input of host.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-style]')) input.value = String(rule[input.dataset.style as SchemaStyleKey] ?? '');
   }
@@ -107,6 +114,9 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
     if (!value) delete rule[key]; else Object.assign(rule, { [key]: ['fontFamily', 'color'].includes(key) ? value : Number(value) });
     const next = { ...draft, rules: { ...draft.rules, [target]: rule } }; validateDocumentSchema(next); draft = next; writeSource();
   }));
+  $('[data-schema-layout]').onchange=()=>run(()=>{if(sourceDirty)readSource();if($<HTMLSelectElement>('[data-schema-layout]').value){draft.layout='free';draft.formatVersion=2;}else delete draft.layout;writeSource();});
+  $('[data-schema-capture]').onclick=()=>run(()=>{const editor=options.getEditor();if(!editor)return;const note=options.getNote?.();const document=documentFromEditor(editor.getJSON(),note?.id??crypto.randomUUID(),note?.document);draft={...readSource(),formatVersion:2,id:`schema-${crypto.randomUUID()}`,version:1,name:((note?.title??'Document')+' guide').slice(0,100),guide:{title:(note?.title||'Document guide').slice(0,240),document}};validateDocumentSchema(draft);fillForm();writeSource();status('Document captured locally. Save this new schema version, then select it on the target note. Nothing was sent to AI.');});
+  $('[data-schema-ai]').onclick=()=>run(()=>{const editor=options.getEditor();if(!editor)return;const selected=readSource(),ref=reference(editor);if(ref.id!==selected.id||ref.version!==selected.version||!sameDocumentSchema(options.registry.get(selected),selected))throw new Error('Use this version on the target note before asking for adherence suggestions.');dialog.close();options.askAI?.();});
   $('[data-schema-source]').addEventListener('input', () => { sourceDirty = true; invalidatePreview(); });
   $('[data-schema-new]').addEventListener('click', () => run(() => {
     draft = { ...readSource(), id: `schema-${crypto.randomUUID()}`, version: 1, name: 'New schema' }; fillForm(); writeSource(); status('Edit this definition, then save its first version.');
@@ -119,7 +129,7 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
   $('[data-schema-pin]').addEventListener('click', () => run(async () => {
     const editor = options.getEditor(); if (!editor) return;
     const definition = readSource(), saved = options.registry.get(definition);
-    if (!saved || JSON.stringify(saved) !== JSON.stringify(definition)) throw new Error('Save this definition as a new version before using it.');
+    if (!saved || !sameDocumentSchema(saved,definition)) throw new Error('Save this definition as a new version before using it.');
     const ref = { id: saved.id, version: saved.version }, nextPolicy = selectedPolicy();
     if(nextPolicy.mode==='automatic'){const baseline=editor.state.doc,ticket=previewEpoch;await options.validate?.(editor,schemaProjection(editor,saved,nextPolicy));if(ticket!==previewEpoch||editor!==options.getEditor()||editor.state.doc!==baseline)throw new Error('The note changed. Preview the schema again.');}
     setSchemaReference(editor, ref, nextPolicy); options.changed?.(ref, nextPolicy);
@@ -137,22 +147,22 @@ export function initializeSchemaUI(host: HTMLElement, options: Options) {
     const editor = options.getEditor(); if (!editor) return;
     const definition = readSource(), nextPolicy = selectedPolicy();
     const saved = options.registry.get(definition);
-    if (!saved || JSON.stringify(saved) !== JSON.stringify(definition)) throw new Error('Save the definition before applying its suggestions.');
-    const baseline=editor.state.doc;await options.validate?.(editor,schemaProjection(editor,saved,nextPolicy));if(editor!==options.getEditor()||editor.state.doc!==baseline)throw new Error('The note changed during rendered validation. Preview again.');
-    const changes = previewSchema(editor, saved, nextPolicy), content = $('[data-schema-preview-content]'); content.replaceChildren();
-    for (const change of changes.slice(0, 5)) {
+    if (!saved || !sameDocumentSchema(saved,definition)) throw new Error('Save the definition before applying its suggestions.');
+    invalidatePreview();const content = $('[data-schema-preview-content]');content.replaceChildren();const baseline=editor.state.doc,ticket=previewEpoch,candidate=schemaProjection(editor,saved,nextPolicy);const checked=await options.validate?.(editor,candidate,content);if(ticket!==previewEpoch||editor!==options.getEditor()||editor.state.doc!==baseline){checked?.dispose();throw new Error('The note changed during rendered validation. Preview again.');}renderedPreview=checked;
+    const changes = previewSchema(editor, saved, nextPolicy);
+    for (const change of (renderedPreview?[]:changes.slice(0, 5))) {
       const sample = document.createElement('div'), label = document.createElement('small');
       const node = editor.state.doc.nodeAt(change.position); sample.textContent = node?.textContent.slice(0, 200) || '(Empty block)';
       sample.style.cssText = schemaStyleCSS(change.after, false); label.textContent = `${change.target}: ${change.rules.join(', ')}`; sample.append(label); content.append(sample);
     }
-    preview = { editor, doc: editor.state.doc, schema: saved, policy: nextPolicy };
-    $<HTMLButtonElement>('[data-schema-apply]').disabled = changes.length === 0;
-    status(`${changes.length} block${changes.length === 1 ? '' : 's'} would change. Words, links, assets, and reading order stay the same. Undo restores the previous formatting.`);
+    preview = { editor, doc: editor.state.doc, schema: saved, policy: nextPolicy,content:candidate,count:changes.length+(needsFreePlacement(editor,saved)?1:0) };
+    $<HTMLButtonElement>('[data-schema-apply]').disabled = preview.count === 0;
+    status(`${preview.count} block${preview.count === 1 ? '' : 's'} would change. Words, links, assets, and reading order stay the same. Undo restores the previous formatting.`);
   }));
   $('[data-schema-apply]').addEventListener('click', () => run(async () => {
     if (!preview || preview.editor !== options.getEditor()) throw new Error('Preview this note again before applying.');
-    const next=preview;await options.validate?.(next.editor,schemaProjection(next.editor,next.schema,next.policy));if(preview!==next||next.editor!==options.getEditor())throw new Error('Preview the current note again.');
-    const changes = applySchema(next.editor, next.schema, next.policy, next.doc); invalidatePreview(); status(`Applied to ${changes} blocks. Undo is available in the editor.`);
+    const next=preview;await options.validate?.(next.editor,next.content);if(preview!==next||next.editor!==options.getEditor())throw new Error('Preview the current note again.');
+    if(next.editor.state.doc!==next.doc)throw new Error('The note changed after preview. Preview again.');const changes = next.schema.layout==='free'?(applyEditorProjection(next.editor,next.content)?next.count:0):applySchema(next.editor, next.schema, next.policy, next.doc); invalidatePreview(); status(`Applied to ${changes} blocks. Undo is available in the editor.`);
   }));
   return {
     open: show,

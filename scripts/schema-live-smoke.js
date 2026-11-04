@@ -1,0 +1,34 @@
+async page=>{
+ await page.emulateMedia({reducedMotion:'reduce'});
+ const invoke=(command,args={})=>page.evaluate(({command,args})=>window.__TAURI_INTERNALS__.invoke(command,args),{command,args});
+ if(!(await invoke('workspace_status')).path.includes('noted-simple-ai-'))throw new Error('Synthetic fixture only');
+ const id=await page.locator('#header-connection-handle button').getAttribute('data-connect-source'),before=await invoke('load_note',{id});
+ await page.locator('#open-ai-formatting').click();
+ await page.locator('[data-ai-goal]').selectOption('schema');
+ if(await page.locator('[data-ai-include-guide]').isChecked())throw new Error('Guide consent must start off');
+ await page.locator('[data-ai-include-guide]').check();
+ await page.locator('[data-ai-prompt]').fill('Follow the selected schema and its full example document. Arrange each original paragraph in its own free-positioned column panel: x 0, first y 0, second y 240, width 280, plain tone and no animation. Set every required body schemaStyle and indent explicitly. Preserve every original word, ID and readingOrder.');
+ await page.locator('[data-subscription-send]').click();
+ await page.waitForFunction(()=>!document.querySelector('[data-subscription-stop]').hidden||document.querySelector('#document-operations-dialog').open,null,{timeout:15000});
+ await page.waitForFunction(()=>document.querySelector('#document-operations-dialog').open||(!document.querySelector('[data-subscription-send]').disabled&&/failed|rejected|without returning|could not|cannot|timed out|invalid/i.test(document.querySelector('[data-ai-status]').textContent)),null,{timeout:190000});
+ if(!await page.locator('#document-operations-dialog').evaluate(el=>el.open))throw new Error(await page.locator('[data-ai-status]').textContent());
+ await page.waitForFunction(()=>!document.querySelector('[data-operations-apply]').disabled||!document.querySelector('[data-review-retry]').hidden,null,{timeout:30000});
+ if(await page.locator('[data-operations-apply]').isDisabled())throw new Error(await page.locator('[data-review-status]').textContent());
+ const rows=await invoke('formatting_requests',{noteId:id}),guided=rows.find(r=>r.schema?.id===before.document.schemaRef.id&&r.status==='ready');
+ if(!guided?.hasGuidance||guided.schema.guide)throw new Error('Full guide context missing or exposed in list metadata');
+ if(JSON.stringify((await invoke('load_note',{id})).content)!==JSON.stringify(before.content))throw new Error('Generation changed original');
+ await page.screenshot({path:'output/playwright/schema-live-proposal.png'});
+ await page.locator('[data-operations-apply]').click();
+ await page.waitForFunction(()=>!document.querySelector('[data-ai-outcome]').hidden,null,{timeout:15000});
+ const applied=await invoke('load_note',{id});
+ if(!applied.document.layout.children.every(c=>c.style?.placement==='free'))throw new Error('Applied layout not free');
+ await page.locator('[data-ai-undo]').click();
+ await page.waitForFunction(()=>document.querySelector('[data-ai-outcome-text]').textContent.includes('undone'));
+ const words=v=>(v.text||'')+(v.content||[]).map(words).join('');
+ if(words((await invoke('load_note',{id})).content)!==words(before.content))throw new Error('Undo changed original words');
+ await page.locator('#open-ai-formatting').click();await page.locator('[data-ai-goal]').selectOption('schema');
+ if(await page.locator('[data-ai-include-guide]').isChecked())throw new Error('Consent persisted after request');
+ await page.locator('[data-ai-close]').click();
+ const access=await invoke('agent_access');if(access.enabled||access.allowHosted||access.folderIds.length)throw new Error('Sharing changed');
+ return{passed:true,actualChatGPTSignedInCodex:true,fullSyntheticGuideExplicitlyApproved:true,formalAndRenderedValidation:true,applyAndUndo:true,freshConsentRequired:true,sharingDisabled:true};
+}

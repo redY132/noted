@@ -90,8 +90,8 @@ export function documentFromEditor(input: JSONContent, noteId: string, previous?
   const layout: LayoutNode = { id: 'root', kind: 'free', children: (content.content ?? []).map(convert) };
   const rootOrder = content.attrs?.readingOrder;
   const readingOrder = reconcileReadingOrder(Array.isArray(rootOrder) && rootOrder.length ? rootOrder : previous?.readingOrder ?? [], visual);
-  const schemaRef = content.attrs?.schemaReference ?? previous?.schemaRef;
-  const schemaPolicy = content.attrs?.schemaPolicy ?? previous?.schemaPolicy;
+  const schemaRef = Object.hasOwn(content.attrs??{},'schemaReference') ? content.attrs?.schemaReference : previous?.schemaRef;
+  const schemaPolicy = Object.hasOwn(content.attrs??{},'schemaPolicy') ? content.attrs?.schemaPolicy : previous?.schemaPolicy;
   const result: NotedDocumentV2 = { version: 2, objects, readingOrder, layout, styles: {}, ...(schemaRef ? { schemaRef } : {}), ...(schemaPolicy ? { schemaPolicy } : {}) };
   validateDocument(result); return result;
 }

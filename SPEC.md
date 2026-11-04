@@ -443,3 +443,10 @@ Delivered default flow: Describe change → Generate proposal → automatically 
 ### Development companion compatibility repair
 
 The reported Windows path error was traced to a stale debug agent rejecting `allowHosted`, followed by a missing-proposal file check. Debug and release hooks now build a matching companion. Jobs preflight protocol capabilities before transmission, and missing/incompatible companion and missing-proposal outcomes are explained directly. The user's existing development binary passed a real synthetic generation after rebuilding its companion, without personal-note access or credential changes. Native regression suite: 87 passed, four optional tests ignored.
+
+
+### 2026-11-04: Free-placement schemas and per-request document guidance
+
+Implemented schema format 2 with optional free-placement policy and a complete static Noted document as immutable guidance. Added Free Placement builtin; local example capture; rules-only defaults; explicit per-request full-guide consent; schema-specific request identity; formal adherence enforcement in MCP/native replies and frontend review; rendered schema previews and undoable layout application. Typography-only schema format 1 remains compatible. Guidance is descriptive presentation data, not executable instructions or automatically inferred constraints. Full-guide cap is 128 KiB; dynamic components, direct Word/PDF guides and image-byte transmission are unsupported. No automatic transmission, additional folder sharing or hosted-chat access is enabled.
+
+Verified on Windows with 173 frontend / 91 native tests, actual rendered preview and saved Undo, native definition reopening, and a live synthetic full-guide Codex proposal followed by Apply / Undo. Four optional model-pack tests remain ignored. No personal-note transmission or additional sharing was enabled.

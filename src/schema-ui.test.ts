@@ -76,3 +76,5 @@ test('browser schema library persists exact versions separately from note conten
   assert.equal(localSchemaRegistry(storage).get({ id: 'offline', version: 1 })!.name, 'Offline');
   assert.deepEqual([...data.keys()], ['noted-schema-library-v1']);
 });
+
+test('capturing the whole note creates a local guide draft without changing the note or its pin',async()=>{const s=setup();try{const before=s.editor.getJSON();s.ui.open();s.$('[data-schema-capture]').click();await settle();const draft=JSON.parse(s.$<HTMLTextAreaElement>('[data-schema-source]').value);assert.equal(draft.formatVersion,2);assert.equal(draft.version,1);assert.ok(draft.guide.document.readingOrder.length);assert.match(JSON.stringify(draft.guide.document),/Preserve these words/);assert.deepEqual(s.editor.getJSON(),before);assert.equal(s.registry.get(draft),undefined);s.$('[data-schema-publish]').click();await settle();assert.ok(s.registry.get(draft));assert.deepEqual(s.editor.getJSON(),before);assert.match(s.$('[data-schema-guide-status]').textContent!,/fresh consent/);assert.deepEqual(s.errors,[]);}finally{s.destroy();}});

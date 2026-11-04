@@ -28,7 +28,7 @@ AI is optional. The local agent companion reads only explicitly selected saved f
 This is a developer alpha, not a certified public release. Real inexpensive-hardware acceptance, signed installer, final license/distribution choice, and hosted plugin/account setup remain pending. See the included verification and migration documents. No personal notes, profiles, credentials or agent policy are bundled.
 '@
  $readme | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8
- foreach($name in @('ai-formatting.md','migration-plan.md','milestone-verification.md','backup-restore.md','agent-integration.md','hosted-chat-setup.md','reference-benchmark.md')){Copy-Item -LiteralPath (Join-Path $repoRoot ('docs\'+$name)) -Destination (Join-Path $destination $name)}
+ foreach($name in @('ai-formatting.md','schema-authoring.md','document-schema.schema.json','noted-document-v2.schema.json','migration-plan.md','milestone-verification.md','backup-restore.md','agent-integration.md','hosted-chat-setup.md','reference-benchmark.md')){Copy-Item -LiteralPath (Join-Path $repoRoot ('docs\'+$name)) -Destination (Join-Path $destination $name)}
  $files=Get-ChildItem -LiteralPath $destination -File | ForEach-Object {@{path=$_.Name;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
  @{formatVersion=1;sourceCommit=$sourceCommit;createdAt=(Get-Date).ToUniversalTime().ToString('o');signed=$false;hardwareCertified=$false;files=@($files)} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'manifest.json') -Encoding utf8
  $zip=Join-Path $repoRoot ('output\Noted-alpha-'+$stamp+'-'+$sourceCommit.Substring(0,7)+'.zip')

@@ -8,7 +8,7 @@ export const componentMarkup = `<div class="component-toolbar" role="group" aria
   <button type="button" id="make-panel" title="Group selected paragraphs into an editable panel">▧ Text panel</button>
   <button type="button" id="new-panel" title="Add an independent editable text panel">＋ New panel</button>
   <button type="button" id="group-layout" title="Group selection, including inside another box">Group in box</button>
-  <button type="button" id="edit-schema">Schemas</button>
+
   <button type="button" id="interactive-library">Interactive</button>
   <button type="button" id="document-operations">Document API</button>
   <button type="button" id="insert-image" title="Import a PNG, JPEG, WebP, or GIF image">＋ Image / GIF</button>

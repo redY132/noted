@@ -8,6 +8,7 @@ pub mod library;
 pub mod links;
 pub mod migration;
 pub mod relations;
+pub mod schema_ai;
 #[cfg(feature = "semantic")]
 pub mod semantic;
 pub mod store;
@@ -673,8 +674,17 @@ mod desktop {
         state: State<'_, SharedStore>,
         id: String,
         prompt: String,
+        schema: Option<serde_json::Value>,
+        include_guidance: Option<bool>,
     ) -> Result<crate::agent::Request, String> {
-        work(state, move |s| s.create_formatting_request(&id, prompt)).await
+        let schema = crate::schema_ai::context(schema, include_guidance.unwrap_or(false))?;
+        work(state, move |s| {
+            if !s.agent_access()?.enabled {
+                return Err("Enable the local agent bridge first".into());
+            }
+            s.create_request_with_schema(&id, prompt, schema)
+        })
+        .await
     }
     #[tauri::command]
     pub async fn formatting_reply(
@@ -791,6 +801,10 @@ mod desktop {
             .map_err(|e| e.to_string())
     }
     #[tauri::command]
+    pub fn schema_guidance_capabilities() -> serde_json::Value {
+        serde_json::json!({"formattingProtocol":crate::agent::FORMATTING_PROTOCOL,"perRequestGuidanceConsent":true})
+    }
+    #[tauri::command]
     pub async fn start_subscription_formatting(
         state: State<'_, SharedStore>,
         service: State<'_, Arc<crate::subscription::Service>>,
@@ -798,8 +812,11 @@ mod desktop {
         revision: u64,
         token: String,
         prompt: String,
+        schema: Option<serde_json::Value>,
+        include_guidance: Option<bool>,
     ) -> Result<crate::subscription::JobInfo, String> {
-        let (note,request,root)=work(state.clone(),move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_explicit_subscription_request(&id,prompt)?;Ok((n,request,s.root.clone()))}).await?;
+        let schema = crate::schema_ai::context(schema, include_guidance.unwrap_or(false))?;
+        let (note,request,root)=work(state.clone(),move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_request_with_schema(&id,prompt,schema)?;Ok((n,request,s.root.clone()))}).await?;
         let bridge = std::env::current_exe()
             .map_err(|e| e.to_string())?
             .with_file_name("noted-agent.exe");
@@ -903,6 +920,7 @@ mod desktop {
                 export_migration_sources,
                 subscription_status,
                 start_subscription_formatting,
+                schema_guidance_capabilities,
                 subscription_job,
                 cancel_subscription_job,
                 agent_connection_status,

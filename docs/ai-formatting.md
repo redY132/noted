@@ -34,3 +34,24 @@ The development instance previously ran an older `target/debug/noted-agent.exe` 
 The debug companion has been rebuilt, and the same development executable passed a real explicitly clicked synthetic generation, automatic comparison and Reject. Development and release startup/build hooks now build the matching companion. Fresh jobs check `noted-agent --capabilities` before sending note data; stale or missing companions produce actionable messages. A client that exits successfully without a proposal now reports the missing proposal rather than a filesystem path error. Cached local proposals still need no client/companion launch.
 
 `npm run agent:dev:build` repairs the development companion without modifying notes or sign-in. Save and reopen an older native app to load the new diagnostics. 87 native tests passed, including missing-proposal and incompatible-companion regression cases; no personal note was used in reproduction.
+
+
+## Schema adherence and document examples
+
+**Schemas & layout** includes Free Placement, local full-document guide capture, immutable saved versions, and **AI adherence suggestions**. The AI dialog also offers **Goal → Adhere to selected schema**, with local mismatches shown before generation. Formal rules accompany that request. A whole-document guide requires its separate per-request checkbox; it defaults off and resets after sending or closing. The native command strips any guide unless `includeGuidance` is true, then validates and bounds the whole static snapshot. This does not enable bridge sharing or transmit an example merely because it is selected.
+
+Codex/MCP receives the approved schema in `request.schema`. Formal rules take priority over the optional untrusted example. Proposal submission, cached reply reads and review enforce the rules; the existing rendered contrast/geometry checks and Apply / Reject / Undo remain in place. See [schema authoring](schema-authoring.md) for limits and the exact workflow. Save work and restart an older desktop window to load the updated commands; the UI refuses guided generation against an older backend.
+
+
+The MCP proposal tool advertises a recursive layout-node contract with explicit `style` presentation fields. Unsupported `attrs` layout fields fail validation. A model that exits successfully without submitting a proposal remains a failed job; Noted can show its bounded structured failure summary without saving raw model/tool logs. Generation can fail or require a deliberate retry. No proposal is applied automatically.
+
+
+### Windows verification, 2026-11-04
+
+- 173 frontend tests and 91 native tests passed; four optional model-pack tests remain ignored. The Windows release build succeeded.
+- A disposable native workspace passed actual rendered Free Placement preview, Apply, saved one-step Undo, whole-document guide capture, immutable version persistence, and default-off guidance consent.
+- The saved guide and target reopened successfully after a regression fix for JSON object-key ordering in immutable schema comparisons. Real value changes still require a new version.
+- A real GPT-6.1 Sol / medium request through the existing ChatGPT-signed-in Codex client passed full-guide Generate → formal and rendered validation → Apply → Undo, then confirmed a fresh unchecked consent box and unchanged disabled fixture sharing. Only synthetic notes and a synthetic guide were transmitted.
+- An earlier guided attempt returned no proposal and left its note unchanged. A diagnostic run exposed invalid invented layout fields; the proposal tool now publishes the explicit recursive `style` layout contract. The final native flow passed. Model requests remain fallible and may require a deliberate retry.
+
+Local evidence (generated, excluded from source control): `output/schema-frontend-tests.log`, `output/schema-native-tests.log`, `output/schema-native-smoke.log`, `output/schema-live-smoke.log`, `output/schema-desktop-build.log`, and screenshots under `output/playwright/schema-*`. The synthetic diagnostic log is not included in a portable package. No personal workspace, access policy or credentials were changed.

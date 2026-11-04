@@ -31,7 +31,7 @@ export const editingMarkup = `
    <label class="format-select"><span class="sr-only">Table actions</span><select id="table-action" aria-label="Table actions"><option value="">Table…</option><option value="insertTable">Insert 3 × 3 table</option><option value="addRowBefore">Row above</option><option value="addRowAfter">Row below</option><option value="addColumnBefore">Column before</option><option value="addColumnAfter">Column after</option><option value="deleteRow">Delete row</option><option value="deleteColumn">Delete column</option><option value="toggleHeaderRow">Toggle header row</option><option value="mergeCells">Merge selected cells</option><option value="splitCell">Split cell</option><option value="deleteTable">Delete table</option></select></label>
   </div>
   <div class="format-buttons" role="group" aria-label="History and search">${button('undo','Undo','↶','Ctrl+Z')}${button('redo','Redo','↷','Ctrl+Shift+Z')}${button('find','Find and replace','Find','Ctrl+F')}</div>
-  <label class="schema-control">Schema <select id="schema" aria-label="Note schema preset"><option value="default">Paper · free indent</option><option value="compact">Compact · free indent</option><option value="outline">Outline · hierarchy</option></select></label>
+  <label class="schema-control">Typography <select id="schema" aria-label="Base typography preset"><option value="default">Paper · free indent</option><option value="compact">Compact · free indent</option><option value="outline">Outline · hierarchy</option></select></label>
  </div>
  <p id="indent-policy" class="indent-policy"></p>
 </div>
