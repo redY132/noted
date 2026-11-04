@@ -47,7 +47,7 @@ Verified with synthetic fixtures only:
 
 - Final frontend suite: **177 passed**, using `node --experimental-strip-types --test --test-concurrency=1 src/*.test.ts`. A prior concurrent run reached the existing QuickJS wall-clock guard under load; its deadline was not relaxed. This is not inexpensive-hardware certification.
 - Native desktop suite: **101 passed, four optional model/corpus tests ignored**.
-- Graph/native-CLI import fixtures: **13 passed**; immutable snapshot fixtures: **10 passed**; counts-only diagnostic fixtures: **four passed**.
+- Graph/native-CLI import fixtures: **13 passed**; immutable snapshot fixtures: **10 passed**; counts-only diagnostic fixtures: **five passed**.
 - Actual Windows release: palette background rendered; formatting/component requests refused before any client call; lock-owned publication added a second fixture batch; its recycled page restored from Trash and all eight notes stayed AI-denied. Optional sharing remained unchanged.
 - Light and dark rendered palette foreground **and link** contrast: **12.97:1** on the blue reference fixture. The rendered review found and fixed a theme-link color clash. Palette colors are Noted's local equivalents, not a claim to reproduce arbitrary Logseq custom CSS.
 - Production TypeScript/Vite and Windows release builds passed. Existing Vite chunk-size notice remains. Ignored evidence: `output/private-presentation-*.log`, `private-background-tests.log`, `private-diagnostic-tests.log`, `private-palette-qa.log` and fixture screenshots under `output/playwright/`.

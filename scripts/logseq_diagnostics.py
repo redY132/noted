@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse,json,re
 from pathlib import Path,PureWindowsPath
-from logseq_sqlite_snapshot import Snapshot,keyword,fingerprint,Rejected
+from logseq_sqlite_snapshot import Snapshot,keyword,mapping,fingerprint,Rejected
 
 def diagnose(datoms,schema,asset_root,audit):
     aliases={k:keyword(v) for k,v in schema['map'] if type(k) is int and keyword(v)}
@@ -15,7 +15,7 @@ def diagnose(datoms,schema,asset_root,audit):
         return values[0] if len(values)==1 else default
     def uid(fields):
         value=one(fields,'block/uuid');return value.get('uuid') if isinstance(value,dict) else value if isinstance(value,str) else None
-    counts={k:0 for k in ['assets','localAssetFiles','missingUUIDAssets','missingWithSHA256','missingWithoutChecksum','missingOtherChecksum','missingWithRemoteMetadata','missingWithDeclaredFilename','declaredFilenameWithinScope','declaredFilenameOutsideScope','declaredFilenameExisting','declaredBasenameExisting','assetFilePathPresent','inlineAssetDataURI','inventoryFiles','inventoryDirectories','inventoryZipFiles','inventoryUUIDNames','inventoryHashNames','inventoryOtherNames','displayMath','displayQuote','displayCode','displayNumbered','displayQuery','displayTable','displayOther','backgroundHex','backgroundPalette','backgroundOther','nonStringTitles','macroEmbed','macroQuery','macroRenderer','macroMedia','macroOther','mathDelimited','scriptMarkup','recycledNodes','attachmentPDF','attachmentAudio','attachmentVideo','attachmentSVG','attachmentOther','attachmentText','attachmentOffice','attachmentArchive','attachmentUnknown','backgroundReference','backgroundResolvedHex','backgroundResolvedPalette','backgroundUnsupported','recycledPages','recycledBlocks','missingPDFAnnotationImages','missingPDFAnnotationImagesWithLocalPDF','missingDerivedImageMetadata']}
+    counts={k:0 for k in ['assets','localAssetFiles','missingUUIDAssets','missingWithSHA256','missingWithoutChecksum','missingOtherChecksum','missingWithRemoteMetadata','missingWithDeclaredFilename','declaredFilenameWithinScope','declaredFilenameOutsideScope','declaredFilenameExisting','declaredBasenameExisting','assetFilePathPresent','inlineAssetDataURI','inventoryFiles','inventoryDirectories','inventoryZipFiles','inventoryUUIDNames','inventoryHashNames','inventoryOtherNames','displayMath','displayQuote','displayCode','displayNumbered','displayQuery','displayTable','displayOther','backgroundHex','backgroundPalette','backgroundOther','nonStringTitles','macroEmbed','macroQuery','macroRenderer','macroMedia','macroOther','mathDelimited','scriptMarkup','recycledNodes','attachmentPDF','attachmentAudio','attachmentVideo','attachmentSVG','attachmentOther','attachmentText','attachmentOffice','attachmentArchive','attachmentUnknown','backgroundReference','backgroundResolvedHex','backgroundResolvedPalette','backgroundUnsupported','recycledPages','recycledBlocks','missingPDFAnnotationImages','missingPDFAnnotationImagesWithLocalPDF','missingDerivedImageMetadata','missingDirectAuthoredReferences','missingTransitiveAuthoredReferences','missingNotReferencedFromAuthored','missingWithBuiltinOwner','missingWithAuthoredOwner','missingWithoutResolvedOwner']}
     root=Path(asset_root).absolute()
     if root.drive.startswith('\\\\') or root.resolve()!=root:raise Rejected('DIAGNOSTIC_ASSET_SCOPE_INVALID')
     sizes=0;entries=0;pending=[(root,0)]
@@ -110,6 +110,44 @@ def diagnose(datoms,schema,asset_root,audit):
             else:counts['declaredFilenameOutsideScope']+=1
             base=win.name
             if base and base not in {'.','..'} and (root/base).is_file():counts['declaredBasenameExisting']+=1
+    # Separate authored-note dependencies from asset-library bookkeeping.
+    # This is a conservative transfer classifier, never approval to drop data.
+    types={keyword(k):mapping(v) for k,v in schema['map'] if keyword(k)}
+    asset_ids={e for e,f in entities.items() if 'logseq.property.asset/type' in f}
+    asset_uuids={uid(entities[e]):e for e in asset_ids if uid(entities[e])}
+    structural={'block/page','block/parent','block/tags'}
+    def dependencies(fields):
+        found=set()
+        for attr,values in fields.items():
+            if attr not in structural and (keyword(types.get(attr,{}).get('db/valueType'))=='db.type/ref' or attr in {'block/refs','block/link','logseq.property/asset','logseq.property.pdf/hl-image'}):
+                found.update(t for value in values if (t:=target(value)) in asset_ids)
+        if keyword(one(fields,'logseq.property.node/display-type'))!='code':
+            for attr in ['block/title','block/raw-title']:
+                value=one(fields,attr)
+                if isinstance(value,str):found.update(asset_uuids[u] for u in re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',visible_markup(value)) if u in asset_uuids)
+        return found
+    direct=set()
+    for e,fields in entities.items():
+        if e not in asset_ids and one(fields,'logseq.property/built-in?',False) is not True:
+            direct.update(dependencies(fields))
+    required=set(direct);pending=list(direct)
+    while pending:
+        for dep in dependencies(entities[pending.pop()]):
+            if dep not in required:required.add(dep);pending.append(dep)
+    counts['missingDirectAuthoredReferences']=len(missing_ids&direct)
+    counts['missingTransitiveAuthoredReferences']=len(missing_ids&required)
+    counts['missingNotReferencedFromAuthored']=len(missing_ids-required)
+    for e in missing_ids:
+        current=e;seen=set();owner=None
+        while current not in seen and len(seen)<32:
+            seen.add(current);fields=entities.get(current,{})
+            page=target(one(fields,'block/page'))
+            if page is not None and page!=current:owner=page;break
+            parent=target(one(fields,'block/parent'))
+            if parent is None:
+                owner=current if current!=e else None;break
+            current=parent
+        counts['missingWithoutResolvedOwner' if owner is None else 'missingWithBuiltinOwner' if one(entities.get(owner,{}),'logseq.property/built-in?',False) is True else 'missingWithAuthoredOwner']+=1
     for fields in entities.values():
         image=target(one(fields,'logseq.property.pdf/hl-image'))
         if image in missing_ids:

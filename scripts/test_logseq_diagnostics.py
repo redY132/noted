@@ -36,4 +36,14 @@ class DiagnosticTests(unittest.TestCase):
             with patch('logseq_diagnostics.fingerprint',side_effect=['0'*64,'1'*64]):result=run(source,NODE,assets)
             self.assertEqual(result['status'],'blocked');self.assertEqual(result['code'],'SOURCE_ASSET_INTEGRITY_CHANGED');self.assertFalse(result['assetsUnchanged'])
             self.assertTrue(result['sourceUnchanged']);self.assertFalse(result['imported'])
+    def test_missing_asset_usage_is_aggregate_and_distinguishes_library_records(self):
+        with tempfile.TemporaryDirectory(prefix='noted-diagnostic-fixture-') as tmp:
+            root=Path(tmp);d,s=graph()
+            for e in [80,81]:
+                for a,v in [('block/title','PRIVATE_ASSET_CANARY'),('block/uuid',U(e)),('block/page',900),('logseq.property.asset/type','png'),('logseq.property.asset/checksum','0'*64)]:
+                    row=[e,K(a),v,536870913];d[token(row)]=row
+            row=[2,K('block/refs'),80,536870913];d[token(row)]=row
+            source=database(root/'export',d,s);assets=root/'assets';assets.mkdir();result=run(source,NODE,assets)
+            self.assertEqual(result['missingUUIDAssets'],2);self.assertEqual(result['missingDirectAuthoredReferences'],1);self.assertEqual(result['missingTransitiveAuthoredReferences'],1)
+            self.assertEqual(result['missingNotReferencedFromAuthored'],1);self.assertEqual(result['missingWithBuiltinOwner'],2);self.assertNotIn('CANARY',json.dumps(result))
 if __name__=='__main__':unittest.main()
