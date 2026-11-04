@@ -455,3 +455,10 @@ Verified on Windows with 173 frontend / 91 native tests, actual rendered preview
 ### 2026-11-04: initial AI component suggestions and hosted setup metadata
 
 Implemented tool-free one-note component generation through the existing signed-in Codex route; inert request-scoped definitions; explicit exact-hash sandbox preview with temporary state; disabled insertion and Undo. No ambient execution, saved approvals or folder-access expansion is granted. Existing static formatting/widget-layout restrictions remain. Verified with 175 frontend / 93 native checks, Windows UI lifecycle and a live synthetic model proposal. Added a copyable hosted-audience launch command and rechecked official tunnel requirements; hosted activation remains pending account/runtime/client/plugin approval, not deployed. The Logseq SQLite export was examined by file metadata only; no database was opened/imported. A separate public-format/synthetic-fixture adapter investigation is now authorized under an importer-only content boundary.
+
+
+### 2026-11-04: importer-only SQLite compatibility foundation
+
+Implemented a bounded immutable SQLite/Transit EAVT snapshot reader with public-format schema aliases, ordered pending-transaction replay, sanitized counts-only diagnostics and synthetic integrity/non-disclosure tests. It neither publishes notes nor calls AI. Under the user's importer-only authorization, the selected export restored structurally but stopped on unmapped authored-node attribute values; generated counts remain in ignored local diagnostics. Original bytes, size, modification time and sidecar presence were verified unchanged; no graph content was exposed to an AI.
+
+SQLite conversion/publication is still blocked on a fidelity adapter and a deny policy covering every AI path, including explicit one-note requests, schema guidance and local embeddings. No personal import, private destination folder, access-policy change or exclusion guarantee has been completed. Existing app import supports exported Markdown/Obsidian/Logseq file graphs only. See [SQLite status and publication gates](docs/logseq-sqlite.md).

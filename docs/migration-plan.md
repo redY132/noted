@@ -1,6 +1,6 @@
 # Migration from Markdown, Obsidian and Logseq
 
-Updated November 3, 2026. An offline exported-folder importer is now implemented for **Markdown, Obsidian and Logseq file graphs**. No personal vault or graph was searched, read, imported or changed during development. Tests use temporary fixtures. The earlier design below records additional fidelity goals; it is not a claim that DB/EDN/Mirror, live synchronization or every source-app feature is supported.
+Updated November 4, 2026. An offline exported-folder importer is implemented for **Markdown, Obsidian and Logseq file graphs**. Tests use temporary fixtures. A separate developer-only SQLite snapshot reader now performs importer-only compatibility checks without disclosing graph contents. It does **not** convert or publish SQLite notes; see [the SQLite boundary and remaining gates](logseq-sqlite.md). The earlier design below records additional fidelity goals; it is not a claim that DB/EDN/Mirror, live synchronization or every source-app feature is supported.
 
 ## Delivered workflow and recovery
 
@@ -63,6 +63,6 @@ Illustrative report columns: source path, source span, source identity, destinat
 
 Fixtures must cover Unicode and duplicate filenames, escaped/percent-encoded links, case collisions, mixed newline/encoding failures, deep outlines, task states, tables/code, block references and cyclic embeds. Test missing/unsupported/oversized assets, remote links without requests, symlink/archive escapes, cancellation, interruption, unchanged-source verification and deterministic repeat detection. Verify renamed/moved/restored destination links, save/reload/Undo, note/asset hashes, no automatic agent sharing, and complete backup/restore of reports and archived originals.
 
-Benchmark bounded memory and time on 100/1,000/10,000-file fixtures, plus actual reference hardware when available. Current correctness suites cover the existing editor/recovery/agent features; **they do not constitute importer tests**, because no importer has been built. Before any personal trial, the user should choose the source platform/version, an exported copy, desired attachment handling and acceptable fallback policy.
+Benchmark bounded memory and time on 100/1,000/10,000-file fixtures, plus actual reference hardware when available. The earlier proposal preceded the delivered exported-folder importer. That importer has synthetic migration tests; these do not certify SQLite, EDN or Markdown Mirror compatibility. Before any personal trial, the user should choose the source platform/version, an exported copy, desired attachment handling and acceptable fallback policy.
 
 No dependency here prevents the delivered daily-use/agent milestone from operating. Block anchors and archival provenance are prerequisites for the proposed migration feature, not blockers on current whole-note retrieval or static-note formatting.

@@ -17,7 +17,8 @@
     "bench:editor:build": "npm run check:comparison && vite build --config experiments/editor-comparison/vite.config.ts",
     "bench:editor": "vite preview --config experiments/editor-comparison/vite.config.ts",
     "bench:reference:kit": "node --experimental-strip-types scripts/build-reference-kit.mjs",
-    "agent:dev:build": "cargo build --manifest-path src-tauri/Cargo.toml --no-default-features --bin noted-agent"
+    "agent:dev:build": "cargo build --manifest-path src-tauri/Cargo.toml --no-default-features --bin noted-agent",
+    "test:logseq-snapshot": "python -B -W error::ResourceWarning scripts/test_logseq_sqlite_snapshot.py"
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
@@ -44,6 +45,7 @@
     "@types/node": "^24.0.0",
     "grapesjs": "0.23.8",
     "jsdom": "^30.1.3",
+    "transit-js": "0.8.874",
     "typescript": "7.0.2",
     "vite": "8.3.5"
   }
