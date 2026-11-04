@@ -47,6 +47,7 @@ pub(crate) fn schema(v: &Value) -> Result<()> {
             "rules",
             "layout",
             "guide",
+            "sourceNoteId",
         ],
     ) || ![Some(1), Some(2)].contains(&v["formatVersion"].as_u64())
         || !v["name"]
@@ -61,6 +62,9 @@ pub(crate) fn schema(v: &Value) -> Result<()> {
         || v["rules"].get("body").is_none()
     {
         return Err("Invalid schema definition".into());
+    }
+    if let Some(id) = v.get("sourceNoteId") {
+        crate::store::valid_id(id.as_str().ok_or("Invalid guide source")?)?;
     }
     if v["formatVersion"] == 1 && (v.get("layout").is_some() || v.get("guide").is_some()) {
         return Err("Layout and guidance require schema formatVersion 2".into());

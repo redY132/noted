@@ -256,6 +256,7 @@ impl SemanticService {
     }
     pub fn related(&self, note_id: String) -> Result<Vec<SemanticMatch>> {
         valid_id(&note_id)?;
+        crate::ai_privacy::ensure_note(&self.root, &note_id)?;
         if !self.status().settings.enabled || !self.status().model_ready {
             return Ok(vec![]);
         }
@@ -267,7 +268,10 @@ impl SemanticService {
         {
             self.tx.send(Command::Related(note_id)).map_err(err)?;
         }
-        Ok(cached.map(|(_, results)| results).unwrap_or_default())
+        Ok(private_filter(
+            &self.root,
+            cached.map(|(_, results)| results).unwrap_or_default(),
+        ))
     }
     /// Called after note/relationship mutations, outside the Store lock.
     pub fn invalidate_scope(&self) {
@@ -284,6 +288,7 @@ impl SemanticService {
         connected_only: bool,
     ) -> Result<QuerySearchState> {
         valid_id(&source_id)?;
+        crate::ai_privacy::ensure_note(&self.root, &source_id)?;
         let query = normalized_query(&query);
         let mut s = self.shared.lock().map_err(err)?;
         let available = s.status.settings.enabled
@@ -349,7 +354,7 @@ impl SemanticService {
         }
         Ok(QuerySearchState {
             pending: cached.is_none(),
-            matches: cached.or(previous).unwrap_or_default(),
+            matches: private_filter(&self.root, cached.or(previous).unwrap_or_default()),
             available,
             generation: s.queries.sequence,
         })
@@ -569,7 +574,15 @@ fn authored_text_at(note: &Value, root: Option<&Path>) -> String {
     }
     text
 }
+fn private_filter(root: &Path, mut matches: Vec<SemanticMatch>) -> Vec<SemanticMatch> {
+    let Ok(gate) = crate::ai_privacy::Gate::load(root) else {
+        return vec![];
+    };
+    matches.retain(|m| gate.allows_note(&m.note_id).unwrap_or(false));
+    matches
+}
 fn note_text(root: &Path, id: &str) -> Result<String> {
+    crate::ai_privacy::ensure_note(root, id)?;
     valid_id(id)?;
     let parent = fs::symlink_metadata(root.join("notes")).map_err(err)?;
     if !parent.is_dir()
@@ -629,6 +642,7 @@ fn read_vector(bytes: &[u8]) -> Result<Vec<f32>> {
         .collect())
 }
 struct Engine {
+    privacy_signature: String,
     db: Connection,
     model: TextEmbedding,
     base: Index,
@@ -647,6 +661,31 @@ struct QueryScope {
     bindings: HashMap<u64, Vec<String>>,
 }
 impl Engine {
+    fn sync_privacy(&mut self, root: &Path) -> Result<bool> {
+        let gate = crate::ai_privacy::Gate::load(root)?;
+        let signature = gate.signature();
+        if self.privacy_signature == signature {
+            return Ok(false);
+        }
+        let ids: Vec<String> = {
+            let mut st = self.db.prepare("SELECT id FROM notes").map_err(err)?;
+            let rows = st.query_map([], |r| r.get(0)).map_err(err)?;
+            rows.collect::<std::result::Result<_, _>>().map_err(err)?
+        };
+        let mut denied = vec![];
+        for id in ids {
+            if !gate.allows_note(&id)? {
+                denied.push(id);
+            }
+        }
+        if !denied.is_empty() {
+            self.prune(&denied)?;
+        }
+        self.query_vectors.clear();
+        self.query_scopes.clear();
+        self.privacy_signature = signature;
+        Ok(true)
+    }
     fn missing(&self, available: &HashSet<String>) -> Result<Vec<String>> {
         let mut st = self.db.prepare("SELECT id FROM notes").map_err(err)?;
         let ids = st
@@ -704,6 +743,7 @@ impl Engine {
                 .map_err(err)?;
         }
         let mut engine = Self {
+            privacy_signature: String::new(),
             db,
             model: load_model(root)?,
             base: new_ann()?,
@@ -845,6 +885,7 @@ impl Engine {
             != Some(fingerprint)
     }
     fn embed_note(&mut self, id: &str, text: &str, shared: &Arc<Mutex<Shared>>) -> Result<bool> {
+        crate::ai_privacy::ensure_note(self.directory.parent().ok_or("Missing workspace")?, id)?;
         let fingerprint = hash(text.as_bytes());
         if !self.needs(id, &fingerprint) {
             return Ok(false);
@@ -1421,6 +1462,24 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                 }
             }
         }
+        match engine.as_mut().unwrap().sync_privacy(&root) {
+            Ok(true) => {
+                let mut s = shared.lock().unwrap();
+                s.cache.clear();
+                s.queries.invalidate();
+                s.queries.scope_generation += 1;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                let mut s = shared.lock().unwrap();
+                s.cache.clear();
+                s.queries.invalidate();
+                s.status.error = Some(e);
+                drop(s);
+                thread::sleep(Duration::from_millis(150));
+                continue;
+            }
+        }
         let job = {
             let mut s = shared.lock().unwrap();
             let job = s.queries.pending.take();
@@ -1488,7 +1547,9 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
                     r.flatten()
                         .filter_map(|e| {
                             let id = e.path().file_stem()?.to_str()?.to_string();
-                            if valid_id(&id).is_ok() {
+                            if valid_id(&id).is_ok()
+                                && crate::ai_privacy::ensure_note(&root, &id).is_ok()
+                            {
                                 Some(id)
                             } else {
                                 None
@@ -1539,7 +1600,7 @@ fn worker_loop(root: PathBuf, shared: Arc<Mutex<Shared>>, rx: mpsc::Receiver<Com
             }
         }
         let active = shared.lock().unwrap().active_note.clone();
-        if let Some(id) = active {
+        if let Some(id) = active.filter(|id| crate::ai_privacy::ensure_note(&root, id).is_ok()) {
             let path = root.join("notes").join(format!("{id}.json"));
             let changed = fs::metadata(path)
                 .ok()
@@ -1870,6 +1931,31 @@ mod tests {
             },
             rx,
         )
+    }
+    #[test]
+    fn private_sources_fail_before_text_decode_query_queue_or_model_work() {
+        let t = tempfile::tempdir().unwrap();
+        let mut store = crate::store::Store::open(t.path()).unwrap();
+        let n = store
+            .create_note("PRIVATE_SYNTHETIC_CANARY".into(), None)
+            .unwrap();
+        crate::ai_privacy::deny_batch(&store.root, [n.id.clone()], []).unwrap();
+        std::fs::write(
+            store.root.join("notes").join(format!("{}.json", n.id)),
+            b"MALFORMED_PRIVATE_CANARY",
+        )
+        .unwrap();
+        assert_eq!(
+            note_text(&store.root, &n.id).unwrap_err(),
+            crate::ai_privacy::DENIED
+        );
+        let (service, _rx) = query_service(t.path());
+        assert!(service.related(n.id.clone()).is_err());
+        assert!(service
+            .search(n.id.clone(), "private query".into(), false)
+            .is_err());
+        assert!(service.shared.lock().unwrap().queries.pending.is_none());
+        assert!(service.shared.lock().unwrap().pending.is_empty());
     }
     #[test]
     fn typed_search_coalesces_and_rejects_obsolete_model_scope_and_index_jobs() {

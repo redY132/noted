@@ -1,6 +1,6 @@
 # Migration from Markdown, Obsidian and Logseq
 
-Updated November 4, 2026. An offline exported-folder importer is implemented for **Markdown, Obsidian and Logseq file graphs**. Tests use temporary fixtures. A separate developer-only SQLite snapshot reader now performs importer-only compatibility checks without disclosing graph contents. It does **not** convert or publish SQLite notes; see [the SQLite boundary and remaining gates](logseq-sqlite.md). The earlier design below records additional fidelity goals; it is not a claim that DB/EDN/Mirror, live synchronization or every source-app feature is supported.
+Updated November 4, 2026. An offline exported-folder importer is implemented for **Markdown, Obsidian and Logseq file graphs**. Tests use temporary fixtures. A separate experimental developer SQLite adapter now converts and privately publishes supported static graphs in synthetic tests; the real trial remains blocked on unavailable required assets and unsupported fidelity cases, including after the separate supplied asset folder was checked. It never discloses graph contents to AI; see [the SQLite boundary and remaining gates](logseq-sqlite.md). The earlier design below records additional fidelity goals; it is not a claim that DB/EDN/Mirror, live synchronization or every source-app feature is supported.
 
 ## Delivered workflow and recovery
 

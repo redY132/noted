@@ -9,7 +9,7 @@ try {
  $destination=Join-Path $repoRoot ('output\portable-'+$stamp+'-'+$sourceCommit.Substring(0,7))
  if(Test-Path -LiteralPath $destination){throw 'Package destination exists'}
  New-Item -ItemType Directory -Path $destination | Out-Null
- foreach($name in @('noted.exe','noted-agent.exe')){
+ foreach($name in @('noted.exe','noted-agent.exe','noted-private-import.exe')){
   $binary=Join-Path $repoRoot ('src-tauri\target\release\'+$name)
   if(-not(Test-Path -LiteralPath $binary -PathType Leaf)){throw "Build $name before packaging"}
   Copy-Item -LiteralPath $binary -Destination (Join-Path $destination $name)
@@ -21,14 +21,14 @@ Extract this entire archive into a local folder. Windows x64 and an installed Mi
 
 The app uses the ordinary Noted workspace under this Windows account. Back up existing notes first using Workspace details. For a disposable trial, launch with NOTED_WORKSPACE pointing to a new absolute folder and WEBVIEW2_USER_DATA_FOLDER pointing to a separate new profile folder. Do not run multiple writers against the same workspace. Imported and restored copies open separately and start unshared.
 
-Workspace details offers checksummed backups and staged imports from exported Markdown folders, Obsidian vault copies and Logseq file graphs. Review the complete loss report before accepting. Originals remain archived; DB/EDN/Mirror, generic attachment opening, source-app history and live transclusion are not supported. Keep your original export.
+Workspace details offers checksummed backups and staged imports from exported Markdown folders, Obsidian vault copies and Logseq file graphs. Review the complete loss report before accepting. Originals remain archived; The developer-only SQLite adapter can publish supported static graphs privately; missing assets and unsupported graph features block it. It requires the source-project Python/Node adapter and is not the ordinary import screen. EDN/Mirror, generic attachment opening, source-app history and live transclusion are not supported. Keep your original export.
 
-AI is optional. The local agent companion reads only explicitly selected saved folders or explicit formatting requests. Model inference in a connected Codex/ChatGPT client is hosted and subject to that account's limits. There is no hosted-chat connection. The explicit Generate proposal button uses existing ChatGPT sign-in through official Codex; proposals require preview and acceptance. The optional local semantic model needs its separately installed pack; no model pack is bundled or downloaded automatically.
+AI is optional. The local agent companion reads only explicitly selected saved folders or explicit formatting requests. Model inference in a connected Codex/ChatGPT client is hosted and subject to that account's limits. Private imports are excluded from all AI routes, including local embeddings, and require this matching privacy-aware build. There is no hosted-chat connection. The explicit Generate proposal button uses existing ChatGPT sign-in through official Codex; proposals require preview and acceptance. The optional local semantic model needs its separately installed pack; no model pack is bundled or downloaded automatically.
 
 This is a developer alpha, not a certified public release. Real inexpensive-hardware acceptance, signed installer, final license/distribution choice, and hosted plugin/account setup remain pending. See the included verification and migration documents. No personal notes, profiles, credentials or agent policy are bundled.
 '@
  $readme | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8
- foreach($name in @('ai-formatting.md','component-authoring.md','schema-authoring.md','document-schema.schema.json','noted-document-v2.schema.json','migration-plan.md','milestone-verification.md','backup-restore.md','agent-integration.md','hosted-chat-setup.md','reference-benchmark.md')){Copy-Item -LiteralPath (Join-Path $repoRoot ('docs\'+$name)) -Destination (Join-Path $destination $name)}
+ foreach($name in @('ai-privacy.md','logseq-sqlite.md','ai-formatting.md','component-authoring.md','schema-authoring.md','document-schema.schema.json','noted-document-v2.schema.json','migration-plan.md','milestone-verification.md','backup-restore.md','agent-integration.md','hosted-chat-setup.md','reference-benchmark.md')){Copy-Item -LiteralPath (Join-Path $repoRoot ('docs\'+$name)) -Destination (Join-Path $destination $name)}
  $files=Get-ChildItem -LiteralPath $destination -File | ForEach-Object {@{path=$_.Name;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
  @{formatVersion=1;sourceCommit=$sourceCommit;createdAt=(Get-Date).ToUniversalTime().ToString('o');signed=$false;hardwareCertified=$false;files=@($files)} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'manifest.json') -Encoding utf8
  $zip=Join-Path $repoRoot ('output\Noted-alpha-'+$stamp+'-'+$sourceCommit.Substring(0,7)+'.zip')

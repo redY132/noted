@@ -107,6 +107,10 @@
         }
       },
       "$comment": "Full static Noted document, maximum 128 KiB serialized. Components are rejected. Sending requires explicit per-use consent."
+    },
+    "sourceNoteId": {
+      "type": "string",
+      "format": "uuid"
     }
   },
   "$defs": {

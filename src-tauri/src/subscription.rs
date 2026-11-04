@@ -169,6 +169,8 @@ impl Service {
         exe: PathBuf,
         bridge: PathBuf,
     ) -> Result<JobInfo> {
+        crate::ai_privacy::ensure_note(&root, &note.id)?;
+        crate::ai_privacy::guidance(&root, request.schema.as_ref())?;
         validate_snapshot(&note)?;
         let mut current = self
             .current
@@ -273,6 +275,7 @@ fn validate_bridge_capabilities(v: Option<&Value>) -> Result<()> {
         v["schemaVersion"] == 1
             && v["formattingProtocol"] == crate::agent::FORMATTING_PROTOCOL
             && v["hostedAudience"] == true
+            && v["privateNoteExclusion"] == true
     }) {
         Ok(())
     } else {
@@ -406,6 +409,8 @@ fn generate(
     if job.cancelled.load(Ordering::Acquire) {
         return Err("Cancelled before transmission".into());
     }
+    crate::ai_privacy::ensure_note(root, &n.id)?;
+    crate::ai_privacy::guidance(root, r.schema.as_ref())?;
     let mut child = c
         .spawn()
         .map_err(|_| "Cannot start the signed-in Codex client")?;

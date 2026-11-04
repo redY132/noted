@@ -103,6 +103,7 @@ fn valid_path(path: &str) -> Result<()> {
         return Err("Unsafe path in workspace backup".into());
     }
     let allowed = match parts.as_slice() {
+        ["ai-private.json" | "ai-private.required"] => true,
         ["notes", name] => name.ends_with(".json") || name.ends_with(".json.bak"),
         ["folders" | "trash" | "review", name] => name.ends_with(".json"),
         ["imports", batch, name] => {
@@ -218,6 +219,14 @@ fn inventory(root: &Path) -> Result<Vec<(String, PathBuf)>> {
         let p = root.join(directory);
         if p.exists() {
             visit(root, &p, &mut files, 1)?;
+        }
+    }
+    crate::ai_privacy::Gate::load(root)?;
+    for name in ["ai-private.json", "ai-private.required"] {
+        let p = root.join(name);
+        if p.exists() {
+            ordinary(&p, false)?;
+            files.push((name.into(), p));
         }
     }
     files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -568,7 +577,8 @@ pub fn restore_backup(path: &Path, target: &Path, expected_digest: &str) -> Resu
         for entry in fs::read_dir(source).map_err(err)? {
             let p = entry.map_err(err)?.path();
             let name = p.file_name().unwrap();
-            if name == "workspace.lock"
+            if name == crate::ai_privacy::LEGACY_FENCE
+                || name == "workspace.lock"
                 || name.to_string_lossy().ends_with("-wal")
                 || name.to_string_lossy().ends_with("-shm")
             {
@@ -592,7 +602,7 @@ pub fn restore_backup(path: &Path, target: &Path, expected_digest: &str) -> Resu
         Ok(())
     }
     publish(stage.path(),&target).map_err(|e|format!("Restore copy is incomplete at {}: {e}. The original workspace is unchanged. Choose a new folder to retry.",target.display()))?;
-    fs::remove_file(marker).map_err(err)?;
+    crate::ai_privacy::complete_restore(&target)?;
     summary.path = display_path(&target);
     Ok(summary)
 }

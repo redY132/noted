@@ -198,14 +198,22 @@ impl Store {
     pub fn open_cached(root: impl AsRef<Path>) -> Result<Self> {
         Self::open_cached_inner(root, false)
     }
+    pub fn open_private_recovery(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_cached_inner(root, true)
+    }
     pub(crate) fn open_import_staging(root: impl AsRef<Path>) -> Result<Self> {
         Self::open_cached_inner(root, true)
     }
     fn open_cached_inner(root: impl AsRef<Path>, allow_import: bool) -> Result<Self> {
+        if !allow_import && root.as_ref().join(crate::ai_privacy::INCOMPLETE).exists() {
+            return Err("PRIVATE_IMPORT_RECOVERY_REQUIRED".into());
+        }
         if root.as_ref().join(".noted-import-incomplete").exists() && !allow_import {
             return Err("This import is incomplete. Keep the source export and import into another new folder.".into());
         }
-        if root.as_ref().join(".noted-restore-incomplete").exists() {
+        if root.as_ref().join(".noted-restore-incomplete").exists()
+            && !crate::ai_privacy::compatible_fence(root.as_ref())
+        {
             return Err("This restored copy is incomplete. Keep the original workspace and restore the backup to a new folder.".into());
         }
         fs::create_dir_all(root.as_ref()).map_err(err)?;
@@ -255,6 +263,7 @@ impl Store {
             document_grants: Default::default(),
             _lock: lock,
         };
+        crate::ai_privacy::ensure_legacy_fence(&store.root)?;
         Ok(store)
     }
 
@@ -448,12 +457,14 @@ impl Store {
         target_note_id: &str,
         asset_id: &str,
     ) -> Result<crate::assets::ImageInfo> {
+        crate::ai_privacy::inherit(&self.root, source_note_id, target_note_id)?;
         self.load_note(target_note_id)?;
         let source = self.read_image(source_note_id, asset_id)?;
         crate::assets::import(&self.root, target_note_id, &source.bytes, &source.info.mime)
     }
 
     pub(crate) fn commit(&mut self, mut note: Note) -> Result<Note> {
+        crate::ai_privacy::stamp(&self.root, &note)?;
         note.revision_token.clear();
         let mut stored = serde_json::to_value(&note).map_err(err)?;
         if note.format_version == 2 {

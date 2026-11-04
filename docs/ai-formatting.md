@@ -60,3 +60,8 @@ Local evidence (generated, excluded from source control): `output/schema-fronten
 ## Interactive component goal
 
 The explicit **Create interactive component** goal now produces an inert definition using the same ChatGPT-signed-in client. It uses a tool-free generation branch, then a separately approved isolated preview and optional disabled insertion with Undo. No generated code runs on arrival, no execution approval is saved, and the existing automated widget-layout restriction remains intact. See [component authoring](component-authoring.md) for the workflow and verified limits. External formatting requests remain presentation-only.
+
+
+### Private-note exclusion
+
+Private imports cannot be sent through either the one-note Generate flow or the external request queue, regardless of optional folder grants. The dialog explains that AI is excluded and disables generation. Captured schemas retain source-note provenance; private sources and legacy untraceable full guides are refused in private workspaces. See [AI exclusion](ai-privacy.md). Matching native protocol is now 5.

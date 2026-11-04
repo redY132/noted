@@ -21,6 +21,7 @@ export type SchemaTarget = 'body' | 'heading1' | 'heading2' | 'heading3' | 'head
 export interface DocumentSchema extends SchemaReference {
   formatVersion: 1 | 2;
   layout?: 'free';
+  sourceNoteId?:string;
   guide?: {title:string;document:NotedDocumentV2};
   name: string;
   rules: Partial<Record<SchemaTarget, SchemaStyle>> & { body: SchemaStyle };
@@ -54,12 +55,13 @@ export function validSchemaPolicy(value: unknown): value is SchemaPolicy {
     && value.enabledRules.every(key => SCHEMA_STYLE_KEYS.includes(key as SchemaStyleKey));
 }
 export function validateDocumentSchema(value: unknown): asserts value is DocumentSchema {
-  if (!plain(value) || !hasOnly(value, ['formatVersion', 'id', 'version', 'name', 'rules','layout','guide']) || (value.formatVersion!==1&&value.formatVersion!==2)
+  if (!plain(value) || !hasOnly(value, ['formatVersion', 'id', 'version', 'name', 'rules','layout','guide','sourceNoteId']) || (value.formatVersion!==1&&value.formatVersion!==2)
     || !validSchemaReference({ id: value.id, version: value.version }) || typeof value.name !== 'string'
     || !value.name.trim() || value.name.length > 100 || !plain(value.rules) || !hasOnly(value.rules, SCHEMA_TARGETS)
     || !Object.hasOwn(value.rules, 'body') || !Object.values(value.rules).every(validSchemaStyle)) {
     throw new Error('Invalid schema. Use a name, an immutable id/version, and supported body/heading presentation rules.');
   }
+  if(value.sourceNoteId!==undefined&&(typeof value.sourceNoteId!=='string'||!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(value.sourceNoteId)))throw new Error('Invalid guide source note.');
   if(value.formatVersion===1&&(value.layout!==undefined||value.guide!==undefined))throw new Error('Layout and document guidance require schema formatVersion 2.');
   if(value.layout!==undefined&&value.layout!=='free')throw new Error('Unsupported schema layout policy.');
   if(value.guide!==undefined){const g=value.guide;if(!plain(g)||!hasOnly(g,['title','document'])||typeof g.title!=='string'||!g.title.trim()||g.title.length>240)throw new Error('Invalid guidance document.');validateDocument(g.document as NotedDocumentV2);if(new TextEncoder().encode(JSON.stringify(g.document)).length>128*1024)throw new Error('The full guidance document exceeds 128 KiB. It was not truncated.');if(Object.values((g.document as NotedDocumentV2).objects).some(o=>o.kind==='component'))throw new Error('Use a static guidance document without executable components.');}

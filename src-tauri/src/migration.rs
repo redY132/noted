@@ -1,6 +1,6 @@
 //! Explicit local export-folder imports. Preview is a frozen staged copy;
 //! publication never mutates the source or the active workspace.
-mod markdown;
+pub(crate) mod markdown;
 use crate::{
     library::ordinary,
     store::{atomic_write, valid_id, Note, Presentation, Store},

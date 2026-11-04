@@ -201,6 +201,7 @@ export const api = {
   recoverDraft:(draft:Note)=>call<Note>('recover_draft',{draft}),
   reviewFeed:(folderId:string|null,tag:string,includeHidden=false)=>call<{note:NoteSummary;reasons:string[]}[]>('review_feed',{folderId,tag,includeHidden}),
   reviewAction:(id:string,action:string)=>call<void>('review_action',{id,action}),
+  noteAIAllowed:(id:string)=>browserPreview?Promise.resolve(true):call<boolean>('note_ai_allowed',{id}),
   agentAccess:()=>call<{enabled:boolean;allowHosted?:boolean;folderIds:string[]}>('agent_access'),
   setAgentAccess:(access:{enabled:boolean;allowHosted?:boolean;folderIds:string[]})=>call<{enabled:boolean;allowHosted?:boolean;folderIds:string[]}>('set_agent_access',{access}),
   hostedAgentLaunch:()=>call<{program:string;arguments:string[];commandLine:string;liveConnectionVerified:boolean}>('hosted_agent_launch'),

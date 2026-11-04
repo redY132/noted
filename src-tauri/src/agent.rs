@@ -14,9 +14,9 @@ use std::{
     io::{BufRead, Write},
     path::Path,
 };
-pub const FORMATTING_PROTOCOL: u32 = 4;
+pub const FORMATTING_PROTOCOL: u32 = 5;
 pub fn capabilities() -> Value {
-    json!({"schemaVersion":1,"formattingProtocol":FORMATTING_PROTOCOL,"hostedAudience":true})
+    json!({"schemaVersion":1,"formattingProtocol":FORMATTING_PROTOCOL,"hostedAudience":true,"privateNoteExclusion":true})
 }
 type Result<T> = std::result::Result<T, String>;
 fn err(e: impl std::fmt::Display) -> String {
@@ -79,7 +79,8 @@ fn root_check(root: &Path) -> Result<()> {
     for p in root.ancestors() {
         ordinary(p, true)?;
     }
-    if root.join(".noted-restore-incomplete").exists() {
+    if root.join(".noted-restore-incomplete").exists() && !crate::ai_privacy::compatible_fence(root)
+    {
         return Err("Workspace restore is incomplete".into());
     }
     Ok(())
@@ -100,6 +101,7 @@ pub fn access(root: &Path) -> Result<Access> {
     Ok(a)
 }
 fn note(root: &Path, id: &str) -> Result<Note> {
+    crate::ai_privacy::ensure_note(root, id)?;
     valid_id(id)?;
     ordinary(&root.join("notes"), true)?;
     let bytes = read(&root.join("notes").join(format!("{id}.json")), MAX)?;
@@ -136,6 +138,7 @@ pub(crate) fn request(root: &Path, id: &str) -> Result<(Request, Note)> {
     if n.revision != r.revision || n.revision_token != r.revision_token {
         return Err("Formatting request is stale; create a new request".into());
     }
+    crate::ai_privacy::guidance(root, r.schema.as_ref())?;
     crate::schema_ai::context(r.schema.clone(), true)?;
     Ok((r, n))
 }
@@ -147,10 +150,14 @@ impl Store {
         if a.folder_ids.len() > 1000 {
             return Err("Too many folders".into());
         }
+        let privacy = crate::ai_privacy::Gate::load(&self.root)?;
         let folders = self.list_folders()?;
         a.folder_ids.sort();
         a.folder_ids.dedup();
         for id in &a.folder_ids {
+            if !privacy.allows_folder(Some(id))? {
+                return Err(crate::ai_privacy::DENIED.into());
+            }
             valid_id(id)?;
             if !folders.iter().any(|f| &f.id == id) {
                 return Err("Selected folder is missing".into());
@@ -197,6 +204,8 @@ impl Store {
         if kind.is_some() && schema.is_some() {
             return Err("Component suggestions do not accept schema guidance".into());
         }
+        crate::ai_privacy::ensure_note(&self.root, id)?;
+        crate::ai_privacy::guidance(&self.root, schema.as_ref())?;
         let schema = crate::schema_ai::context(schema, true)?;
         if prompt.trim().is_empty() || prompt.len() > 4000 {
             return Err("Describe the layout in 1-4000 bytes".into());
@@ -428,6 +437,7 @@ pub fn call(root: &Path, name: &str, args: &Value) -> Result<Value> {
     call_for(root, name, args, false)
 }
 fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value> {
+    let privacy = crate::ai_privacy::Gate::load(root)?;
     let a = access(root)?;
     if !a.enabled || hosted && !a.allow_hosted {
         return Err("Noted agent access is disabled for this audience. Choose folders and explicitly allow the connection in Noted first".into());
@@ -437,6 +447,9 @@ fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value
             ordinary(&root.join("folders"), true)?;
             let mut folders = vec![];
             for id in &a.folder_ids {
+                if !privacy.allows_folder(Some(id))? {
+                    continue;
+                }
                 let p = root.join("folders").join(format!("{id}.json"));
                 if !p.exists() {
                     continue;
@@ -496,6 +509,9 @@ fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value
                 let Some(id) = p.file_stem().and_then(|s| s.to_str()) else {
                     continue;
                 };
+                if !privacy.allows_note(id)? {
+                    continue;
+                }
                 bytes += fs::metadata(&p).map_err(err)?.len();
                 if bytes > 256 * 1024 * 1024 {
                     return Err("Workspace scan exceeds bridge's 256 MiB limit".into());
@@ -622,6 +638,9 @@ fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value
         }
         _ => return Err("Unknown tool".into()),
     };
+    if crate::ai_privacy::Gate::load(root)?.signature() != privacy.signature() {
+        return Err("AI privacy changed; retry".into());
+    }
     // Revocation during a long scan fails closed before releasing any results.
     if serde_json::to_value(access(root)?).map_err(err)? != serde_json::to_value(a).map_err(err)? {
         return Err("Agent access changed; retry".into());

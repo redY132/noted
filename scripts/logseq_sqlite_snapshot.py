@@ -115,11 +115,12 @@ class Codec:
 class Snapshot:
     def __init__(self,source,node,codec_script):
         self.source=Path(source).absolute();self.node=node;self.codec_script=codec_script;self.counts={'records':0,'datoms':0,'pendingTransactions':0,'entities':0,'authoredNodes':0,'unmappedAttributes':0};self.db=None;self.codec=None
-    def read(self):
+    def read(self,consumer=None):
         p=self.source
         if p.drive.startswith('\\\\'):reject('SOURCE_NOT_LOCAL')
         if not p.is_file() or p.is_symlink() or p.resolve()!=p:reject('SOURCE_NOT_ORDINARY')
         if any(sidecars(p)):reject('SOURCE_HAS_SQLITE_SIDECARS')
+        if getattr(p.stat(),'st_file_attributes',0)&0x400:reject('SOURCE_NOT_ORDINARY')
         if p.stat().st_size>256*1024*1024:reject('SOURCE_TOO_LARGE')
         original=fingerprint(p);original_stat=(p.stat().st_size,p.stat().st_mtime_ns);before=sidecars(p);deadline=time.monotonic()+90
         try:
@@ -156,6 +157,7 @@ class Snapshot:
             entities={}
             for e,a,v,_tx in datoms.values():entities.setdefault(e,{}).setdefault(keyword(a) if keyword(a) is not None else '@numeric',[]).append(v)
             self.counts['entities']=len(entities)
+            if consumer is not None:return consumer(datoms,meta['schema'])
             # Only static basic-outliner semantics are candidates for an initial converter.
             # Preserve/reject richer application features; never stringify/drop unknown values.
             basic={'block/uuid','block/title','block/raw-title','block/name','block/parent','block/page','block/order','block/created-at','block/updated-at','block/format','block/collapsed?','block/refs','block/tags','block/tx-id','db/ident','logseq.property/built-in?','logseq.property/hide?','logseq.property/deleted-at'}

@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod agent_status;
+pub mod ai_privacy;
 mod assets;
 pub mod backup;
 pub mod component_ai;
@@ -8,6 +9,7 @@ pub mod document;
 pub mod library;
 pub mod links;
 pub mod migration;
+pub mod private_import;
 pub mod relations;
 pub mod schema_ai;
 #[cfg(feature = "semantic")]
@@ -658,6 +660,31 @@ mod desktop {
     }
 
     #[tauri::command]
+    pub async fn publish_private_import(
+        state: State<'_, SharedStore>,
+        semantic: State<'_, Arc<crate::semantic::SemanticService>>,
+        path: String,
+    ) -> Result<crate::private_import::Summary, String> {
+        let result = work(state, move |s| {
+            s.import_private_bundle(std::path::Path::new(&path))
+        })
+        .await;
+        if result.is_ok() {
+            semantic.invalidate_scope();
+        }
+        result
+    }
+    #[tauri::command]
+    pub async fn note_ai_allowed(
+        state: State<'_, SharedStore>,
+        id: String,
+    ) -> Result<bool, String> {
+        work(state, move |s| {
+            crate::ai_privacy::Gate::load(&s.root)?.allows_note(&id)
+        })
+        .await
+    }
+    #[tauri::command]
     pub async fn agent_access(
         state: State<'_, SharedStore>,
     ) -> Result<crate::agent::Access, String> {
@@ -932,6 +959,8 @@ mod desktop {
                 subscription_job,
                 cancel_subscription_job,
                 agent_connection_status,
+                publish_private_import,
+                note_ai_allowed,
                 agent_access,
                 set_agent_access,
                 create_formatting_request,

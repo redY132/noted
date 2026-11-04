@@ -102,6 +102,7 @@ impl Store {
                 .parent_id
                 .clone();
         }
+        crate::ai_privacy::protect_move(self, &folder)?;
         atomic_write(
             &self.path("folders", &folder.id)?,
             &serde_json::to_vec_pretty(&folder).map_err(err)?,
@@ -185,7 +186,9 @@ impl Store {
     pub fn recover_draft(&mut self, mut draft: Note) -> Result<Note> {
         valid_id(&draft.id)?;
         let source = self.root.join("assets").join(&draft.id);
+        let source_id = draft.id.clone();
         draft.id = uuid::Uuid::new_v4().to_string();
+        crate::ai_privacy::inherit(&self.root, &source_id, &draft.id)?;
         if draft.folder_id.as_ref().is_some_and(|id| {
             !self
                 .list_folders()

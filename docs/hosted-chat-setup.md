@@ -48,3 +48,8 @@ The supported route was reverified against [Secure MCP Tunnel documentation](htt
 Agent access now includes **Connect this hosted chat → Copy hosted server command**. It produces the actual companion/workspace command with **--audience hosted**; copying only prepares text. It does not configure a tunnel, create a key, register/install a plugin, change policy or send notes. The metadata explicitly reports the connection as unverified. Put that command into the supported client's stdio profile only after reviewing the tunnel/account destination. Runtime secrets must be supplied locally through the supported secure environment, never through chat, Git or command/config text.
 
 In ChatGPT Plugins, add a custom MCP server with **Connection: Tunnel**, choose the associated tunnel, review authentication and the risk/approval screen, then install/discover it. The current task tools cannot complete that custom-plugin approval; directory search/install tools are not exposed here. Do not infer that no public-directory entry exists from this tool limitation. An actual synthetic note call from this hosted chat and a revocation test are still required before claiming success. No such connection was activated.
+
+
+### Private imports and matching clients
+
+The supported hosted-audience launch command is unchanged. Protocol 5 now advertises `privateNoteExclusion: true`; local and hosted MCP audiences enforce the same hard private policy. Synthetic imports prove that optional folder grants cannot expose them. Hosted activation is still pending supported account/tunnel/runtime credential and custom-plugin setup/approval. This work created no credentials, connection or sharing grants.
