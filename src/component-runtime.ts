@@ -45,6 +45,7 @@ export interface ComponentMount {
   onState: (state: ComponentRecord) => void;
   resolveAsset?: (id: string) => Promise<string>;
   onError?: (message: string) => void;
+  onRender?:()=>void;
   fallback?: string;
 }
 export interface ComponentMountHandle { update(input: ComponentInput): void; destroy(): void; resume(): Promise<void> }
@@ -75,7 +76,9 @@ export class ComponentRuntimeHost {
     this.refreshAnimations();
     this.typingTimer = setTimeout(() => { this.typingTimer = null; this.refreshAnimations(); }, 510);
   };
-  constructor() {
+  private readonly previewApprovalHash?:string;
+  constructor(previewApprovalHash?:string) {
+    this.previewApprovalHash=previewApprovalHash;
     document.addEventListener('visibilitychange', this.visibility);
     document.addEventListener('beforeinput', this.typing, true);
     this.reduced?.addEventListener('change', this.visibility);
@@ -173,7 +176,7 @@ export class ComponentRuntimeHost {
   }
   private async start(item: Mounted) {
     if (!this.mounted.has(item.id) || item.failed || item.loaded || !item.visible) return;
-    if (!(await isComponentVersionEnabled(item.definition))) { if (this.mounted.has(item.id)) this.fallback(item, `${item.fallback ?? item.definition.manifest.fallback}\nThis code version is disabled. Enable it in component settings to run.`); return; }
+    if (!(this.previewApprovalHash ? await componentCodeHash(item.definition)===this.previewApprovalHash : await isComponentVersionEnabled(item.definition))) { if (this.mounted.has(item.id)) this.fallback(item, `${item.fallback ?? item.definition.manifest.fallback}\nThis code version is disabled. Enable it in component settings to run.`); return; }
     if (!this.mounted.has(item.id) || item.loaded || item.failed || this.disposed) return;
     if ([...this.mounted.values()].filter(value => value.loaded).length >= COMPONENT_LIMITS.instances) { this.fallback(item, `${item.fallback ?? item.definition.manifest.fallback}\nEight components are already active.`); return; }
     item.loaded = true;
@@ -193,7 +196,7 @@ export class ComponentRuntimeHost {
       if (event && event.kind !== 'tick' && JSON.stringify(result.state) !== JSON.stringify(item.input.state)) {
         item.input.state = structuredClone(result.state); item.onState(structuredClone(result.state));
       }
-      this.paint(item, view);
+      this.paint(item, view);item.onRender?.();
     } catch (error) { if (this.mounted.has(item.id)) this.failItem(item, error); }
   }
   private paint(item: Mounted, view: ComponentView) {

@@ -133,7 +133,7 @@ fn fields(v: &Value) -> Result<()> {
     }
     Ok(())
 }
-fn component(v: &Value) -> Result<()> {
+pub(crate) fn component(v: &Value) -> Result<()> {
     if !only(v, &["manifest", "source"])
         || !v["source"]
             .as_str()

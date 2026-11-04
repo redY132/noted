@@ -126,6 +126,9 @@ test('host approves exact versions, rejects stale results, kills stuck workers a
     installComponentDefinition(counterComponent);
     assert.equal(installedComponentDefinitions().length, 1);
     assert.throws(() => installComponentDefinition({ ...counterComponent, source: `${counterComponent.source} ` }), /new version/);
+    const previewElement=dom.window.document.createElement('div');dom.window.document.body.append(previewElement);
+    const previewHost=new ComponentRuntimeHost(await componentCodeHash(counterComponent));
+    try{previewHost.mount({id:'preview',definition:counterComponent,element:previewElement,input,onState:()=>assert.fail('Preview cannot persist note state')});await waitFor(()=>previewElement.textContent==='count 0');assert.equal(await isComponentVersionEnabled(counterComponent),false,'Preview approval is never saved');const changed=dom.window.document.createElement('div');dom.window.document.body.append(changed);previewHost.mount({id:'changed-preview',definition:{...counterComponent,source:counterComponent.source+' '},element:changed,input,onState:()=>{}});await waitFor(()=>changed.textContent!.includes('disabled'));assert.equal(FakeWorker.instances.length,1,'Preview grants only the exact code hash');}finally{previewHost.destroy();previewElement.remove();}
     await enableComponentVersion(counterComponent);
     assert.equal(await isComponentVersionEnabled(counterComponent), true);
     assert.equal(await isComponentVersionEnabled({ ...counterComponent, source: `${counterComponent.source} ` }), false);

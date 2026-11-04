@@ -2,6 +2,7 @@ pub mod agent;
 pub mod agent_status;
 mod assets;
 pub mod backup;
+pub mod component_ai;
 mod definitions;
 pub mod document;
 pub mod library;
@@ -701,6 +702,12 @@ mod desktop {
         work(state, move |s| s.cancel_formatting_request(&id)).await
     }
     #[tauri::command]
+    pub async fn hosted_agent_launch(
+        state: State<'_, SharedStore>,
+    ) -> Result<serde_json::Value, String> {
+        work(state,|s|{let exe=std::env::current_exe().map_err(|e|e.to_string())?.with_file_name("noted-agent.exe");let program=crate::backup::display_path(&exe);let workspace=crate::backup::display_path(&s.root);let command_line=format!("\"{}\" --workspace \"{}\" --audience hosted",program,workspace);Ok(serde_json::json!({"program":program,"arguments":["--workspace",workspace,"--audience","hosted"],"commandLine":command_line,"liveConnectionVerified":false}))}).await
+    }
+    #[tauri::command]
     pub async fn agent_configuration(state: State<'_, SharedStore>) -> Result<String, String> {
         work(state, |s| {
             let exe = std::env::current_exe()
@@ -802,7 +809,7 @@ mod desktop {
     }
     #[tauri::command]
     pub fn schema_guidance_capabilities() -> serde_json::Value {
-        serde_json::json!({"formattingProtocol":crate::agent::FORMATTING_PROTOCOL,"perRequestGuidanceConsent":true})
+        serde_json::json!({"formattingProtocol":crate::agent::FORMATTING_PROTOCOL,"perRequestGuidanceConsent":true,"componentSuggestions":true})
     }
     #[tauri::command]
     pub async fn start_subscription_formatting(
@@ -814,9 +821,10 @@ mod desktop {
         prompt: String,
         schema: Option<serde_json::Value>,
         include_guidance: Option<bool>,
+        kind: Option<String>,
     ) -> Result<crate::subscription::JobInfo, String> {
         let schema = crate::schema_ai::context(schema, include_guidance.unwrap_or(false))?;
-        let (note,request,root)=work(state.clone(),move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_request_with_schema(&id,prompt,schema)?;Ok((n,request,s.root.clone()))}).await?;
+        let (note,request,root)=work(state.clone(),move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_ai_request(&id,prompt,schema,kind)?;Ok((n,request,s.root.clone()))}).await?;
         let bridge = std::env::current_exe()
             .map_err(|e| e.to_string())?
             .with_file_name("noted-agent.exe");
@@ -930,6 +938,7 @@ mod desktop {
                 formatting_reply,
                 cancel_formatting_request,
                 agent_configuration,
+                hosted_agent_launch,
                 backup_defaults,
                 create_workspace_backup,
                 inspect_workspace_backup,

@@ -14,7 +14,7 @@ use std::{
     io::{BufRead, Write},
     path::Path,
 };
-pub const FORMATTING_PROTOCOL: u32 = 3;
+pub const FORMATTING_PROTOCOL: u32 = 4;
 pub fn capabilities() -> Value {
     json!({"schemaVersion":1,"formattingProtocol":FORMATTING_PROTOCOL,"hostedAudience":true})
 }
@@ -45,6 +45,8 @@ pub struct Request {
     pub expires_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -180,6 +182,21 @@ impl Store {
         prompt: String,
         schema: Option<Value>,
     ) -> Result<Request> {
+        self.create_ai_request(id, prompt, schema, None)
+    }
+    pub(crate) fn create_ai_request(
+        &self,
+        id: &str,
+        prompt: String,
+        schema: Option<Value>,
+        kind: Option<String>,
+    ) -> Result<Request> {
+        if kind.as_deref().is_some_and(|k| k != "component") {
+            return Err("Unsupported AI request kind".into());
+        }
+        if kind.is_some() && schema.is_some() {
+            return Err("Component suggestions do not accept schema guidance".into());
+        }
         let schema = crate::schema_ai::context(schema, true)?;
         if prompt.trim().is_empty() || prompt.len() > 4000 {
             return Err("Describe the layout in 1-4000 bytes".into());
@@ -203,6 +220,7 @@ impl Store {
             ["waiting", "ready"].contains(&r.status.as_str())
                 && r.request.prompt.trim() == prompt
                 && r.schema_digest == crate::schema_ai::digest(&schema)
+                && r.request.kind == kind
         }) {
             return Ok(request(&self.root, &existing.request.id)?.0);
         }
@@ -213,6 +231,7 @@ impl Store {
             revision_token: n.revision_token,
             prompt,
             schema,
+            kind,
             expires_at: (Utc::now() + Duration::hours(24)).to_rfc3339(),
         };
         let dir = directory(&self.root, "agent-requests")?;
@@ -264,7 +283,7 @@ impl Store {
                             ordinary(&self.root.join("agent-replies"), true)?;
                             let v: Value =
                                 serde_json::from_slice(&read(&path, 1024 * 1024)?).map_err(err)?;
-                            crate::schema_ai::validate_reply(&n, &v, r.schema.as_ref())
+                            validate_request_reply(&n, &r, &v)
                         })();
                         if checked.is_ok() {
                             "ready"
@@ -303,6 +322,7 @@ impl Store {
                 && !seen.insert((
                     row.request.prompt.trim().to_string(),
                     row.schema_digest.clone(),
+                    row.request.kind.clone(),
                 ))
             {
                 row.status = "duplicate".into();
@@ -318,7 +338,7 @@ impl Store {
         }
         ordinary(&self.root.join("agent-replies"), true)?;
         let v: Value = serde_json::from_slice(&read(&path, 1024 * 1024)?).map_err(err)?;
-        crate::schema_ai::validate_reply(&n, &v, r.schema.as_ref())?;
+        validate_request_reply(&n, &r, &v)?;
         Ok(Some(v))
     }
     pub fn cancel_formatting_request(&self, id: &str) -> Result<()> {
@@ -336,6 +356,13 @@ impl Store {
             }
         }
         Ok(())
+    }
+}
+pub(crate) fn validate_request_reply(n: &Note, r: &Request, v: &Value) -> Result<()> {
+    if r.kind.as_deref() == Some("component") {
+        crate::component_ai::validate_reply(&r.id, v)
+    } else {
+        crate::schema_ai::validate_reply(n, v, r.schema.as_ref())
     }
 }
 pub(crate) fn validate_reply(n: &Note, v: &Value) -> Result<()> {
@@ -518,7 +545,7 @@ fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value
                     }
                     let r: Request =
                         serde_json::from_slice(&read(&p, MAX_REQUEST)?).map_err(err)?;
-                    if r.id != id {
+                    if r.id != id || r.kind.is_some() {
                         continue;
                     }
                     let key = (
@@ -575,11 +602,16 @@ fn call_for(root: &Path, name: &str, args: &Value, hosted: bool) -> Result<Value
         "submit_formatting_proposal" => {
             let id = args["requestId"].as_str().ok_or("Request id required")?;
             let (r, n) = request(root, id)?;
+            if r.kind.is_some() {
+                return Err(
+                    "Component suggestions are handled only by the explicit in-app runner".into(),
+                );
+            }
             let v = json!({"summary":args["summary"],"operations":args["operations"]});
             if serde_json::to_vec(&v).map_err(err)?.len() > 1024 * 1024 {
                 return Err("Proposal exceeds 1 MiB".into());
             }
-            crate::schema_ai::validate_reply(&n, &v, r.schema.as_ref())?;
+            validate_request_reply(&n, &r, &v)?;
             let dir = directory(root, "agent-replies")?;
             request(root, id)?;
             atomic_write(

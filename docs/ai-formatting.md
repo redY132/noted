@@ -55,3 +55,8 @@ The MCP proposal tool advertises a recursive layout-node contract with explicit 
 - An earlier guided attempt returned no proposal and left its note unchanged. A diagnostic run exposed invalid invented layout fields; the proposal tool now publishes the explicit recursive `style` layout contract. The final native flow passed. Model requests remain fallible and may require a deliberate retry.
 
 Local evidence (generated, excluded from source control): `output/schema-frontend-tests.log`, `output/schema-native-tests.log`, `output/schema-native-smoke.log`, `output/schema-live-smoke.log`, `output/schema-desktop-build.log`, and screenshots under `output/playwright/schema-*`. The synthetic diagnostic log is not included in a portable package. No personal workspace, access policy or credentials were changed.
+
+
+## Interactive component goal
+
+The explicit **Create interactive component** goal now produces an inert definition using the same ChatGPT-signed-in client. It uses a tool-free generation branch, then a separately approved isolated preview and optional disabled insertion with Undo. No generated code runs on arrival, no execution approval is saved, and the existing automated widget-layout restriction remains intact. See [component authoring](component-authoring.md) for the workflow and verified limits. External formatting requests remain presentation-only.

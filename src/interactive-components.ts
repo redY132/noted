@@ -62,9 +62,9 @@ export const InteractiveComponent = Node.create<{ runtime?: ComponentRuntimeHost
     };
   },
 });
-export function insertInteractive(editor:Editor,definition:ComponentDefinition):boolean{
+export function insertInteractive(editor:Editor,definition:ComponentDefinition,properties:ComponentRecord={}):boolean{
   if(!editor.isEditable)return false;
-  const props=resolveComponentFields(definition.manifest.properties),state=resolveComponentFields(definition.manifest.persistentState);
+  const props=resolveComponentFields(definition.manifest.properties,properties),state=resolveComponentFields(definition.manifest.persistentState);
   const value=editor.schema.nodes.interactiveComponent.create({id:crypto.randomUUID(),definitionId:definition.manifest.id,definitionVersion:definition.manifest.version,properties:props,state,fallback:definition.manifest.fallback});
   const position=editor.state.selection.$to.depth?editor.state.selection.$to.after(1):editor.state.selection.to;
   const tr=closeHistory(editor.state.tr).insert(position,value);tr.setSelection(NodeSelection.create(tr.doc,position));editor.view.dispatch(tr);return true;
