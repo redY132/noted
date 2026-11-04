@@ -163,3 +163,18 @@ test('block-link navigation preserves document and the next Undo restores the pr
 
  try{editor.commands.setTextSelection(2);editor.commands.insertContent('X');const before=editor.getJSON();assert.equal(focusBlock(editor,'second'),true);assert.equal(currentBlockId(editor),'second');assert.deepEqual(editor.getJSON(),before);assert.equal(focusBlock(editor,'missing'),false);assert.deepEqual(editor.getJSON(),before);assert.equal(editor.commands.undo(),true);assert.equal(editor.getText(),'First\n\nSecond');}finally{editor.destroy();}
 });
+
+test('imported backgrounds render locally, survive editor roundtrip and reject arbitrary CSS', () => {
+  const editor = makeEditor([{ type: 'paragraph', attrs: { id: 'imported', noteBackground: 'blue' }, content: [{ type: 'text', text: 'Synthetic highlighted block' }] }]);
+  try {
+    assert.equal(editor.getJSON().content![0].attrs!.noteBackground, 'blue');
+    const block = editor.view.dom.querySelector('[data-note-background="blue"]') as HTMLElement;
+    assert.ok(block); assert.equal(block.style.backgroundColor, 'rgb(208, 231, 255)');
+    assert.equal(block.style.getPropertyValue('--accent-text'), '#17202a');
+    editor.commands.setContent(editor.getHTML());
+    assert.equal(editor.getJSON().content![0].attrs!.noteBackground, 'blue');
+    editor.commands.setContent('<p data-note-background="url(https://invalid.test/CANARY)">Inert</p>');
+    assert.equal(editor.getJSON().content![0].attrs!.noteBackground, null);
+    assert.equal(editor.view.dom.querySelector('[data-note-background]'), null);
+  } finally { editor.destroy(); }
+});

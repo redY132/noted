@@ -59,12 +59,57 @@ class RichImportTests(unittest.TestCase):
             datoms,schema=graph();d=[2,K(attribute),value,536870913];datoms[token(d)]=d
             with self.assertRaises(Rejected) as error:convert(datoms,schema)
             self.assertEqual(error.exception.code,code);self.assertNotIn('Synthetic',str(error.exception))
+    def test_macro_and_html_examples_in_literal_markdown_code_are_preserved(self):
+        d,s=graph()
+        for key,row in list(d.items()):
+            if row[0]==2 and row[1]==K('block/title'):del d[key]
+        row=[2,K('block/title'),'A `{{renderer literal}}` example.\n\n```html\n<script>literal</script>\n```',536870913];d[token(row)]=row
+        bundle=convert(d,s);self.assertEqual(bundle['counts']['dynamicNodes'],0)
+        row=[4,K('block/title'),'{{UNKNOWN_MACRO_CANARY live}}',536870913]
+        for key,item in list(d.items()):
+            if item[0]==4 and item[1]==K('block/title'):del d[key]
+        d[token(row)]=row
+        with self.assertRaises(Rejected) as error:convert(d,s)
+        self.assertEqual(error.exception.code,'GRAPH_DYNAMIC_ADAPTER_REQUIRED');self.assertNotIn('CANARY',str(error.exception))
+
     def test_missing_order_unknown_version_and_orphan_are_blocked(self):
         datoms,schema=graph()
         for key,d in list(datoms.items()):
             if d[0]==2 and d[1]==K('block/order'):del datoms[key]
         with self.assertRaises(Rejected) as error:convert(datoms,schema)
         self.assertEqual(error.exception.code,'GRAPH_ORDER_ADAPTER_REQUIRED')
+    def test_background_defaults_resolve_references_and_reject_css_or_cycles(self):
+        from logseq_values import background_color
+        self.assertEqual(background_color({9:{'block/title':['yellow']}},9),'yellow')
+        self.assertEqual(background_color({},'#AbC'),'#aabbcc')
+        self.assertEqual(background_color({},'var(--ls-highlight-color-blue)'),'blue')
+        self.assertIsNone(background_color({},'url(https://invalid.test/CANARY)'))
+        self.assertIsNone(background_color({9:{'block/title':[10]},10:{'block/title':[9]}},9))
+        d,s=graph()
+        for e,a,v in [(904,'block/title','green'),(904,'logseq.property/built-in?',True),(2,'logseq.property/background-color',904)]:
+            row=[e,K(a),v,536870913];d[token(row)]=row
+        b=convert(d,s);page=next(p for p in b['pages'] if p['sourceId']==1)
+        self.assertEqual(page['children'][0]['background'],'green');self.assertEqual(b['counts']['backgroundStyles'],1)
+        self.assertFalse(any(x['name']=='logseq.property/background-color' for x in page['children'][0]['properties']))
+
+    @unittest.skipUnless(PUBLISHER.exists() and AGENT.exists(),'Build native importer and companion first')
+    def test_recycled_page_goes_to_native_trash_and_background_is_preserved(self):
+        with tempfile.TemporaryDirectory(prefix='noted-private-fixture-') as tmp:
+            root=Path(tmp);d,s=graph()
+            for e,a,v in [(6,'logseq.property/deleted-at',1234),(2,'logseq.property/background-color','blue')]:
+                row=[e,K(a),v,536870913];d[token(row)]=row
+            source=database(root/'export',d,s);before=source.read_bytes();workspace=root/'workspace'
+            result=run(source,NODE,PUBLISHER,True,workspace)
+            self.assertEqual(result['status'],'imported',result);self.assertEqual(result['notes'],4);self.assertEqual(result['privateDenied'],4)
+            live=[json.loads(p.read_text(encoding='utf-8')) for p in (workspace/'notes').glob('*.json')]
+            trash=[json.loads(p.read_text(encoding='utf-8')) for p in (workspace/'trash').glob('*.json')]
+            self.assertEqual(len(live),3);self.assertEqual(len(trash),1);self.assertEqual(trash[0]['title'],'Other page')
+            page=next(n for n in live if n['title']=='Synthetic page');self.assertIn('"noteBackground": "blue"',json.dumps(page))
+            policy=json.loads((workspace/'ai-private.json').read_text(encoding='utf-8'));self.assertIn(trash[0]['id'],policy['noteIds'])
+            (workspace/'agent-access.json').write_text(json.dumps({'enabled':True,'allowHosted':True,'folderIds':policy['folderIds']}),encoding='utf-8')
+            for hosted in (False,True):self.assertIn('AI_PRIVATE_NOTE',mcp(workspace,'get_note',{'id':trash[0]['id']},hosted))
+            self.assertEqual(source.read_bytes(),before);self.assertFalse((workspace/'.noted-private-import-incomplete').exists())
+
     @unittest.skipUnless(PUBLISHER.exists() and AGENT.exists(),'Build the native importer and matching MCP companion first')
     def test_real_native_validate_publish_all_audiences_deny_and_original_archive_roundtrip(self):
         with tempfile.TemporaryDirectory(prefix='noted-private-fixture-') as tmp:

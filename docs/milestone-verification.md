@@ -22,7 +22,7 @@ Current UI: **Format with AI → Describe change → Generate proposal → visua
 
 A real inexpensive reference computer has not been available. The connected development PC and throttling are not substitutes. Whole-app startup/memory/input budgets and physical key-to-paint acceptance remain pending; the existing benchmark runner/fixture kit are available. No low-end performance pass is claimed.
 
-The hosted chat has no live Noted connection. Private tunnel/account/workspace availability, an approved runtime credential and installation/approval of the hosted plugin remain prerequisites. None were created or enabled. Personal default sharing remains off. A local Codex configuration alone does not connect this chat.
+The hosted chat has no live Noted connection. Private tunnel/account/workspace availability, an approved runtime credential and installation/approval of the hosted plugin remain prerequisites. None were created or enabled. Disposable test workspaces start unshared; existing personal sharing settings are not changed by these checks. A local Codex configuration alone does not connect this chat.
 
 
 Next product milestones: try user-chosen exported copies after reviewing the supported dialect/size limits; add richer attachment access and source-version fixtures; decide whether to resume subscription send controls; finish the hosted account/plugin setup if available; then choose reference hardware, release budgets, license and signing/installer distribution.
@@ -37,3 +37,19 @@ Passive polling checks local job/proposal status while its dialog is open and do
 Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.
 
 Latest simplified-formatting validation: 165 frontend tests, 85 native tests passed (four optional tests ignored), production frontend/Windows builds passed, and cached plus real synthetic generation flows passed native visual comparison, Apply/Undo, Reject, Close/reopen, stale rejection and retry. The real test used an explicit Generate click with no personal note or sharing changes. Details: ai-formatting.md; ignored evidence: output/simple-ai-*.log.
+
+
+### Private Logseq presentation checkpoint — November 4, 2026
+
+The importer now resolves default-property background references to a strict local palette/hex attribute and maps recycled pages to native Trash. Original source bytes, UUID mappings and hard AI denial survive source recovery, backup/restore and restoring a page from Trash. Unknown CSS, recycled individual block subtrees, unsupported attachments and live macros still block publication. Literal macro/script examples in Markdown code remain inert content. The bounded diagnostic tool reports fixed categories only and fails closed on changed source assets; it never displays source names, text, private paths or records.
+
+Verified with synthetic fixtures only:
+
+- Final frontend suite: **177 passed**, using `node --experimental-strip-types --test --test-concurrency=1 src/*.test.ts`. A prior concurrent run reached the existing QuickJS wall-clock guard under load; its deadline was not relaxed. This is not inexpensive-hardware certification.
+- Native desktop suite: **101 passed, four optional model/corpus tests ignored**.
+- Graph/native-CLI import fixtures: **13 passed**; immutable snapshot fixtures: **10 passed**; counts-only diagnostic fixtures: **four passed**.
+- Actual Windows release: palette background rendered; formatting/component requests refused before any client call; lock-owned publication added a second fixture batch; its recycled page restored from Trash and all eight notes stayed AI-denied. Optional sharing remained unchanged.
+- Light and dark rendered palette foreground **and link** contrast: **12.97:1** on the blue reference fixture. The rendered review found and fixed a theme-link color clash. Palette colors are Noted's local equivalents, not a claim to reproduce arbitrary Logseq custom CSS.
+- Production TypeScript/Vite and Windows release builds passed. Existing Vite chunk-size notice remains. Ignored evidence: `output/private-presentation-*.log`, `private-background-tests.log`, `private-diagnostic-tests.log`, `private-palette-qa.log` and fixture screenshots under `output/playwright/`.
+
+The selected personal import is still blocked by unavailable asset bytes and unsupported attachment/live-content semantics. No personal notes or import folder were published, no source file was modified, no private content was inspected by AI, and no hosted credential/access was enabled. Obtain a complete asset copy from the same snapshot before retrying; additional format adapters or an explicit local fidelity-review choice are still necessary. Full private-source counters stay out of this repository. See `logseq-sqlite.md` for the exact conversion boundary.

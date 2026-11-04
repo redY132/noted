@@ -43,6 +43,8 @@ struct Page {
     id: String,
     title: String,
     source_id: u64,
+    #[serde(default)]
+    trashed: bool,
     created_at: Option<String>,
     updated_at: Option<String>,
     #[serde(default)]
@@ -58,6 +60,8 @@ struct Block {
     markdown: String,
     asset: Option<Asset>,
     display: String,
+    #[serde(default)]
+    background: Option<String>,
     heading: Option<u64>,
     language: String,
     checked: Option<bool>,
@@ -124,6 +128,8 @@ struct Pending {
 struct Manifest {
     folder_id: String,
     note_ids: Vec<String>,
+    #[serde(default)]
+    trash_ids: BTreeSet<String>,
     source: SourceRecord,
     assets: Vec<SourceRecord>,
     files: Vec<Entry>,
@@ -435,6 +441,19 @@ fn block(
             _ => return Err("GRAPH_VISUAL_ADAPTER_REQUIRED".into()),
         }
     };
+    if let Some(color) = &b.background {
+        if !crate::store::valid_background(color) {
+            return Err("GRAPH_VISUAL_ADAPTER_REQUIRED".into());
+        }
+        for node in &mut content {
+            if !["paragraph", "heading", "codeBlock", "blockquote", "table"]
+                .contains(&node["type"].as_str().unwrap_or(""))
+            {
+                return Err("GRAPH_VISUAL_ADAPTER_REQUIRED".into());
+            }
+            node["attrs"]["noteBackground"] = json!(color);
+        }
+    }
     content.extend(properties(&b.properties, &b.id, props)?);
     if !b.children.is_empty() {
         let mut items = vec![];
@@ -570,6 +589,14 @@ fn stage(bundle: &Bundle, path: &Path) -> Result<Manifest> {
         store
             .commit(n)
             .map_err(|_| "GRAPH_NATIVE_VALIDATION_FAILED")?;
+        if p.trashed {
+            let saved = store
+                .load_note(&p.id)
+                .map_err(|_| "GRAPH_NATIVE_VALIDATION_FAILED")?;
+            store
+                .trash_note(&saved.id, saved.revision, &saved.revision_token)
+                .map_err(|_| "GRAPH_RECYCLE_ADAPTER_REQUIRED")?;
+        }
         summary.notes += 1;
     }
     if bundle.counts.get("pages") != Some(&(summary.notes as u64))
@@ -591,7 +618,7 @@ fn stage(bundle: &Bundle, path: &Path) -> Result<Manifest> {
     let mapping: Vec<_> = bundle
         .pages
         .iter()
-        .map(|p| json!({"sourceEntity":p.source_id,"noteId":p.id}))
+        .map(|p| json!({"sourceEntity":p.source_id,"noteId":p.id,"trashed":p.trashed}))
         .collect();
     let filename = Path::new(&source.path)
         .file_name()
@@ -669,13 +696,24 @@ fn stage(bundle: &Bundle, path: &Path) -> Result<Manifest> {
     }
     summary.source_unchanged = true;
     summary.sidecars_unchanged = true;
+    let trash_ids: BTreeSet<_> = bundle
+        .pages
+        .iter()
+        .filter(|p| p.trashed)
+        .map(|p| p.id.clone())
+        .collect();
     let mut files = vec![];
     for (dir, names) in [
         (
             "notes",
             ids.iter()
+                .filter(|id| !trash_ids.contains(*id))
                 .map(|id| format!("{id}.json"))
                 .collect::<Vec<_>>(),
+        ),
+        (
+            "trash",
+            trash_ids.iter().map(|id| format!("{id}.json")).collect(),
         ),
         ("folders", vec![format!("{}.json", folder.id)]),
         (
@@ -719,6 +757,7 @@ fn stage(bundle: &Bundle, path: &Path) -> Result<Manifest> {
     Ok(Manifest {
         folder_id: folder.id,
         note_ids: ids.into_iter().collect(),
+        trash_ids,
         source,
         assets: asset_sources,
         files,
@@ -728,7 +767,7 @@ fn stage(bundle: &Bundle, path: &Path) -> Result<Manifest> {
 fn valid_entry(path: &str, batch: &str) -> bool {
     let parts: Vec<_> = path.split('/').collect();
     match parts.as_slice() {
-        ["notes" | "folders", name] => name
+        ["notes" | "trash" | "folders", name] => name
             .strip_suffix(".json")
             .is_some_and(|id| valid_id(id).is_ok()),
         ["assets", owner, name] => {
@@ -760,6 +799,9 @@ fn finish(store: &mut Store, pending: Pending) -> Result<Summary> {
     }
     let m: Manifest = serde_json::from_slice(&bytes).map_err(|_| INVALID)?;
     valid_id(&m.folder_id).map_err(|_| INVALID)?;
+    if m.trash_ids.iter().any(|id| !m.note_ids.contains(id)) {
+        return Err(INVALID.into());
+    }
     source_ok(&m.source)?;
     for source in &m.assets {
         source_ok(source)?;
@@ -807,9 +849,27 @@ fn finish(store: &mut Store, pending: Pending) -> Result<Summary> {
     // All IDs are already denied. Canonical publication stays hidden behind the
     // incomplete marker until native validation/index reconciliation succeeds.
     for id in &m.note_ids {
-        store
-            .load_note(id)
-            .map_err(|_| "GRAPH_NATIVE_VALIDATION_FAILED")?;
+        if m.trash_ids.contains(id) {
+            let mut n: Note = serde_json::from_slice(&read(
+                &store.root.join("trash").join(format!("{id}.json")),
+                8 * 1024 * 1024,
+            )?)
+            .map_err(|_| INVALID)?;
+            if n.id != *id || store.root.join("notes").join(format!("{id}.json")).exists() {
+                return Err(INVALID.into());
+            }
+            if let Some(document) = &n.document {
+                n.content = crate::document::project(document)
+                    .map_err(|_| "GRAPH_NATIVE_VALIDATION_FAILED")?;
+            }
+            store
+                .validate(&n)
+                .map_err(|_| "GRAPH_NATIVE_VALIDATION_FAILED")?;
+        } else {
+            store
+                .load_note(id)
+                .map_err(|_| "GRAPH_NATIVE_VALIDATION_FAILED")?;
+        }
     }
     store
         .rebuild_index()
@@ -905,6 +965,47 @@ mod tests {
         let bundle = root.join("bundle.json");
         fs::write(&bundle, serde_json::to_vec(&value).unwrap()).unwrap();
         (source, bundle, serde_json::from_value(value).unwrap())
+    }
+    #[test]
+    fn recycled_pages_stay_private_through_backup_and_restore_from_trash() {
+        let t = tempfile::tempdir().unwrap();
+        let (_, bundle, _) = fixture(t.path());
+        let mut value: Value = serde_json::from_slice(&fs::read(&bundle).unwrap()).unwrap();
+        value["pages"][0]["trashed"] = json!(true);
+        value["pages"][0]["children"][0]["background"] = json!("yellow");
+        fs::write(&bundle, serde_json::to_vec(&value).unwrap()).unwrap();
+        let root = t.path().join("workspace");
+        let mut store = Store::open(&root).unwrap();
+        assert!(store.import_private_bundle(&bundle).unwrap().imported);
+        assert!(store.list_notes().unwrap().is_empty());
+        let id = store.list_trash().unwrap()[0].id.clone();
+        assert!(ai_privacy::ensure_note(&root, &id).is_err());
+        let backup = t.path().join("recycled.noted-backup");
+        let snapshot = store.create_backup(&backup).unwrap();
+        let copy = t.path().join("copy");
+        crate::backup::restore_backup(&backup, &copy, &snapshot.digest).unwrap();
+        let mut restored = Store::open(&copy).unwrap();
+        assert_eq!(restored.list_trash().unwrap()[0].id, id);
+        let note = restored.restore_note(&id).unwrap();
+        assert!(serde_json::to_string(&note.content)
+            .unwrap()
+            .contains("noteBackground"));
+        assert!(ai_privacy::ensure_note(&copy, &id).is_err());
+    }
+    #[test]
+    fn presentation_rejects_css_payload_before_any_canonical_publication() {
+        let t = tempfile::tempdir().unwrap();
+        let (_, bundle, _) = fixture(t.path());
+        let mut value: Value = serde_json::from_slice(&fs::read(&bundle).unwrap()).unwrap();
+        value["pages"][0]["children"][0]["background"] = json!("url(https://invalid.test/CANARY)");
+        fs::write(&bundle, serde_json::to_vec(&value).unwrap()).unwrap();
+        let mut store = Store::open(t.path().join("workspace")).unwrap();
+        assert_eq!(
+            store.import_private_bundle(&bundle).unwrap_err(),
+            "GRAPH_VISUAL_ADAPTER_REQUIRED"
+        );
+        assert!(store.list_notes().unwrap().is_empty());
+        assert!(store.list_trash().unwrap().is_empty());
     }
     #[test]
     fn validated_publication_preserves_existing_notes_source_and_backup_privacy() {

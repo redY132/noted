@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime,json,re,uuid
 from pathlib import Path
 from logseq_sqlite_snapshot import keyword,mapping,token,reject,fingerprint
+from logseq_values import background_color,visible_markup
 
 PAGE_TAGS={'logseq.class/Page','logseq.class/Journal','logseq.class/Tag','logseq.class/Property'}
 STRUCTURAL={'block/title','block/raw-title','block/name','block/uuid','block/page','block/parent','block/order','block/created-at','block/updated-at','block/tx-id','block/format','block/collapsed?'}
@@ -71,8 +72,9 @@ def convert(datoms,schema,asset_root=None,asset_audit=None):
     authored={e for e in entities if not builtin(e) and ('block/title' in entities[e] or 'block/raw-title' in entities[e] or 'logseq.property.asset/type' in entities[e])}
     if not authored:reject('NO_SUPPORTED_AUTHORED_NODES')
     if len(authored)>50000:reject('GRAPH_NODE_LIMIT')
-    # Fixed-code blockers preserve fidelity; do not convert unavailable assets,
-    # deleted nodes, dynamic embeds/queries or unsupported visual types silently.
+    # Fixed-code blockers preserve fidelity. Recycled pages use native Trash;
+    # recycled block subtrees need a distinct restore-position adapter.
+    page_candidates={e for e in authored if tags(e)&PAGE_TAGS or ('block/name' in entities[e] and one(e,'block/page') is None) or (one(e,'block/page') is None and one(e,'block/parent') is None)}
     counts={'pages':0,'blocks':len(authored),'properties':0,'references':0,'assets':0,'unsupportedVisuals':0,'recycledNodes':0,'dynamicNodes':0}
     assets=[e for e,fields in entities.items() if not builtin(e) and 'logseq.property.asset/type' in fields]
     counts['assets']=len(assets)
@@ -168,22 +170,28 @@ def convert(datoms,schema,asset_root=None,asset_audit=None):
                 if extension in {'png','jpg','jpeg','webp','gif'}:
                     asset_data[e]={**checked,'mime':{'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif'}[extension]}
     counts['missingRequiredAssets']=len(required_assets-{e for e in resolved_asset_ids})
+    counts['recycledBlocks']=0;counts['backgroundStyles']=0
     for e in authored:
-        if one(e,'logseq.property/deleted-at') is not None:counts['recycledNodes']+=1
+        if one(e,'logseq.property/deleted-at') is not None:
+            counts['recycledNodes']+=1
+            if e not in page_candidates:counts['recycledBlocks']+=1
         display=keyword(one(e,'logseq.property.node/display-type'))
         if display not in (None,'code','quote'):counts['unsupportedVisuals']+=1
-        if one(e,'logseq.property/background-color') is not None:counts['unsupportedVisuals']+=1
+        background=one(e,'logseq.property/background-color')
+        if background is not None:
+            if background_color(entities,background) is None or e in page_candidates:counts['unsupportedVisuals']+=1
+            else:counts['backgroundStyles']+=1
         title=one(e,'block/title',one(e,'block/raw-title',''))
         if not isinstance(title,str):counts['unsupportedVisuals']+=1
-        elif display!='code' and ('{{' in title or '<script' in title.lower() or '$$' in title):counts['dynamicNodes']+=1
+        elif display!='code':
+            visible=visible_markup(title)
+            if '{{' in visible or '<script' in visible.lower() or '$$' in visible:counts['dynamicNodes']+=1
     # This is diagnostics, not permission to discard a construct.
-    for key,code in [('assetChecksumMismatches','GRAPH_ASSET_CHECKSUM_MISMATCH'),('unsupportedAssetChecksums','GRAPH_ASSET_CHECKSUM_FORMAT_REQUIRED'),('missingAssetFiles','GRAPH_ASSET_FILES_REQUIRED'),('unsupportedAssetFormats','GRAPH_ATTACHMENT_ADAPTER_REQUIRED'),('externalAssets','GRAPH_EXTERNAL_ASSET_REVIEW_REQUIRED'),('recycledNodes','GRAPH_RECYCLE_ADAPTER_REQUIRED'),('unsupportedVisuals','GRAPH_VISUAL_ADAPTER_REQUIRED'),('dynamicNodes','GRAPH_DYNAMIC_ADAPTER_REQUIRED')]:
+    for key,code in [('assetChecksumMismatches','GRAPH_ASSET_CHECKSUM_MISMATCH'),('unsupportedAssetChecksums','GRAPH_ASSET_CHECKSUM_FORMAT_REQUIRED'),('missingAssetFiles','GRAPH_ASSET_FILES_REQUIRED'),('unsupportedAssetFormats','GRAPH_ATTACHMENT_ADAPTER_REQUIRED'),('externalAssets','GRAPH_EXTERNAL_ASSET_REVIEW_REQUIRED'),('recycledBlocks','GRAPH_RECYCLE_ADAPTER_REQUIRED'),('unsupportedVisuals','GRAPH_VISUAL_ADAPTER_REQUIRED'),('dynamicNodes','GRAPH_DYNAMIC_ADAPTER_REQUIRED')]:
         if counts.get(key,0):
             error=__import__('logseq_sqlite_snapshot').Rejected(code);error.counts=counts;raise error
     if assets and len(asset_data)!=len(assets):reject('GRAPH_ASSET_ADAPTER_REQUIRED')
-    pages={e for e in authored if tags(e)&PAGE_TAGS or ('block/name' in entities[e] and one(e,'block/page') is None)}
-    for e in authored:
-        if one(e,'block/page') is None and one(e,'block/parent') is None:pages.add(e)
+    pages=page_candidates
     if not pages:reject('GRAPH_PAGE_IDENTITY_REQUIRED')
     def owner(e):
         seen=set();current=e
@@ -231,7 +239,7 @@ def convert(datoms,schema,asset_root=None,asset_audit=None):
             if a in STRUCTURAL:continue
             prop=idents.get(a)
             hidden=one(prop,'logseq.property/hide?',False) is True
-            internal=a.startswith('db/') or a.startswith('logseq.property.asset/') or a in {'logseq.property.node/display-type','logseq.property.code/lang','logseq.property/heading','logseq.property/built-in?'}
+            internal=a.startswith('db/') or a.startswith('logseq.property.asset/') or a in {'logseq.property.node/display-type','logseq.property.code/lang','logseq.property/heading','logseq.property/built-in?','logseq.property/background-color','logseq.property/deleted-at'} or a.startswith('logseq.property.recycle/')
             if hidden or internal:
                 counts['archivedProperties']=counts.get('archivedProperties',0)+len(values);continue
             if a=='block/tags':
@@ -267,12 +275,12 @@ def convert(datoms,schema,asset_root=None,asset_audit=None):
         if not isinstance(language,str) or len(language)>128:reject('GRAPH_VISUAL_ADAPTER_REQUIRED')
         status=ident(one(e,'logseq.property/status'))
         checked=True if status=='logseq.property/status.done' else False if status and status.startswith('logseq.property/status.') else None
-        return {'id':block_ids[e],'asset':asset_data.get(e),'markdown':one(e,'block/title',one(e,'block/raw-title','')),'display':keyword(one(e,'logseq.property.node/display-type')) or 'markdown','heading':heading,'language':language,'checked':checked,'properties':properties(e),'children':[node(c,depth+1) for c in children[e]]}
+        return {'id':block_ids[e],'asset':asset_data.get(e),'markdown':one(e,'block/title',one(e,'block/raw-title','')),'display':keyword(one(e,'logseq.property.node/display-type')) or 'markdown','background':background_color(entities,one(e,'logseq.property/background-color')),'heading':heading,'language':language,'checked':checked,'properties':properties(e),'children':[node(c,depth+1) for c in children[e]]}
     output=[]
     for p in sorted(pages):
         if len(label(p).encode('utf-8'))>1024:reject('GRAPH_TITLE_LIMIT')
         if p not in asset_data:visited.add(p)
-        output.append({'id':destinations[p],'title':label(p),'sourceId':p,'createdAt':source_date(p,'block/created-at'),'updatedAt':source_date(p,'block/updated-at'),'tags':[label(target(v)) for v in entities[p].get('block/tags',[]) if target(v) is not None and not builtin(target(v))],'blockId':block_ids[p],'properties':[] if p in asset_data else properties(p),'children':([node(p)] if p in asset_data else [node(e) for e in children[p]])})
+        output.append({'id':destinations[p],'title':label(p),'trashed':one(p,'logseq.property/deleted-at') is not None,'sourceId':p,'createdAt':source_date(p,'block/created-at'),'updatedAt':source_date(p,'block/updated-at'),'tags':[label(target(v)) for v in entities[p].get('block/tags',[]) if target(v) is not None and not builtin(target(v))],'blockId':block_ids[p],'properties':[] if p in asset_data else properties(p),'children':([node(p)] if p in asset_data else [node(e) for e in children[p]])})
     if visited!=authored:reject('GRAPH_UNACCOUNTED_AUTHORED_NODES')
     counts['blocks']+=sum(p in asset_data for p in pages)
     counts['pages']=len(output);counts['references']=len(references)

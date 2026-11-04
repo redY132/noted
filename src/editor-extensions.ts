@@ -15,6 +15,7 @@ import { DocumentOrder } from './document-editor.ts';
 import { SchemaPresentation } from './document-schema.ts';
 import { InteractiveComponent } from './interactive-components.ts';
 import { AssetClipboard } from './asset-clipboard.ts';
+import { NoteBackground } from './note-background.ts';
 
 export const MAX_INDENT = 8;
 export const INDENT_STEP_EM = 2;
@@ -196,6 +197,7 @@ export function createEditorExtensions(getSchemaId: () => SchemaId = () => 'defa
     SchemaIndentation.configure({ getSchemaId }),
     DocumentOrder,
     SchemaPresentation,
+    NoteBackground,
     NotePanel,
     LocalImage.configure(componentOptions),
     InteractiveComponent.configure(componentOptions),

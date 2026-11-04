@@ -38,7 +38,7 @@ def _run(source,node,publisher,publish=False,workspace=None,asset_root=None,asse
     except Rejected as error:
         counts=getattr(error,'counts',{})
         # Error object payload is not serialized; only known counter keys survive.
-        counts={k:v for k,v in counts.items() if k in {'pages','blocks','properties','references','assets','unsupportedVisuals','recycledNodes','dynamicNodes','missingAssetFiles','unsupportedAssetFormats','externalAssets','unavailableRemoteAssets','assetChecksumMismatches','unsupportedAssetChecksums','checksumResolvedAssets','requiredAssets','unreferencedAssetRecords','missingRequiredAssets'} and type(v) is int}
+        counts={k:v for k,v in counts.items() if k in {'pages','blocks','properties','references','assets','unsupportedVisuals','recycledNodes','dynamicNodes','missingAssetFiles','unsupportedAssetFormats','externalAssets','unavailableRemoteAssets','assetChecksumMismatches','unsupportedAssetChecksums','checksumResolvedAssets','requiredAssets','unreferencedAssetRecords','missingRequiredAssets','recycledBlocks','backgroundStyles'} and type(v) is int}
         return {'status':'blocked','code':error.code,'imported':False,**counts,'sourceUnchanged':getattr(reader,'source_unchanged',None),'sidecarsUnchanged':getattr(reader,'sidecars_unchanged',None),'noteContentDisclosed':False}
     except Exception:
         return {'status':'blocked','code':'PRIVATE_IMPORT_FAILED','imported':False,'sourceUnchanged':getattr(reader,'source_unchanged',None),'sidecarsUnchanged':getattr(reader,'sidecars_unchanged',None),'noteContentDisclosed':False}

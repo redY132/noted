@@ -784,6 +784,15 @@ fn valid_text_color(value: &Value) -> bool {
         })
 }
 
+pub(crate) fn valid_background(value: &str) -> bool {
+    [
+        "yellow", "red", "orange", "green", "blue", "purple", "pink", "gray",
+    ]
+    .contains(&value)
+        || value.len() == 7
+            && value.starts_with('#')
+            && value[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
 pub(crate) fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String>) -> Result<()> {
     if depth > 64 {
         return Err("Document nesting exceeds 64 levels".into());
@@ -852,6 +861,10 @@ pub(crate) fn validate_node(node: &Value, depth: usize, ids: &mut HashSet<String
                     kind == "doc" && crate::document::schema_reference(value).is_ok()
                 }
                 "schemaPolicy" => kind == "doc" && crate::document::schema_policy(value).is_ok(),
+                "noteBackground" => {
+                    ["paragraph", "heading", "codeBlock", "blockquote", "table"].contains(&kind)
+                        && (value.is_null() || value.as_str().is_some_and(valid_background))
+                }
                 "schemaStyle" => {
                     ["paragraph", "heading"].contains(&kind)
                         && crate::document::schema_style(value).is_ok()

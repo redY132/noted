@@ -19,7 +19,8 @@
     "bench:reference:kit": "node --experimental-strip-types scripts/build-reference-kit.mjs",
     "agent:dev:build": "cargo build --manifest-path src-tauri/Cargo.toml --no-default-features --bin noted-agent",
     "test:logseq-snapshot": "python -B -W error::ResourceWarning scripts/test_logseq_sqlite_snapshot.py",
-    "test:logseq-private": "python -B -W error::ResourceWarning scripts/test_logseq_private_import.py"
+    "test:logseq-private": "python -B -W error::ResourceWarning scripts/test_logseq_private_import.py",
+    "test:logseq-diagnostics": "python -B -W error::ResourceWarning scripts/test_logseq_diagnostics.py"
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
