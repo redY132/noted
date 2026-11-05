@@ -29,6 +29,10 @@ Additional features may support note-taking, memory retention, and reflection on
 
 ## Expressive notes and app customization
 
+### Active goal: dynamic navigation panel - November 5, 2026
+
+Replace the two independently opened sidebars with one adaptive navigation panel. One button opens the folder hierarchy, a selected folder's compact scrollable note popup and its floating graph. Note hover and keyboard focus highlight the corresponding graph node. Adapt the panel to its content and window, and add folder names and icons. Preserve navigation, accessibility and note behavior. This goal replaces the earlier independent folder/list visibility arrangement; other shell preferences still apply. See [the project goal and acceptance checks](docs/sidebar-goal.md).
+
 ### Approved minimal app shell — October 30, 2026
 
 The user approved a unified UI pass with a small System/Light/Dark and accent-color picker, neutral gray default interface and graphite accent. Theme colors affect chrome and default note colors while explicit document formatting, schemas, component appearance and geometry remain authored data. Remove the upper-left logo/name/tagline, decorative slogans, oversized empty branding and permanent writing hints; interface typography uses system sans-serif while document typography is preserved.
