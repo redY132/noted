@@ -29,9 +29,9 @@ Additional features may support note-taking, memory retention, and reflection on
 
 ## Expressive notes and app customization
 
-### Active goal: dynamic navigation panel - November 5, 2026
+### Implemented goal: dynamic navigation panel - November 5, 2026
 
-Replace the two independently opened sidebars with one adaptive navigation panel. One button opens the folder hierarchy, a selected folder's compact scrollable note popup and its floating graph. Note hover and keyboard focus highlight the corresponding graph node. Adapt the panel to its content and window, and add folder names and icons. Preserve navigation, accessibility and note behavior. This goal replaces the earlier independent folder/list visibility arrangement; other shell preferences still apply. See [the project goal and acceptance checks](docs/sidebar-goal.md).
+The two independently opened sidebars now form one adaptive navigation panel. Browse opens the folder hierarchy, a selected folder's compact scrollable note popup and its floating saved-connections graph. Note hover and keyboard focus highlight the corresponding graph node. The panel adapts to content and window size, supports folder rename/move and device-only icons, and preserves navigation, accessibility and note behavior. This replaces the earlier independent folder/list visibility arrangement; other shell preferences still apply. See [the completed project goal](docs/sidebar-goal.md), [behavior and verification](docs/sidebar-navigation.md), and the [anti-slop delivery report](docs/sidebar-antislop-checks.md).
 
 ### Approved minimal app shell — October 30, 2026
 

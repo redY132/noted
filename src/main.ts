@@ -35,6 +35,8 @@ import { applyLayoutPreferences, initializeShell, readLayout, shellTopbar, shell
 import './shell-ui.css';
 import './shell-motion.css';
 import './theme.css';
+import { initializeNavigation, navigationMarkup } from './navigation-panel';
+import './navigation-panel.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -44,19 +46,7 @@ applyLayoutPreferences(initialLayout);
 const schemaControl = editingMarkup.match(/<label class="schema-control">[\s\S]*?<\/label>/)?.[0] ?? '';
 const formattingMarkup = editingMarkup.replace(schemaControl,'').replace('<div class="formatbar"','<div id="formatting-tools" class="formatbar"');
 $('#app').innerHTML = `
-  <aside id="navigation-panel" class="sidebar" aria-label="Workspace navigation">
-    <button class="primary" id="new-note"><span>＋</span> New note <kbd>Ctrl N</kbd></button>
-    <nav class="navigation"><button class="nav-item selected" id="all-notes"><span>▤</span> All notes <small id="total-count">0</small></button><button class="nav-item" id="daily-note"><span>◷</span> Today’s note</button></nav>
-    <div class="section-label">YOUR FOLDERS<button id="add-folder" aria-label="Create folder" title="Create folder">＋</button></div>
-    <div id="folders" class="folders"></div><div class="library-actions"><button id="manage-folders">Manage folders</button><button id="open-trash">Trash</button><button id="open-review">Review notes</button><button id="open-agent">Agent access</button></div>
-    <div class="sidebar-bottom"><span class="local-dot"></span><span id="workspace-label">Local workspace</span><button id="workspace-info" aria-label="Workspace details" title="Workspace details">ⓘ</button></div>
-  </aside>
-  <section id="notes-panel" class="note-list-panel" aria-label="Notes">
-    <header class="list-heading"><div><h1 id="collection-title">All notes</h1></div><span class="count-pill" id="list-count">0</span></header>
-    <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search your notes…" aria-label="Search notes" /><kbd>/</kbd></label>
-    <div class="list-subheading"><span id="list-description">Recently written</span><span>↓</span></div>
-    <div id="note-list" class="note-list"></div>
-  </section>
+  ${navigationMarkup}
   <main class="workspace">
     ${shellTopbar}
     <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="recover-draft">Recover draft / keep both</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
@@ -78,6 +68,7 @@ $('#app').innerHTML = `
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
 let workspaceTotal = 0;
+let navigationUI: ReturnType<typeof initializeNavigation> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
@@ -113,8 +104,16 @@ $('#manage-folders').onclick=()=>library.open('folders');$('#open-trash').onclic
 
 initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
 initializeMigrationUI($('#workspace-migration-host'),{native:!browserPreview,api,flush,error});
-const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close()},initialLayout);
+const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close(),navigationChanged:open=>navigationUI?.setOpen(open)},initialLayout);
 const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});
+navigationUI = initializeNavigation($('#navigation-panel'), {
+  select: collection => { selectedFolder = collection; $<HTMLInputElement>('#search').value = ''; renderFolders(); void renderList(); },
+  open: async id => { await openNote(id); return session?.note.id === id; },
+  close: () => shell.setPanel('navigation', false),
+  focusEditor: () => editor?.view.focus(), edges: ids => api.edges(ids),
+});
+navigationUI.setOpen(shell.isOpen('navigation'));
+$('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
 let componentRuntime: ComponentRuntimeHost | null = null;
@@ -224,13 +223,7 @@ function folderPath(id: string | null): string {
 }
 function folderOptions() { return `<option value="">Unfiled</option>${folders.map(f => `<option value="${escape(f.id)}">${escape(folderPath(f.id))}</option>`).join('')}`; }
 function renderFolders() {
-  const roots = folders.filter(f => !f.parentId || !folders.some(p => p.id === f.parentId));
-  const seen = new Set<string>();
-  const row = (folder: Folder, depth: number): string => {
-    if (seen.has(folder.id)) return ''; seen.add(folder.id);
-    return `<button class="folder-row ${selectedFolder === folder.id ? 'selected' : ''}" data-folder="${escape(folder.id)}" style="--depth:${Math.min(depth, 8)}"><span aria-hidden="true">▱</span><span>${escape(folder.name)}</span></button>${folders.filter(f => f.parentId === folder.id).map(f => row(f, depth + 1)).join('')}`;
-  };
-  $('#folders').innerHTML = `<button class="folder-row ${selectedFolder === null ? 'selected' : ''}" data-folder=""><span>▱</span><span>Unfiled</span></button>${roots.map(f => row(f, 0)).join('')}${folders.length === 0 ? '<p class="folder-hint">Give your ideas a home.<br>Create your first folder above.</p>' : ''}`;
+  navigationUI?.setFolders(folders, selectedFolder);
   $('#note-folder').innerHTML = folderOptions();
   if (session) $<HTMLSelectElement>('#note-folder').value = session.note.folderId ?? '';
 }
@@ -243,13 +236,14 @@ async function renderList(reset = true) {
   }
   const generation = ++searchGeneration;
   const query = $<HTMLInputElement>('#search').value.trim();
+  navigationUI?.loading();
   let page;
   try {
     page = await api.pageNotes(query, selectedFolder === 'all' ? undefined : selectedFolder ?? '', reset ? 0 : listCursor ?? 0, 80);
     const countPage = !query && selectedFolder === 'all' ? page : await api.pageNotes('',undefined,0,1);
     if(generation===searchGeneration) {workspaceTotal=countPage.total;$('#total-count').textContent=String(workspaceTotal);}
   }
-  catch (reason) { if (generation === searchGeneration) error(reason); return; }
+  catch (reason) { if (generation === searchGeneration) { navigationUI?.failed(); error(reason); } return; }
   if (generation !== searchGeneration) return;
   if (connectionsUI.isDragging()) { void renderList(reset); return; }
   loadedList = reset ? page.items : [...loadedList, ...page.items];
@@ -260,6 +254,7 @@ async function renderList(reset = true) {
   $('#list-description').textContent = query ? 'Matching notes' : 'Recently written';
   $('#note-list').innerHTML = loadedList.map(n => `<div class="note-card-shell" data-note-target="${escape(n.id)}"><button type="button" class="note-card ${session?.note.id === n.id ? 'active' : ''}" data-note="${escape(n.id)}"><span class="note-card-title">${escape(n.title || 'Untitled')}</span><span class="note-card-location">${escape(folderPath(n.folderId))}</span><span class="note-card-bottom"><time>${new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time><span>${n.tags.slice(0, 2).map(t => `#${escape(t)}`).join(' ')}</span></span></button>${connectionHandle(n.id,n.title)}</div>`).join('') || `<div class="list-empty"><p>${query ? 'No matching notes.' : 'No notes.'}</p><small>${query ? 'Try a different word or folder.' : 'Create a note from the View menu.'}</small></div>`;
   if (listCursor !== null) $('#note-list').insertAdjacentHTML('beforeend', `<button class="show-more" id="show-more">Show more notes</button>`);
+  navigationUI?.setNotes(loadedList, page.total, session?.note.id ?? null);
 }
 function refreshMetadata() {
   if (!session) return;
@@ -322,7 +317,7 @@ async function navigate(action: () => Promise<Note>) {
   finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); }
 }
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
-async function newNote() { await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
+async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
 async function dailyNote() {
   const now = new Date(); const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   // Reconciliation can still be discovering an externally imported daily note.
@@ -335,7 +330,7 @@ async function dailyNote() {
     existing = page.items.find(note=>note.tags.includes(`daily:${date}`));
     cursor=page.nextCursor;
   } while (!existing && cursor!==null);
-  if (existing) { await openNote(existing.id); return; }
+  if (existing) { await openNote(existing.id); if (session?.note.id === existing.id) navigationUI?.noteOpened(); return; }
   await navigate(async () => {
     let folder = folders.find(f => f.name === 'Daily notes' && f.parentId === null);
     if (!folder) { folder = await api.createFolder('Daily notes', null); folders.push(folder); renderFolders(); }
@@ -343,6 +338,7 @@ async function dailyNote() {
     note.tags = ['daily', `daily:${date}`];
     return api.save(note, note.revision);
   });
+  if (session?.note.tags.includes(`daily:${date}`)) navigationUI?.noteOpened();
 }
 async function linkResults() {
   const note = session?.note; if (!note) return;
@@ -382,9 +378,8 @@ $('#copy-block-link').onclick=()=>{const id=editor&&currentBlockId(editor),note=
 $('#new-note').onclick = () => { void newNote(); };
 $('#empty-new').onclick = () => { void newNote(); };
 $('#daily-note').onclick = () => { void dailyNote().catch(error); };
-$('#all-notes').onclick = () => { selectedFolder = 'all'; $('#all-notes').classList.add('selected'); renderFolders(); void renderList(); };
-$('#folders').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-folder]'); if (!button) return; selectedFolder = button.dataset.folder || null; $('#all-notes').classList.remove('selected'); renderFolders(); void renderList(); };
-$('#note-list').onclick = event => { if ((event.target as HTMLElement).closest('#show-more')) { void renderList(false); return; } const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-note]'); if (button) void openNote(button.dataset.note!); };
+$('#all-notes').onclick = () => { selectedFolder = 'all'; navigationUI?.choose('all'); renderFolders(); void renderList(); };
+$('#note-list').onclick = event => { if ((event.target as HTMLElement).closest('#show-more')) { void renderList(false); return; } const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-note]'); if (button) void openNote(button.dataset.note!).then(() => { if (session?.note.id === button.dataset.note) navigationUI?.noteOpened(); }); };
 $('#search').oninput = () => { clearTimeout(searchTimer); searchGeneration++; searchTimer = setTimeout(() => { void renderList(); }, 180); };
 $('#note-title').oninput = () => { const title = $<HTMLInputElement>('#note-title').value; edit(n => { n.title = title; }); const handle=$<HTMLButtonElement>('#header-connection-handle [data-connect-source]'); handle.dataset.sourceTitle=title || 'Untitled'; handle.setAttribute('aria-label','Connections for '+(title || 'Untitled')); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
 $('#note-tags').oninput = () => { const tags = [...new Set($<HTMLInputElement>('#note-tags').value.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))]; edit(n => { n.tags = tags; }); };
@@ -439,7 +434,7 @@ $('#rebuild-index').onclick = async () => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void flush().catch(() => {}); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); if (!document.querySelector('dialog[open]')) void newNote(); }
-  if (event.key === '/' && !(event.target as HTMLElement).closest('input,textarea,[contenteditable],dialog')) { event.preventDefault(); shell.setPanel('notes',true); $('#search').focus(); }
+  if (event.key === '/' && !(event.target as HTMLElement).closest('input,textarea,[contenteditable],dialog')) { event.preventDefault(); shell.setPanel('navigation',true); navigationUI?.showNotes(); $('#search').focus(); }
 });
 window.addEventListener('beforeunload', event => { if (session?.dirty || session?.saving) { event.preventDefault(); event.returnValue = ''; } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) void flush().catch(() => {}); });

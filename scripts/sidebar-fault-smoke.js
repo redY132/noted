@@ -1,0 +1,34 @@
+async page => {
+  if (new URL(page.url()).origin !== 'http://127.0.0.1:1436') throw new Error('Isolated synthetic preview required');
+  const fixture = await page.evaluate(() => JSON.parse(localStorage.getItem('noted-sidebar-fixture') || 'null'));
+  if (!fixture) throw new Error('Synthetic fixture required');
+  await page.setViewportSize({ width: 1200, height: 800 });
+  const browse = page.getByRole('button', { name: 'Browse notes', exact: true });
+  if (await browse.getAttribute('aria-expanded') !== 'true') await browse.click();
+  for (const id of [fixture.project, fixture.research, fixture.observations]) await page.locator(`[data-folder="${id}"]`).click();
+  await page.waitForFunction(() => document.querySelector('#list-count')?.textContent === '95');
+  await page.evaluate(async () => { const { api } = await import('/src/api.ts'); window.__sidebarOriginalEdges = api.edges; api.edges = async () => { throw new Error('Synthetic graph failure'); }; });
+  await page.locator('#folder-graph-refresh').click();
+  await page.waitForFunction(() => document.querySelector('#folder-graph-summary')?.textContent.includes('could not load'));
+  await page.evaluate(async () => { const { api } = await import('/src/api.ts'); api.edges = window.__sidebarOriginalEdges; });
+  await page.locator('#folder-graph-refresh').click();
+  await page.waitForFunction(() => !document.querySelector('#folder-graph-summary')?.textContent.includes('could not load') && document.querySelectorAll('#folder-graph-canvas line').length > 0);
+  await page.evaluate(async () => { const { api } = await import('/src/api.ts'); window.__sidebarOriginalPage = api.pageNotes; api.pageNotes = async (...args) => { await new Promise(resolve => setTimeout(resolve, 500)); return window.__sidebarOriginalPage(...args); }; });
+  await page.locator(`[data-folder="${fixture.empty}"]`).click();
+  await page.waitForFunction(() => document.querySelector('#collection-status')?.textContent.includes('Loading notes') && !document.querySelector('#collection-status').hidden);
+  await page.waitForFunction(() => document.querySelector('#list-count')?.textContent === '0');
+  await page.evaluate(async () => { const { api } = await import('/src/api.ts'); api.pageNotes = window.__sidebarOriginalPage; });
+  await page.locator(`[data-folder="${fixture.observations}"]`).click(); await page.waitForFunction(() => document.querySelector('#list-count')?.textContent === '95');
+  await page.locator('#customize-folder').click();
+  await page.evaluate(async id => { const { api } = await import('/src/api.ts'); const folder = (await api.folders()).find(f => f.id === id); await api.updateFolder({ ...folder, name: 'Synthetic external edit' }, folder); }, fixture.observations);
+  await page.locator('[data-folder-edit-name]').fill('Synthetic stale draft'); await page.locator('[data-folder-save]').click();
+  await page.waitForFunction(() => document.querySelector('[data-library=folders] [role=status]')?.textContent.includes('changed'));
+  const preserved = await page.evaluate(async id => { const { api } = await import('/src/api.ts'); return (await api.folders()).find(f => f.id === id).name === 'Synthetic external edit'; }, fixture.observations);
+  if (!preserved) throw new Error('Stale folder settings overwrote the newer value');
+  await page.reload(); await page.waitForFunction(() => document.querySelectorAll('[data-folder]').length > 1);
+  if (await browse.getAttribute('aria-expanded') !== 'true') await browse.click();
+  for (const id of [fixture.project, fixture.research, fixture.observations]) await page.locator(`[data-folder="${id}"]`).click();
+  await page.locator('#customize-folder').click(); await page.locator('[data-folder-edit-name]').fill('Synthetic observation notebook'); await page.locator('[data-folder-save]').click();
+  await page.waitForFunction(() => !document.querySelector('[data-library=folders]').open);
+  return { passed: true, syntheticOnly: true, graphErrorAndRetry: true, visibleLoadingState: true, staleFolderDraftRefused: true, newerFolderValuePreserved: true };
+}

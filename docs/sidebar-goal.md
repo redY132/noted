@@ -1,6 +1,6 @@
 # Dynamic navigation panel
 
-Status: active project goal, requested November 5, 2026.
+Status: completed and verified November 5, 2026. See [behavior and verification](sidebar-navigation.md) and the [anti-slop delivery checks](sidebar-antislop-checks.md).
 
 Replace the two independently opened sidebars with one adaptive navigation panel controlled by a single button. Expand the folder hierarchy as the user navigates. Selecting a folder opens a compact, scrollable note list beside it, with the folder's graph floating in the available space to the right. Hovering or focusing a note title highlights its graph node. Adapt the panel to its content and the window, and support folder names and icons while preserving navigation, keyboard access and existing note behavior.
 

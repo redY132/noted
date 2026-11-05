@@ -10,11 +10,12 @@ function setup(){
  const ui=initializeShell({appearance,getEditor:()=>({view:{focus(){document.querySelector<HTMLElement>('#editor')!.focus();},dom:document.querySelector<HTMLElement>('#editor')!}}),newNote:()=>{calls++;},workspace:()=>{calls++;},closeTransient:()=>{closed++;}});
  return{dom,appearance,ui,get calls(){return calls;},get closed(){return closed;}};
 }
-test('minimal defaults and independent collapsed panels persist without recreating note content',()=>{
+test('one navigation control owns folders and notes without recreating note content',()=>{
  const h=setup(),editor=document.querySelector('#editor');
- assert.equal(document.querySelector<HTMLElement>('#navigation-panel')!.hidden,true);assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden,false);
+ assert.equal(document.querySelector<HTMLElement>('#navigation-panel')!.hidden,false);
+ assert.equal(document.querySelector('[data-panel-toggle=notes]'),null);assert.equal(document.querySelector('[data-panel-choice=notes]'),null);
  assert.equal(document.querySelector<HTMLElement>('#formatting-tools')!.hidden,true);assert.equal(document.querySelector('#connections-toggle'),null);assert.equal(document.querySelector('[data-panel-choice=connections]'),null);
- h.ui.setPanel('navigation',true);h.ui.setPanel('notes',false);h.ui.setPanel('formatting',true);
+ h.ui.setPanel('navigation',false);assert.equal(h.ui.isOpen('notes'),false);h.ui.setPanel('notes',true);assert.equal(h.ui.isOpen('navigation'),true);h.ui.setPanel('formatting',true);
  assert.equal(document.querySelector('#editor'),editor);assert.equal(editor!.textContent,'Original words');
  assert.deepEqual(readLayout(),h.ui.getPanels());assert.equal(document.querySelector('[data-panel-toggle="formatting"]')!.getAttribute('aria-controls'),'formatting-tools');
  h.appearance.destroy();h.dom.window.close();
@@ -32,7 +33,7 @@ test('focus mode restores the normal layout and does not overwrite persisted pan
  h.appearance.destroy();h.dom.window.close();
 });
 test('restricted storage falls back to default layout without preventing startup',()=>{
- assert.deepEqual(readLayout({getItem(){throw Error('Blocked');}}),{navigation:false,notes:true,formatting:false,components:false,details:false,footer:false});
+ assert.deepEqual(readLayout({getItem(){throw Error('Blocked');}}),{navigation:true,notes:true,formatting:false,components:false,details:false,footer:false});
 });
 test('theme reset and layout reset are independent; malformed stored layouts fall back safely',()=>{
  const h=setup();h.appearance.setMode('dark');h.appearance.setAccent('#ffffff');h.ui.setPanel('notes',false);
@@ -53,9 +54,9 @@ test('hiding a focused toolbar restores editor focus without changing transient 
 
 test('legacy layout preferences preserve unrelated panels and discard obsolete connection visibility',()=>{
  const h=setup();localStorage.setItem('noted-layout-v1',JSON.stringify({version:1,panels:{navigation:true,notes:false,formatting:true,connections:true}}));
- assert.deepEqual(readLayout(),{navigation:true,notes:false,formatting:true,components:false,details:false,footer:false});
+ assert.deepEqual(readLayout(),{navigation:true,notes:true,formatting:true,components:false,details:false,footer:false});
  assert.equal('connections' in readLayout(),false);
- h.ui.setPanel('details',true);const saved=JSON.parse(localStorage.getItem(layoutKey)!);assert.equal(saved.version,2);assert.equal('connections' in saved.panels,false);
+ h.ui.setPanel('details',true);const saved=JSON.parse(localStorage.getItem(layoutKey)!);assert.equal(saved.version,3);assert.equal('connections' in saved.panels,false);
  h.appearance.destroy();h.dom.window.close();
 });
 test('formatting toggle preserves mouse selection and exiting popovers become inert during motion',()=>{
