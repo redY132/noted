@@ -6,6 +6,7 @@ export type Collection = 'all' | string | null;
 const escape = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export const navigationMarkup = `
 <aside id="navigation-panel" class="dynamic-navigation" aria-label="Workspace navigation">
+ <svg class="directory-branch" aria-hidden="true"><path/></svg>
  <div class="navigation-tree">
   <header class="navigation-heading"><span>Browse notes</span><button type="button" id="navigation-close" aria-label="Close navigation">×</button></header>
   <button type="button" class="primary" id="new-note">New note <kbd>Ctrl N</kbd></button>
@@ -15,7 +16,7 @@ export const navigationMarkup = `
   <div class="library-actions"><button type="button" id="manage-folders">Manage folders</button><button type="button" id="open-trash">Trash</button><button type="button" id="open-review">Review notes</button><button type="button" id="open-agent">Agent access</button></div>
   <div class="sidebar-bottom"><span id="workspace-label">Local workspace</span><button type="button" id="workspace-info" aria-label="Workspace details" title="Workspace details">ⓘ</button></div>
  </div>
- <section id="notes-panel" class="collection-popup" aria-label="Notes">
+ <section id="notes-panel" class="collection-directory" aria-label="Notes">
   <header class="list-heading"><div><button type="button" id="navigation-back">Back to folders</button><h1 id="collection-title">All notes</h1><span id="list-description">Recently written</span></div><span id="list-count">0</span></header>
   <div class="collection-actions"><button type="button" id="customize-folder" hidden>Customize folder</button><button type="button" id="collection-new-note">New note</button></div>
   <label class="collection-search" for="search">Find in this collection<input id="search" type="search" placeholder="Search notes" aria-label="Search notes" autocomplete="off"></label>
@@ -103,7 +104,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
     if (focused && document.activeElement === document.body) root.querySelector<HTMLButtonElement>(`[data-folder-graph-note="${focused}"]`)?.focus({ preventScroll: true });
     const count = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).length;
     $('#folder-graph-summary').textContent = edgeError ? 'Connections could not load. Refresh to retry.' : !notes.length ? 'This collection has no notes yet.' : `${shown.length} of ${total} notes · ${count} saved ${count === 1 ? 'connection' : 'connections'}${loading ? ' · Updating' : ''}`;
-    canvas.hidden = !notes.length; paintHighlight();
+    paintHighlight();
   }
   function updateGraph(force = false) {
     if (!open || popup.hidden) return;
@@ -135,40 +136,35 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
   function position() {
     if (!open) return;
     const depth = Math.max(0, ...[...root.querySelectorAll<HTMLElement>('[data-folder-depth]')].map(el => Number(el.dataset.folderDepth)));
-    const longest = Math.max(12, ...folders.filter(f => root.querySelector(`[data-folder="${f.id}"]`)).map(f => Math.min(f.name.length, 23)));
-    root.style.setProperty('--navigation-content-width', `${Math.min(292, Math.max(204, 82 + longest * 6 + Math.min(depth, 8) * 10))}px`);
-    if (innerWidth < 700) {
-      const entering = root.dataset.navigationMode !== 'stacked';
-      root.dataset.navigationMode = 'stacked'; updateGraph();
-      if (entering && !popup.hidden) requestAnimationFrame(() => popup.scrollIntoView?.({ block: 'start' }));
-      return;
-    }
-    if (root.dataset.navigationMode === 'stacked') root.scrollTop = 0;
-    root.dataset.navigationMode = 'floating';
+    root.style.setProperty('--folder-depth-space', `${Math.min(depth, 8) * 6}px`);
+    const compact = innerWidth < 800 || parseFloat(window.getComputedStyle(root).fontSize) > 20;
+    root.dataset.navigationMode = compact ? 'compact' : 'docked';
     const anchor = selected === 'all' ? $('#all-notes') : root.querySelector<HTMLElement>(`[data-folder="${selected ?? ''}"]`);
-    const rect = root.getBoundingClientRect(), anchorRect = (anchor ?? root).getBoundingClientRect();
-    const available = innerWidth - rect.right - 24;
-    const popupWidth = Math.max(224, Math.min(306, available * .53));
-    popup.style.width = `${popupWidth}px`; popup.style.left = `${rect.right + 10}px`;
-    const top = Math.max(60, Math.min(anchorRect.top - 6, innerHeight - popup.offsetHeight - 12));
-    popup.style.top = `${top}px`;
-    graph.style.left = `${rect.right + popupWidth + 22}px`;
-    graph.style.width = `${Math.max(100, Math.min(410, innerWidth - rect.right - popupWidth - 34))}px`;
-    graph.style.top = `${Math.max(60, Math.min(top, innerHeight - graph.offsetHeight - 12))}px`;
+    const branch = root.querySelector<SVGSVGElement>('.directory-branch')!, path = branch.querySelector('path')!;
+    const rect = root.getBoundingClientRect(), anchorRect = anchor?.getBoundingClientRect(), listRect = $('#note-list').getBoundingClientRect();
+    const clip = anchor?.closest('#folders')?.getBoundingClientRect();
+    branch.setAttribute('viewBox', `0 0 ${root.clientWidth} ${root.clientHeight}`);
+    const hidden = compact || !anchorRect || !!clip && (anchorRect.bottom <= clip.top || anchorRect.top >= clip.bottom);
+    branch.toggleAttribute('hidden', hidden);
+    if (!hidden && anchorRect) {
+      const x = anchorRect.right - rect.left, y = Math.max(clip?.top ?? 0, Math.min(anchorRect.top + anchorRect.height / 2, clip?.bottom ?? innerHeight)) - rect.top;
+      const endX = listRect.left - rect.left + 12, endY = listRect.top - rect.top + 1, turnX = (x + endX) / 2;
+      path.setAttribute('d', `M${x} ${y}H${turnX}V${endY}H${endX}`);
+    }
     updateGraph();
   }
   function layout() { cancelAnimationFrame(frame); frame = requestAnimationFrame(position); }
   function resizeLayout() {
     layout();
-    if (innerWidth < 700 && open && !popup.hidden) requestAnimationFrame(() => {
-      root.scrollTop += popup.getBoundingClientRect().top - root.getBoundingClientRect().top - 1;
+    requestAnimationFrame(() => {
+      if (!open) return;
+      root.querySelector<HTMLElement>(selected === 'all' ? '#all-notes' : `[data-folder="${selected ?? ''}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     });
   }
   function showNotes() {
     if (!open) return;
     popup.hidden = graph.hidden = false; popup.inert = graph.inert = false;
     layout();
-    if (innerWidth < 700) requestAnimationFrame(() => { if (open && !popup.hidden) popup.scrollIntoView?.({ block: 'start' }); });
   }
   function hideNotes() {
     popup.hidden = graph.hidden = true; popup.inert = graph.inert = true;
@@ -181,7 +177,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
     function row(folder: Folder, depth: number): string {
       if (seen.has(folder.id)) return ''; seen.add(folder.id);
       const children = folders.filter(f => f.parentId === folder.id), expandedHere = expanded.has(folder.id);
-      return `<div class="folder-branch" data-folder-depth="${depth}" style="--depth:${Math.min(depth, 8)}"><div class="folder-line"><button type="button" class="folder-disclosure" data-folder-expand="${folder.id}" aria-label="${expandedHere ? 'Collapse' : 'Expand'} ${escape(folder.name)}" aria-expanded="${expandedHere}" ${children.length ? '' : 'disabled'}><span aria-hidden="true">${children.length ? expandedHere ? '⌄' : '›' : ''}</span></button><button type="button" class="folder-row ${selected === folder.id ? 'selected' : ''}" data-folder="${folder.id}" aria-current="${selected === folder.id}">${folderIconMarkup(folderAppearance.get(folder.id))}<span>${escape(folder.name)}</span></button></div>${expandedHere ? children.map(f => row(f, depth + 1)).join('') : ''}</div>`;
+      return `<div class="folder-branch" data-folder-depth="${depth}" style="--depth:${Math.min(depth, 8)}"><div class="folder-line"><button type="button" class="folder-disclosure" data-folder-expand="${folder.id}" aria-label="${expandedHere ? 'Collapse' : 'Expand'} ${escape(folder.name)}" aria-expanded="${expandedHere}" ${children.length ? '' : 'disabled'}><span aria-hidden="true">${children.length ? expandedHere ? '⌄' : '›' : ''}</span></button><button type="button" class="folder-row ${selected === folder.id ? 'selected' : ''}" data-folder="${folder.id}" aria-current="${selected === folder.id}" title="${escape(folder.name)}">${folderIconMarkup(folderAppearance.get(folder.id))}<span>${escape(folder.name)}</span></button></div>${expandedHere ? children.map(f => row(f, depth + 1)).join('') : ''}</div>`;
     }
     $('#folders').innerHTML = `<button type="button" class="folder-row unfiled ${selected === null ? 'selected' : ''}" data-folder="" aria-current="${selected === null}">${folderIconMarkup()}<span>Unfiled</span></button>${folders.filter(f => !f.parentId || !folders.some(p => p.id === f.parentId)).map(f => row(f, 0)).join('')}${folders.length ? '' : '<p class="folder-hint">Create a folder to organize your notes.</p>'}`;
     $('#all-notes').setAttribute('aria-current', String(selected === 'all'));
@@ -245,15 +241,16 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
   $('#folder-graph-nodes').addEventListener('focusin', event => highlight((event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null));
   $('#folder-graph-nodes').addEventListener('click', event => {
     const id = (event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote;
-    if (id) void options.open(id).then(success => { if (success) { hideNotes(); options.focusEditor(); } });
+    if (id) void options.open(id).then(success => { if (success) options.focusEditor(); });
   });
   root.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
       event.preventDefault(); options.close(); document.querySelector<HTMLElement>('[data-panel-toggle=navigation]')?.focus();
     }
   });
-  document.addEventListener('pointerdown', event => { if ((event.target as Element).closest('#editor,#note-title')) hideNotes(); });
   $('#folders').addEventListener('scroll', layout);
+  root.querySelector('.navigation-tree')!.addEventListener('scroll', layout);
+  popup.addEventListener('scroll', layout);
   window.addEventListener('resize', resizeLayout);
   const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(layout);
   observer?.observe(root.querySelector('.navigation-tree')!); observer?.observe(popup); observer?.observe(canvas);
@@ -265,7 +262,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
     setNotes(value: NoteSummary[], count: number, current: string | null) { notes = value; total = count; active = current; highlighted = null; edgeKey = ''; popup.removeAttribute('aria-busy'); $('#collection-status').hidden = true; layout(); },
     loading() { popup.setAttribute('aria-busy', 'true'); $('#collection-status').hidden = false; $('#collection-status').textContent = 'Loading notes in this collection.'; },
     failed() { popup.removeAttribute('aria-busy'); $('#collection-status').hidden = false; $('#collection-status').textContent = 'Notes could not load. Select the collection again to retry.'; },
-    noteOpened() { hideNotes(); options.focusEditor(); },
+    noteOpened() { options.focusEditor(); },
     destroy() { observer?.disconnect(); window.removeEventListener('resize', resizeLayout); clearTimeout(edgeTimer); cancelAnimationFrame(frame); ++ticket; },
   };
 }

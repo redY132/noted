@@ -1,8 +1,8 @@
 # Dynamic navigation panel
 
-Status: completed and verified November 5, 2026. See [behavior and verification](sidebar-navigation.md) and the [anti-slop delivery checks](sidebar-antislop-checks.md).
+Status: corrected layout completed and verified November 5, 2026. See [behavior and verification](sidebar-navigation.md) and the [anti-slop delivery checks](sidebar-antislop-checks.md).
 
-Replace the two independently opened sidebars with one adaptive navigation panel controlled by a single button. Expand the folder hierarchy as the user navigates. Selecting a folder opens a compact, scrollable note list beside it, with the folder's graph floating in the available space to the right. Hovering or focusing a note title highlights its graph node. Adapt the panel to its content and the window, and support folder names and icons while preserving navigation, keyboard access and existing note behavior.
+Replace the two independently opened sidebars with one docked navigation panel controlled by a single button. It opens from the left and pushes the document right. Use one continuous background, with implicit areas defined by position and hover. Expand the folder hierarchy as the user navigates; selecting a folder draws a directory-like branch into its scrollable notes. Keep the graph visible on the right and give it most of the panel. Treat the proposed 15/10/50 split as approximate visual proportions, retaining space for the document without adding another navigation section. Hovering or focusing a note title highlights its graph node. Preserve folder customization, keyboard access and existing note behavior.
 
 Complete this goal when desktop and narrow-window checks cover nested folders, empty folders, long lists, resizing, mouse and keyboard highlighting, and folder customization. Keep the layout and interaction code easy to adjust in later design passes.
 

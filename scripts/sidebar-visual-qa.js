@@ -6,6 +6,7 @@ async page => {
   } else if (new URL(page.url()).origin !== 'http://127.0.0.1:1436') throw new Error('Synthetic preview required');
   const fixture = await page.evaluate(() => JSON.parse(localStorage.getItem('noted-sidebar-fixture') || 'null'));
   if (!fixture) throw new Error('Synthetic fixture required');
+  await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
   const browse = page.getByRole('button', { name: 'Browse notes', exact: true }), profiles = [];
   if (await browse.getAttribute('aria-expanded') !== 'true') await browse.click();
   await page.locator(`[data-folder="${fixture.project}"]`).click(); await page.locator(`[data-folder="${fixture.research}"]`).click(); await page.locator(`[data-folder="${fixture.observations}"]`).click();
@@ -56,6 +57,14 @@ async page => {
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; }); await page.waitForTimeout(250);
   const zoom = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, popupWidth: document.querySelector('#notes-panel').getBoundingClientRect().width }));
   if (zoom.overflow) throw new Error('Text zoom introduced horizontal overflow');
+  await page.locator('#search').focus();
+  await page.locator('#note-list [data-note]').first().focus();
+  const zoomAccess = await page.locator('#note-list [data-note]').first().evaluate(el => {
+    const r=el.getBoundingClientRect(), parent=document.querySelector('#notes-panel').getBoundingClientRect();
+    return r.top>=parent.top-1 && r.bottom<=parent.bottom+1 && r.right<=parent.right+1;
+  });
+  if (!zoomAccess) throw new Error('Text zoom made the note directory unreachable');
+  zoom.noteDirectoryReachable = zoomAccess;
   await page.screenshot({ path: 'output/playwright/sidebar-200-percent-text.png' });
   await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
   const customHover = [];

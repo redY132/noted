@@ -29,9 +29,9 @@ Additional features may support note-taking, memory retention, and reflection on
 
 ## Expressive notes and app customization
 
-### Implemented goal: dynamic navigation panel - November 5, 2026
+### Implemented correction: docked directory and persistent graph - November 5, 2026
 
-The two independently opened sidebars now form one adaptive navigation panel. Browse opens the folder hierarchy, a selected folder's compact scrollable note popup and its floating saved-connections graph. Note hover and keyboard focus highlight the corresponding graph node. The panel adapts to content and window size, supports folder rename/move and device-only icons, and preserves navigation, accessibility and note behavior. This replaces the earlier independent folder/list visibility arrangement; other shell preferences still apply. See [the completed project goal](docs/sidebar-goal.md), [behavior and verification](docs/sidebar-navigation.md), and the [anti-slop delivery report](docs/sidebar-antislop-checks.md).
+The approved correction replaces floating popups with one docked navigation surface. Browse opens it from the left and pushes the document right. Folders lead through directory-like branches into scrollable notes, with an always-visible saved-connections graph taking most of the right side. One background, position and row hover define the areas; there are no boxed surfaces or dividers. The requested 15/10/50 proportions guide the visual balance rather than fixed percentages; remaining space belongs to the document and usable controls. Note hover and keyboard focus highlight the corresponding graph node. Folder rename/move, device-only icons, navigation and accessibility remain. Narrow windows and large text reflow above the document without covering it. See [the project goal](docs/sidebar-goal.md), [behavior and verification](docs/sidebar-navigation.md), and the [anti-slop delivery report](docs/sidebar-antislop-checks.md).
 
 ### Approved minimal app shell — October 30, 2026
 

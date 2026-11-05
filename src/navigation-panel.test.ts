@@ -8,6 +8,10 @@ const id = (n: number) => `11111111-1111-4111-8111-${String(n).padStart(12, '0')
 const note = (n: number): NoteSummary => ({ id: id(n), title: `Synthetic note ${n}`, folderId: id(1), tags: [], revision: 1, createdAt: '2026-11-05T00:00:00Z', updatedAt: '2026-11-05T00:00:00Z' });
 const folders: Folder[] = [{ id: id(1), name: 'Parent', parentId: null }, { id: id(2), name: 'Child', parentId: id(1) }, { id: id(3), name: 'Leaf', parentId: id(2) }, { id: id(4), name: 'Empty', parentId: null }];
 const delay = (ms = 120) => new Promise(resolve => setTimeout(resolve, ms));
+async function waitUntil(condition: () => boolean) {
+  const deadline = Date.now() + 5000;
+  while (!condition()) { assert.ok(Date.now() < deadline, 'Navigation fixture did not reach the expected state'); await delay(10); }
+}
 function setup(edges: (ids: string[]) => Promise<PairState[]> = async () => []) {
   const dom = new JSDOM(`${navigationMarkup}<button data-panel-toggle="navigation">Browse</button><main><div id="editor" tabindex="0">Synthetic writer</div></main>`, { url: 'http://localhost', pretendToBeVisual: true });
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, localStorage: dom.window.localStorage, innerWidth: 1200, innerHeight: 800, requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window) })) Object.defineProperty(globalThis, key, { value, configurable: true });
@@ -46,17 +50,33 @@ test('long lists keep the focused note in the bounded graph and survive an async
     h.ui.setOpen(false); assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.inert, true);
   } finally { h.close(); }
 });
+test('opening a note or returning to the editor keeps the directory and graph visible until navigation closes', async () => {
+  const h = setup();
+  try {
+    h.ui.setNotes([note(100)], 1, null); await delay();
+    document.querySelector<HTMLButtonElement>('[data-folder-graph-note]')!.click(); await delay(10);
+    h.ui.noteOpened();
+    document.querySelector('#editor')!.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden, false);
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, false);
+    assert.equal(document.activeElement!.id, 'editor');
+    h.ui.setOpen(false);
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.inert, true);
+    h.ui.setOpen(true);
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, false);
+  } finally { h.close(); }
+});
 test('late graph results cannot overwrite another collection and failed requests can retry', async () => {
   const pending: Array<{ resolve(value: PairState[]): void; reject(error: Error): void }> = [];
   const h = setup(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
   try {
-    h.ui.setNotes([note(100), note(101)], 2, null); await delay();
-    h.ui.setNotes([note(200)], 1, null); await delay();
+    h.ui.setNotes([note(100), note(101)], 2, null); await waitUntil(() => pending.length >= 1);
+    h.ui.setNotes([note(200)], 1, null); await waitUntil(() => pending.length >= 2);
     pending[0].resolve([{ a: id(100), b: id(101), connected: true, dismissed: false, revision: 1, strength: 1 }]);
     pending[1].reject(new Error('Synthetic failure')); await delay(10);
     assert.match(document.querySelector('#folder-graph-summary')!.textContent!, /could not load/);
     assert.equal(document.querySelectorAll('#folder-graph-canvas line').length, 0);
-    document.querySelector<HTMLButtonElement>('#folder-graph-refresh')!.click(); await delay(); pending[2].resolve([]); await delay(10);
+    document.querySelector<HTMLButtonElement>('#folder-graph-refresh')!.click(); await waitUntil(() => pending.length >= 3); pending[2].resolve([]); await delay(10);
     assert.match(document.querySelector('#folder-graph-summary')!.textContent!, /1 of 1 notes/);
     h.ui.setNotes([], 0, null); await delay(30); assert.match(document.querySelector('#folder-graph-summary')!.textContent!, /no notes yet/);
     h.ui.loading(); assert.equal(document.querySelector('#notes-panel')!.getAttribute('aria-busy'), 'true');
