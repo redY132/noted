@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     fs::{self, File, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
@@ -400,6 +400,49 @@ impl Store {
         self.validate(&note)?;
         note.revision_token = token(&bytes);
         Ok(note)
+    }
+
+    /// Local human recovery only. The MCP surface does not expose backups.
+    /// Reading never rotates a backup or changes the current note.
+    pub fn previous_note(&self, id: &str) -> Result<Option<Note>> {
+        let path = self.path("notes", id)?;
+        crate::library::ordinary(&self.root.join("notes"), true)?;
+        crate::library::ordinary(&path, false)?;
+        if fs::metadata(&path).map_err(err)?.len() > MAX_NOTE_BYTES {
+            return Err("Current note exceeds the recovery size limit; files preserved".into());
+        }
+        let current = self.load_note(id)?;
+        let backup = path.with_extension("json.bak");
+        match fs::symlink_metadata(&backup) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(format!("Cannot open previous save; files preserved: {e}")),
+            Ok(_) => {}
+        }
+        crate::library::ordinary(&backup, false)?;
+        let mut bytes = Vec::new();
+        File::open(&backup)
+            .map_err(err)?
+            .take(MAX_NOTE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(err)?;
+        if bytes.len() as u64 > MAX_NOTE_BYTES {
+            return Err("Previous save exceeds the recovery size limit; files preserved".into());
+        }
+        let mut note: Note = serde_json::from_slice(&bytes)
+            .map_err(|_| "Previous save is malformed; files preserved".to_string())?;
+        if note.id != id || note.revision == 0 || note.revision >= current.revision {
+            return Err("Previous save identity or revision is invalid; files preserved".into());
+        }
+        if let Some(document) = &note.document {
+            note.content = crate::document::project(document)?;
+        }
+        // A removed old folder must not prevent recovery. recover_draft already
+        // puts copies whose folder is missing in Unfiled and inherits privacy.
+        let old_folder = note.folder_id.take();
+        self.validate(&note)?;
+        note.folder_id = old_folder;
+        note.revision_token = token(&bytes);
+        Ok(Some(note))
     }
 
     pub fn save_note(&mut self, mut note: Note, expected_revision: u64) -> Result<Note> {
@@ -1672,6 +1715,122 @@ mod tests {
         let old: Note = serde_json::from_slice(&fs::read(backup).unwrap()).unwrap();
         assert_eq!(old.title, "Before");
         assert_eq!(store.load_note(&updated.id).unwrap().title, "After");
+    }
+
+    #[test]
+    fn previous_save_reads_without_mutation_and_a_captured_copy_survives_autosave() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let mut original = store.create_note("Earlier title".into(), None).unwrap();
+        assert!(store.previous_note(&original.id).unwrap().is_none());
+        let image = store
+            .import_image(
+                &original.id,
+                include_bytes!("../icons/icon.png"),
+                "image/png",
+            )
+            .unwrap();
+        original.content = json!({"type":"doc","content":[{"type":"paragraph","attrs":{"id":"words"},"content":[{"type":"text","text":"Earlier synthetic words"}]},{"type":"localImage","attrs":{"id":"picture","assetId":image.id,"alt":"Synthetic image"}}]});
+        let earlier = store.save_note(original, 1).unwrap();
+        let mut current = earlier.clone();
+        current.title = "Current title".into();
+        let mut current = store.save_note(current, 2).unwrap();
+        let path = store.path("notes", &current.id).unwrap();
+        let backup = path.with_extension("json.bak");
+        let current_bytes = fs::read(&path).unwrap();
+        let previous_bytes = fs::read(&backup).unwrap();
+        let captured = store.previous_note(&current.id).unwrap().unwrap();
+        assert_eq!(captured.content, earlier.content);
+        assert_eq!(captured.revision, 2);
+        assert_eq!(fs::read(&path).unwrap(), current_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), previous_bytes);
+        current.title = "Later autosave".into();
+        let latest = store.save_note(current, 3).unwrap();
+        let latest_bytes = fs::read(&path).unwrap();
+        let rotated = fs::read(&backup).unwrap();
+        let copy = store.recover_draft(captured).unwrap();
+        assert_ne!(copy.id, latest.id);
+        assert_eq!(copy.content, earlier.content);
+        assert_eq!(
+            store.read_image(&copy.id, &image.id).unwrap().bytes,
+            include_bytes!("../icons/icon.png")
+        );
+        assert_eq!(fs::read(&path).unwrap(), latest_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), rotated);
+    }
+
+    #[test]
+    fn previous_save_refuses_invalid_backups_without_replacing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let mut note = store
+            .create_note("Synthetic original".into(), None)
+            .unwrap();
+        note.title = "Synthetic current".into();
+        let note = store.save_note(note, 1).unwrap();
+        let path = store.path("notes", &note.id).unwrap();
+        let backup = path.with_extension("json.bak");
+        let current = fs::read(&path).unwrap();
+        let mut wrong_id = note.clone();
+        wrong_id.id = Uuid::new_v4().to_string();
+        wrong_id.revision = 1;
+        let mut wrong_shape = note.clone();
+        wrong_shape.revision = 1;
+        wrong_shape.content = json!({"type":"doc","content":[{"type":"unknown"}]});
+        for bytes in [
+            b"malformed fixture".to_vec(),
+            serde_json::to_vec(&wrong_id).unwrap(),
+            serde_json::to_vec(&note).unwrap(),
+            serde_json::to_vec(&wrong_shape).unwrap(),
+            vec![b' '; MAX_NOTE_BYTES as usize + 1],
+        ] {
+            fs::write(&backup, &bytes).unwrap();
+            assert!(store.previous_note(&note.id).is_err());
+            assert_eq!(fs::read(&backup).unwrap(), bytes);
+            assert_eq!(fs::read(&path).unwrap(), current);
+        }
+        assert!(store.previous_note("../outside").is_err());
+    }
+
+    #[test]
+    fn captured_previous_save_inherits_new_private_exclusion_before_copy_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let mut note = store
+            .create_note("Synthetic private recovery".into(), None)
+            .unwrap();
+        note.title = "Synthetic updated".into();
+        let note = store.save_note(note, 1).unwrap();
+        let captured = store.previous_note(&note.id).unwrap().unwrap();
+        crate::ai_privacy::deny_batch(&store.root, [note.id.clone()], []).unwrap();
+        let original = fs::read(store.path("notes", &note.id).unwrap()).unwrap();
+        let copy = store.recover_draft(captured).unwrap();
+        let gate = crate::ai_privacy::Gate::load(&store.root).unwrap();
+        assert!(!gate.allows_note(&note.id).unwrap());
+        assert!(!gate.allows_note(&copy.id).unwrap());
+        assert_eq!(
+            fs::read(store.path("notes", &note.id).unwrap()).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn previous_save_recovers_an_older_missing_folder_into_unfiled() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let folder = store
+            .create_folder("Synthetic old folder".into(), None)
+            .unwrap();
+        let mut note = store
+            .create_note("Synthetic old location".into(), Some(folder.id.clone()))
+            .unwrap();
+        note.folder_id = None;
+        let current = store.save_note(note, 1).unwrap();
+        fs::remove_file(store.path("folders", &folder.id).unwrap()).unwrap();
+        let previous = store.previous_note(&current.id).unwrap().unwrap();
+        assert_eq!(previous.folder_id, Some(folder.id));
+        let copy = store.recover_draft(previous).unwrap();
+        assert_eq!(copy.folder_id, None);
     }
 
     #[test]

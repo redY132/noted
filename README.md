@@ -47,6 +47,8 @@ Open the localhost URL printed by Vite. The explicitly labeled browser preview u
 
 **Browse > Review notes** revisits original notes offline. Filters update the queue directly; Reviewed today follows the device's local calendar and Snooze lasts 24 hours. Include hidden notes to reset reviewed, snoozed or excluded choices. Opening saves the current draft first and does not mark a note reviewed. See [review behavior and checks](docs/review-notes.md).
 
+**View > Previous save** previews the immediately previous completed save and recovers it into a separate note. Your current draft is saved before switching; the captured old copy never replaces the original. Supported images and private-note AI exclusion carry into the copy. This keeps one previous save, rather than a full version history. See [previous-save recovery](docs/previous-save.md).
+
 **Ctrl P / Cmd P** or **View > Open note** searches saved titles, text and tags locally without changing dock visibility. Arrow keys and Enter open a result; Escape returns to writing. Switching saves the current draft first. The picker identifies an updating search index, supports paging and retries, and preserves the editor/Undo when cancelled. See [Open note](docs/open-note.md).
 
 **Back / Forward**, **View > Note history**, or **Alt Left / Alt Right** on Windows return to previous visits with their reading position and selection. History keeps up to 100 visits in memory, preserves unavailable Trash entries and follows Restore. Failed saves and loads leave the draft and destination available for retry. See [Note history](docs/note-history.md).

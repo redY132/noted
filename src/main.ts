@@ -50,6 +50,8 @@ import './note-actions.css';
 import { initializeDocumentOutline } from './document-outline-ui';
 import './document-outline.css';
 import { localCalendarDate } from './review-calendar';
+import { initializePreviousSave } from './previous-save-ui';
+import './previous-save.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -74,7 +76,7 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
-  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div><div id="document-outline-host"></div>
+  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div><div id="document-outline-host"></div><div id="previous-save-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Core editing and keyword search work offline. Generate proposal sends the approved saved note and instructions to OpenAI through your signed-in Codex client. Permitted agents can read explicitly shared folders or active one-note requests and may send that text to their model provider. Full-document guidance requires per-request consent. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
@@ -87,6 +89,7 @@ let quickOpenUI: ReturnType<typeof initializeQuickOpen> | null = null;
 const noteHistory = new NavigationHistory();
 let historyUI: ReturnType<typeof initializeNoteHistory> | null = null;
 let outlineUI: ReturnType<typeof initializeDocumentOutline> | null = null;
+let previousSaveUI: ReturnType<typeof initializePreviousSave> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
@@ -144,6 +147,12 @@ historyUI = initializeNoteHistory($('#note-history-host'), {
 });
 initializeNoteActions($('.workspace'), $('#view-popover'));
 outlineUI = initializeDocumentOutline($('#document-outline-host'), { menu: $('#view-popover'), editor: () => editor, noteId: () => session?.note.id ?? null, title: () => session?.note.title ?? '', busy: () => navigating, scroll: () => $('.document-scroll'), beforeJump: () => { readingPositionEpoch++; } });
+previousSaveUI = initializePreviousSave($('#previous-save-host'), {
+  menu: $('#view-popover'), current: () => session?.note ?? null, busy: () => navigating,
+  snapshot: () => { if (!session || !editor) throw new Error('Open a note first.'); const note = structuredClone(session.note); note.document = documentFromEditor(editor.getJSON(), note.id, note.document); note.content = documentToEditor(note.document); note.formatVersion = 2; return note; },
+  previous: api.previousNote, flush, recover: api.recoverDraft, changed: refreshLibrary,
+  open: async id => { await openNote(id); return session?.note.id === id; }, focusEditor: () => editor?.view.focus(),
+});
 $('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
@@ -182,6 +191,7 @@ function updateSaveState() {
   $('#save-state').classList.toggle('save-error', saveError);
   if (session) $('#revision-label').textContent = `Revision ${session.note.revision}`;
   outlineUI?.sync();
+  previousSaveUI?.sync();
 }
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -359,6 +369,7 @@ async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
   navigating = true;
   historyUI?.sync();
   outlineUI?.sync();
+  previousSaveUI?.sync();
   $('#note-pane').inert = true;
   editor?.setEditable(false, false);
   try {
@@ -377,7 +388,7 @@ async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
     return true;
   }
   catch (reason) { error(reason); return false; }
-  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); outlineUI?.sync(); }
+  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); outlineUI?.sync(); previousSaveUI?.sync(); }
 }
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
 async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }

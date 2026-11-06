@@ -90,6 +90,13 @@ mod desktop {
         work(state, move |s| s.load_note(&id)).await
     }
     #[tauri::command]
+    pub async fn previous_note(
+        state: State<'_, SharedStore>,
+        id: String,
+    ) -> Result<Option<Note>, String> {
+        work(state, move |s| s.previous_note(&id)).await
+    }
+    #[tauri::command]
     pub async fn import_image(
         state: State<'_, SharedStore>,
         note_id: String,
@@ -979,6 +986,7 @@ mod desktop {
                 create_folder,
                 create_note,
                 load_note,
+                previous_note,
                 import_image,
                 read_image,
                 copy_image,

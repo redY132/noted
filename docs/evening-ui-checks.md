@@ -102,3 +102,19 @@ Result: **PASS** under the same manual During rules. Plain note rows replace the
 | R-40 Mechanisms | PASS | Local metadata only, tag debounce and obsolete-response guard. Only an open dialog checks for changed local days; no AI, background notifications or new sharing. |
 
 Evidence: `review-smoke.js`, review UI/calendar tests, native library fixtures and ignored `output/playwright/review-*` screenshots. Timestamp tests use isolated clocks and child-process timezones, never the system settings or personal data.
+
+## Previous-save recovery
+
+Result: **PASS** under the same manual During rules. Plain comparison columns identify the current draft and previous completed save. Text-relative columns collapse under narrow/large-text conditions; no new cards, assets, effects, animation or dock sections.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-03, R-05, C-3 Reflow | PASS | Native/browser at 1200x800, 800x560, 390x840 in both themes plus 200% text. Comparison reserves full height; text-relative columns stack and short windows use full dialog scrolling. Explicit overlap and action-reachability checks pass. |
+| R-24, R-26, R-27, C-2, C-4 States | PASS | Loading, empty/read failure/Refresh, failed draft save, captured-copy retention after later saves, duplicate protection, saved-copy opening retry, removed source identity and late completion after disposal. |
+| R-25, R-34 Contrast | PASS | Minimum 6.029:1 Light, 7.822:1 Dark. Active targets pass 44px; focused controls pass the shared 3:1 check. |
+| R-32, R-39 Keyboard/semantics | PASS | Named native dialog, labelled comparison headings, live status, inert close, first Escape, selection preservation and focus returned to writing after recovery. |
+| R-33, R-35, R-36, C-5 Verification | PASS | Direct source edits, 262 frontend tests, 107 native tests/four optional ignored, 20 browser and 20 native interactions, frontend/Windows builds and inspected screenshots. |
+| R-37, C-1 Direction | PASS | Recovery, snapshot-before-save, copy reuse and short-window behavior recorded in DESIGN before implementation. |
+| R-40 Mechanisms | PASS | Explicit local read/copy only. No model, image resolution, component execution, background scan, new MCP tool or sharing grant. Fresh exclusion inheritance is tested on synthetic private data. |
+
+Evidence: `previous-save-smoke.js`, preview/controller/native tests and ignored `output/playwright/previous-*` screenshots. Only one previous completed save is claimed; no full-history or hardware-certification claim is made.

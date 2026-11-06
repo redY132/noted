@@ -9,7 +9,7 @@ import type { Page, PairState, PairMutation, PickerNote, ConnectionEntry, Refere
 
 export const browserPreview = !isTauri();
 const key = 'noted-browser-preview-v1';
-interface PreviewStore { notes: Note[]; folders: Folder[] }
+interface PreviewStore { notes: Note[]; folders: Folder[]; previous?: Record<string, Note> }
 function read(): PreviewStore {
   const raw = localStorage.getItem(key);
   if (!raw) return { notes: [], folders: [] };
@@ -102,6 +102,13 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
       if (!result) throw new Error('This linked note is missing. Your current note has been preserved.');
       break;
     }
+    case 'previous_note': {
+      const id=String(args.id),current=store.notes.find(n=>n.id===id);
+      if(!current)throw new Error('The original note is missing. No files were changed.');
+      result=Object.hasOwn(store.previous??{},id)?store.previous![id]:null;
+      if(result&&((result as Note).id!==id||(result as Note).revision>=current.revision))throw new Error('Previous save identity or revision is invalid; data preserved.');
+      break;
+    }
     case 'save_note': {
       const note = args.note as Note;
       const index = store.notes.findIndex(n => n.id === note.id);
@@ -109,6 +116,7 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
       if (!existing) throw new Error('This note no longer exists. Download your draft to keep it.');
       if (existing.revision !== args.expectedRevision || existing.revisionToken !== note.revisionToken) throw new Error('This note changed elsewhere. Your draft is preserved; download it before reopening the app.');
       const saved = { ...note, revision: existing.revision + 1, revisionToken: crypto.randomUUID(), updatedAt: new Date().toISOString() };
+      (store.previous ??= Object.create(null))[note.id] = structuredClone(existing);
       store.notes[index] = saved; persist(store); result = saved; break;
     }
     case 'search_notes': {
@@ -206,6 +214,7 @@ export const api = {
   trashNote:(note:Note)=>call<void>('trash_note',{id:note.id,revision:note.revision,token:note.revisionToken}),
   restoreNote:(id:string)=>call<Note>('restore_note',{id}),
   recoverDraft:(draft:Note)=>call<Note>('recover_draft',{draft}),
+  previousNote:(id:string)=>call<Note|null>('previous_note',{id}),
   reviewFeed:(folderId:string|null,tag:string,includeHidden=false)=>call<{note:NoteSummary;reasons:string[]}[]>('review_feed',{folderId,tag,includeHidden}),
   reviewAction:(id:string,action:string)=>call<void>('review_action',{id,action}),
   noteAIAllowed:(id:string)=>browserPreview?Promise.resolve(true):call<boolean>('note_ai_allowed',{id}),

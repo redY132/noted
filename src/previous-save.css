@@ -1,0 +1,19 @@
+.previous-save-dialog { width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 18px; color: var(--ui-text); background: var(--ui-surface); font: .875rem/1.5 system-ui, sans-serif; }
+.previous-save-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.previous-save-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 1; background: var(--ui-surface); }
+.previous-save-dialog h2 { margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
+.previous-save-dialog h3 { margin: 0 0 6px; font: 600 1rem/1.4 system-ui, sans-serif; }
+.previous-save-dialog p { margin: 0; color: var(--ui-muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.previous-save-dialog button { min-width: 44px; min-height: 44px; padding: 8px; border-radius: 4px; font: inherit; }
+.previous-save-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 20px; flex: 0 0 auto; }
+.previous-save-comparison section { min-width: 0; }
+.previous-save-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 38dvh; font: .875rem/1.6 system-ui, sans-serif; margin: 8px 0 0; }
+.previous-save-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.previous-save-dialog button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+@media (max-width: 700px) { .previous-save-comparison { grid-template-columns: minmax(0, 1fr); } }
+@media (max-height: 650px) {
+  .previous-save-dialog[open] { display: block; }
+  .previous-save-dialog > :not(:last-child) { margin-bottom: 10px; }
+  .previous-save-dialog header { position: sticky; top: 0; z-index: 1; background: var(--ui-surface); }
+  .previous-save-dialog pre { max-height: none; overflow: visible; }
+}
