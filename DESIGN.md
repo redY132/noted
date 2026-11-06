@@ -19,3 +19,9 @@ Reading this as a docked desktop directory for people organizing connected notes
 - Folder names and moves use existing library storage. Folder icons are a device preference, like appearance, and the customization field states that scope. Icons identify collections; they are not decoration.
 
 Verify with synthetic fixtures only. Do not load the private Logseq source, its assets or imported notes for any screenshot, graph or test.
+
+## November 6 daily-use additions
+
+Keep the docked navigator unchanged. Open note is a focused native dialog for local saved-note search: a labeled field, plain rows with folder context, keyboard navigation and a clear way back to writing. Reuse the existing theme, accent, typography and 44px controls. Empty, loading and retry states explain the next action. No decorative cards or new visual assets are needed.
+
+AI formatting should name the note and requested goal before generation and clearly state whether a full guidance document is included. A visible scope summary serves informed consent; it does not add permissions or start a request. Preserve the existing preview and approval flow. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.

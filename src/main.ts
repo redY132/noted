@@ -37,6 +37,9 @@ import './shell-motion.css';
 import './theme.css';
 import { initializeNavigation, navigationMarkup } from './navigation-panel';
 import './navigation-panel.css';
+import { initializeQuickOpen } from './quick-open';
+import './quick-open.css';
+import './ai-request-summary.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -60,15 +63,16 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
-  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div>
+  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
-  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Noted makes no cloud AI calls, telemetry requests, or remote asset requests. A connected agent may send explicitly shared note text to its provider. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
+  <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Core editing and keyword search work offline. Generate proposal sends the approved saved note and instructions to OpenAI through your signed-in Codex client. Permitted agents can read explicitly shared folders or active one-note requests and may send that text to their model provider. Full-document guidance requires per-request consent. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
 
 let folders: Folder[] = [];
 let notes: NoteSummary[] = [];
 let workspaceTotal = 0;
 let navigationUI: ReturnType<typeof initializeNavigation> | null = null;
+let quickOpenUI: ReturnType<typeof initializeQuickOpen> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
@@ -104,7 +108,7 @@ $('#manage-folders').onclick=()=>library.open('folders');$('#open-trash').onclic
 
 initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
 initializeMigrationUI($('#workspace-migration-host'),{native:!browserPreview,api,flush,error});
-const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close(),navigationChanged:open=>navigationUI?.setOpen(open)},initialLayout);
+const shell = initializeShell({appearance,getEditor:()=>editor,newNote:()=>void newNote(),quickOpen:()=>{if(!navigating)quickOpenUI?.show($('#view-toggle'));},workspace:()=>$<HTMLDialogElement>('#workspace-dialog').showModal(),closeTransient:()=>connectionsUI.close(),navigationChanged:open=>navigationUI?.setOpen(open)},initialLayout);
 const connectionsUI = initializeConnectionsUI({api,current:()=>session?.note ?? null,open:async id=>{await openNote(id);return session?.note.id===id;},folder:folderPath,error});
 navigationUI = initializeNavigation($('#navigation-panel'), {
   select: collection => { selectedFolder = collection; $<HTMLInputElement>('#search').value = ''; renderFolders(); void renderList(); },
@@ -113,6 +117,12 @@ navigationUI = initializeNavigation($('#navigation-panel'), {
   focusEditor: () => editor?.view.focus(), edges: ids => api.edges(ids),
 });
 navigationUI.setOpen(shell.isOpen('navigation'));
+quickOpenUI = initializeQuickOpen($('#quick-open-host'), {
+  search: (query, cursor) => api.pageNotes(query, undefined, cursor, 40), indexing: async () => Boolean((await api.status()).indexing), folders: () => folders,
+  current: () => session?.note.id ?? null,
+  open: async id => { await openNote(id); return !navigating && session?.note.id === id; },
+  focusEditor: () => editor?.view.focus(),
+});
 $('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
@@ -432,6 +442,10 @@ $('#rebuild-index').onclick = async () => {
   finally { button.disabled = false; }
 };
 document.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'p' && !event.isComposing) {
+    event.preventDefault();
+    if (!document.querySelector('dialog[open]') || $('#quick-open-host dialog').hasAttribute('open')) { if (!navigating) quickOpenUI?.show(); }
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void flush().catch(() => {}); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); if (!document.querySelector('dialog[open]')) void newNote(); }
   if (event.key === '/' && !(event.target as HTMLElement).closest('input,textarea,[contenteditable],dialog')) { event.preventDefault(); shell.setPanel('navigation',true); navigationUI?.showNotes(); $('#search').focus(); }

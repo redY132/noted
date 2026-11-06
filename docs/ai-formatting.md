@@ -1,5 +1,7 @@
 # AI formatting
 
+November 6 UI update: **Before generating** names the current note and explains the next generation's contents. Schema rules and a full guidance document are shown separately; checking the per-use guide box updates the summary without creating a request. Detailed data/account explanations are under **Data and usage details**. The summary is hidden during preparation/generation so it does not describe a later unchecked checkbox as the active job's scope. Existing private-note denial, explicit generation, rendered comparison, Apply/Reject and Undo remain enforced. No connection, credential or model execution behavior changed.
+
 The default workflow is **Describe change → Generate proposal → Visual comparison → Apply or Reject**, followed by **Undo** when desired.
 
 1. Open a note and choose **Format with AI**. Enter instructions above Generate proposal.

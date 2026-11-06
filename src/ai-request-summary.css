@@ -1,0 +1,17 @@
+.ai-formatting-dialog.document-tool-dialog { font: .875rem/1.5 system-ui, sans-serif; }
+.ai-formatting-dialog.document-tool-dialog h2 { font: 600 1.25rem/1.4 system-ui, sans-serif; }
+.ai-formatting-dialog.document-tool-dialog :is(button,input,select,textarea,label) { font: inherit; }
+.ai-request-summary { padding-block: 6px; }
+.ai-request-summary h3 { margin: 0 0 8px; font: 600 .9375rem/1.4 system-ui; }
+.ai-request-summary p { margin: 5px 0; font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; }
+.ai-request-summary [data-request-destination] { font-size: .8125rem; color: var(--ui-muted); }
+.ai-data-details { margin-block: 10px; }
+.ai-data-details summary { min-height: 44px; display: list-item; padding: 11px 4px; cursor: pointer; font-size: .875rem; }
+.ai-formatting-dialog :is(button,input:not([type=checkbox]),select) { min-height: 44px; }
+.ai-formatting-dialog :is(button,summary,select,label) { cursor: pointer; }
+.ai-formatting-dialog summary { min-height: 44px; padding: 11px 4px; }
+.ai-formatting-dialog [data-ai-guide-consent] { min-height: 44px; }
+.ai-formatting-dialog :is(input,select,textarea) { border-color: var(--ui-muted); }
+.ai-formatting-dialog :is(button,input,select,textarea,summary):focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.ai-formatting-dialog .primary:hover { background: var(--accent); filter: none; outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.ai-formatting-dialog .primary:focus-visible { outline-color: var(--accent-foreground); outline-offset: -4px; }

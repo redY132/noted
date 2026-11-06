@@ -20,6 +20,8 @@ The prototype deliberately uses debounced document snapshots instead of implemen
 
 ## Document and identity
 
+`quick-open.ts` provides a local saved-note dialog through the existing paged query and normal navigation callback. Query tickets discard superseded or closed-dialog results; duplicate openings are blocked while saving. Index readiness is queried locally, with once-per-second refresh only while an empty search is waiting for indexing. Folder labels are metadata, not document copies. No query history or note text is persisted by the picker. `ai-request-summary.ts` renders a pre-generation description using text nodes and never creates a request; the existing AI controller still owns consent, eligibility and model execution.
+
 Each note has `formatVersion`, a UUID `id`, title, optional `folderId`, tags, revision, timestamps, structured editor content, and presentation metadata. `revisionToken` is a returned fingerprint used for optimistic concurrency, not authored note content. Internal links use `noted://note/<uuid>` so renaming or moving a note does not change its link target.
 
 The independently versioned V2 document is authoritative on disk; Tiptap's structured document is an editing projection. Stable content IDs, logical reading order and nested layout references are persisted separately. V1 notes retain compatibility through lazy migration. See [document-model.md](document-model.md) for the contract, recovery behavior and remaining acceptance gates. This remains an experimental format rather than a public app-wide plugin API.
