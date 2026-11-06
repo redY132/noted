@@ -44,6 +44,9 @@ import { NavigationHistory, type HistoryTarget } from './navigation-history';
 import { captureNoteView, restoreNoteView } from './note-view-state';
 import { initializeNoteHistory } from './note-history-ui';
 import './note-history.css';
+import './ai-activity.css';
+import { initializeNoteActions } from './note-actions-ui';
+import './note-actions.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -56,6 +59,7 @@ $('#app').innerHTML = `
   ${navigationMarkup}
   <main class="workspace">
     ${shellTopbar}
+    <div id="ai-activity-host"></div>
     <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="recover-draft">Recover draft / keep both</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
     <section id="empty-state" class="empty-state"><h2>No note open</h2><p>Create a note or choose one from the list.</p><button id="empty-new" class="primary">Create note</button></section>
     <section id="note-pane" class="note-pane" hidden>
@@ -109,7 +113,7 @@ $('#interactive-library').onclick=()=>documentTools.openComponents();
 $('#document-operations').onclick=()=>documentTools.openOperations();
 const presets=initializePresets($('#presets-ui-host'),{editor:()=>editor,note:()=>session?.note??null,flush,error});
 async function refreshLibrary(){const page=await api.pageNotes('',undefined,0,80);notes=page.items;folders=await api.folders();renderFolders();await renderList();if(session)refreshMetadata();connectionsUI.changed();}
-const library=initializeLibrary($('#library-ui-host'),{schema:()=>schemaRegistry.get(editor?.state.doc.attrs.schemaReference??{id:session?.note.presentation.schemaId??'default',version:1}),note:()=>session?.note??null,editor:()=>editor,folders:()=>folders,flush,open:openNote,adopt:note=>{clearTimeout(saveTimer);captureCurrentVisit();showNote(note);noteHistory.record(note);historyUI?.sync();resetReadingPosition();$('#error-banner').hidden=true;},closed:()=>{clearTimeout(saveTimer);clearTimeout(countTimer);captureCurrentVisit();if(session)noteHistory.unavailable(session.note.id);editor?.destroy();editor=null;componentRuntime?.destroy();componentRuntime=null;releaseAssets();session=null;saveError=false;$('#note-pane').hidden=true;$('#empty-state').hidden=false;updateSaveState();historyUI?.sync();},restored:note=>{noteHistory.restored(note);historyUI?.sync();},refresh:refreshLibrary,error,proposal:(ops,settings)=>documentTools.openProposal(ops,settings)});
+const library=initializeLibrary($('#library-ui-host'),{activityHost:$('#ai-activity-host'),schema:()=>schemaRegistry.get(editor?.state.doc.attrs.schemaReference??{id:session?.note.presentation.schemaId??'default',version:1}),note:()=>session?.note??null,editor:()=>editor,folders:()=>folders,flush,open:openNote,adopt:note=>{clearTimeout(saveTimer);captureCurrentVisit();showNote(note);noteHistory.record(note);historyUI?.sync();resetReadingPosition();$('#error-banner').hidden=true;},closed:()=>{clearTimeout(saveTimer);clearTimeout(countTimer);captureCurrentVisit();if(session)noteHistory.unavailable(session.note.id);editor?.destroy();editor=null;componentRuntime?.destroy();componentRuntime=null;releaseAssets();session=null;saveError=false;$('#note-pane').hidden=true;$('#empty-state').hidden=false;updateSaveState();historyUI?.sync();},restored:note=>{noteHistory.restored(note);historyUI?.sync();},refresh:refreshLibrary,error,proposal:(ops,settings)=>documentTools.openProposal(ops,settings)});
 $('#manage-folders').onclick=()=>library.open('folders');$('#open-trash').onclick=()=>library.open('trash');$('#open-review').onclick=()=>library.open('review');$('#open-agent').onclick=()=>library.open('agent');$('#recover-draft').onclick=()=>library.open('conflict');$('#open-presets').onclick=()=>presets.open();$('#open-ai-formatting').onclick=()=>library.open('ai');$('#trash-current').onclick=()=>library.trashCurrent();
 
 initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
@@ -133,6 +137,7 @@ historyUI = initializeNoteHistory($('#note-history-host'), {
   history: noteHistory, busy: () => navigating, folder: folderPath,
   go: target => navigate(() => api.load(target.id), target), focusEditor: () => editor?.view.focus(),
 });
+initializeNoteActions($('.workspace'), $('#view-popover'));
 $('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};

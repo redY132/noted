@@ -1,0 +1,16 @@
+#ai-activity-host { flex-shrink: 0; }
+.ai-job-status { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 14px; padding: 4px 12px; flex-shrink: 0; color: var(--ui-text); background: var(--ui-subtle); font: .8125rem/1.5 system-ui, sans-serif; max-height: 28dvh; overflow: auto; }
+.ai-job-status p { flex: 1 1 180px; min-width: 0; margin: 0; }
+.ai-job-status strong { display: inline; margin-right: 8px; font-weight: 600; }
+.ai-job-status [data-activity-note] { overflow-wrap: anywhere; }
+.ai-job-status [data-activity-message] { display: block; color: var(--ui-muted); overflow-wrap: anywhere; }
+.ai-job-status > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.ai-job-status button { min-width: 44px; min-height: 44px; padding: 8px; border-radius: 4px; }
+.ai-job-status button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.ai-job-status[data-compact] p { flex: 1 1 100px; }
+.ai-job-status[data-compact] [data-activity-state] { display: block; margin-right: 0; }
+.ai-job-status[data-compact] [data-activity-note] { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-job-status[data-compact] [data-activity-message] { display: none; }
+.ai-job-status[data-short] p { display: flex; align-items: center; gap: 8px; }
+.ai-job-status[data-short] [data-activity-state] { min-width: 0; max-width: 65%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-job-status[data-short] [data-activity-note] { flex: 1; min-width: 0; }

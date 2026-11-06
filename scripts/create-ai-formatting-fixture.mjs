@@ -5,7 +5,8 @@ const root=await mkdtemp(join(tmpdir(),'noted-simple-ai-')),workspace=join(root,
 for(const name of ['notes','agent-requests','agent-replies'])await mkdir(join(workspace,name),{recursive:true});
 const noteId=randomUUID(),blockId=randomUUID(),secondId=randomUUID(),requestId=randomUUID(),now=new Date().toISOString();
 const content={type:'doc',content:[{type:'paragraph',attrs:{id:blockId},content:[{type:'text',text:'The blue lantern keeps every original word.'}]},{type:'paragraph',attrs:{id:secondId},content:[{type:'text',text:'A second paragraph retains its reading order.'}]}]};
-const note={formatVersion:1,id:noteId,title:'Simple AI synthetic fixture',folderId:null,tags:[],revision:1,createdAt:now,updatedAt:now,content,presentation:{schemaId:'default'}},raw=JSON.stringify(note);
+const title=process.argv.includes('--long-title')?'Simple AI synthetic fixture with a deliberately long title that must wrap safely in a narrow writing area while the directory and graph remain visible':'Simple AI synthetic fixture';
+const note={formatVersion:1,id:noteId,title,folderId:null,tags:[],revision:1,createdAt:now,updatedAt:now,content,presentation:{schemaId:'default'}},raw=JSON.stringify(note);
 await writeFile(join(workspace,'notes',noteId+'.json'),raw);
 const request={id:requestId,noteId,revision:1,revisionToken:createHash('sha256').update(raw).digest('hex'),prompt:'Make the first paragraph bold.',expiresAt:new Date(Date.now()+86400000).toISOString()};
 await writeFile(join(workspace,'agent-requests',requestId+'.json'),JSON.stringify(request));

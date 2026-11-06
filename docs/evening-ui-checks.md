@@ -52,3 +52,21 @@ Navigation checkpoint: **PASS**, November 6, 2026. The anti-slop package could n
 | Comment hygiene | PASS | Comments explain session scope, stale revision safety and native shortcut behavior. |
 
 Evidence scripts: `note-history-smoke.js`, `note-history-faults.js`, `daily-workflow-visual.js`, `sidebar-smoke.js`; unit coverage in the three navigation/view/history test modules. Generated screenshots remain ignored under `output/playwright/`.
+
+## AI activity and responsive note commands
+
+Result: **PASS** for the changed activity/review/command UI. The same manual During rules apply; the anti-slop package remains unavailable. No new assets, type families, decorative surfaces, effects or navigation-panel sections were added. All hard/purpose rules above remain applicable, with the changed checks below.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-02, R-15, R-16, R-38 Copy/actions | PASS | Explicit state, originating note, Open generation / Review proposal, Dismiss status and View > Note actions. Real saved metadata is inserted as text. |
+| R-03, R-05, C-3 Reflow/composition | PASS | Actual native profiles at 1200x800, 800x560 and 390x840 in both themes plus 200% text; visible writing area checked. Short layouts move the wrapping action row into View without changing dock proportions. Browser harness additionally exercises a 280px writing area. |
+| R-17, R-36, C-5 Claims/evidence | PASS | 229 frontend tests; 10 final native cached-proposal checks; 17 browser-harness interactions; six native and 16 harness profiles. Simulated jobs, prewritten native proposals and the earlier real-runner test correction are distinguished in the session report. |
+| R-24, R-26, R-27, C-2, C-4 Behavior/states | PASS | Return to originating note/goal/request, save first, direct review, Close retention, Apply/Undo, Reject, cancellation, missing/outdated/private requests, failed status/backoff and fresh post-save eligibility. |
+| R-25, R-34, R-21 Contrast/themes | PASS | Native and harness minimum 5.345:1 Light, 7.161:1 Dark. Focus checks pass 3:1; active targets pass 44px. |
+| R-32, R-39 Keyboard/semantics | PASS | Named status region, native inert closed dialog, View command focus restoration, Dismiss returns to writing, resize reveals focused controls. Identical polls leave live status text unchanged. |
+| R-33, R-35 Implementation/verification | PASS | Ordinary directly edited TypeScript/CSS, production and Windows builds, browser-harness type-check and actual native rendered comparison. |
+| R-40, R-19 Mechanisms/motion | PASS | Only owned local job metadata polls while closed; errors back off and pause after three attempts. No agent wake-up, extra generation, automatic Apply or new motion. |
+| R-37, R-31, C-1 Direction | PASS | Status density and responsive commands were specified before implementation in DESIGN. |
+
+Test scripts: `ai-activity-harness-smoke.js` and `ai-activity-cache-smoke.js`. The browser fixture has no native IPC or real AI/account methods. Native cached checks never click Generate. No private notes or original Logseq data are test inputs.

@@ -12,6 +12,7 @@ async page => {
     await page.locator('[data-quick-note]').first().click(); await page.locator('.quick-open-dialog').waitFor({state:'hidden'});
   }
   const openHistory=async()=>{await page.locator('#view-toggle').click();await page.locator('#shell-note-history').click();};
+  const openAI=async()=>{if(await page.locator('#open-ai-formatting').isVisible())await page.locator('#open-ai-formatting').click();else{await page.locator('#view-toggle').click();if(!await page.locator('.shell-note-actions').evaluate(el=>el.open))await page.locator('.shell-note-actions summary').click();await page.locator('#shell-action-open-ai-formatting').click();}};
   const measure = async selector => page.locator(selector).evaluate(root => {
     const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true }); canvas.width = canvas.height = 1;
     const color = value => { context.clearRect(0, 0, 1, 1); context.fillStyle = value; context.fillRect(0, 0, 1, 1); return [...context.getImageData(0, 0, 1, 1).data]; };
@@ -45,7 +46,7 @@ async page => {
       await page.keyboard.press('Control+p'); await page.waitForFunction(()=>document.querySelectorAll('[data-quick-note]').length>0); await page.locator('[data-quick-note]').first().focus();
       const quick=await measure('.quick-open-dialog');if(quick.failures.length)throw new Error(JSON.stringify({mode,width,quick}));
       await page.screenshot({path:`output/playwright/workflow-picker-${mode}-${width}.png`}); await page.keyboard.press('Escape');
-      await page.locator('#open-ai-formatting').click(); await page.locator('.ai-request-summary:not([hidden])').waitFor(); await page.locator('[data-ai-prompt]').focus();
+      await openAI(); await page.locator('.ai-request-summary:not([hidden])').waitFor(); await page.locator('[data-ai-prompt]').focus();
       const ai=await measure('.ai-formatting-dialog');if(ai.failures.length)throw new Error(JSON.stringify({mode,width,ai}));
       await page.screenshot({path:`output/playwright/workflow-ai-${mode}-${width}.png`}); await page.locator('[data-ai-close]').click();
       await openHistory(); await page.locator('[data-history-close]').focus();
@@ -58,7 +59,7 @@ async page => {
   await page.keyboard.press('Control+p'); await page.waitForFunction(()=>document.querySelectorAll('[data-quick-note]').length>0); await page.locator('[data-quick-note]').first().focus();
   const zoomQuick=await measure('.quick-open-dialog'); if(zoomQuick.failures.some(f=>f.kind==='overflow'))throw new Error('Picker failed large-text reflow');
   await page.screenshot({path:'output/playwright/workflow-picker-text-200.png'}); await page.keyboard.press('Escape');
-  await page.locator('#open-ai-formatting').click(); await page.locator('.ai-request-summary:not([hidden])').waitFor(); await page.locator('[data-ai-prompt]').focus();
+  await openAI(); await page.locator('.ai-request-summary:not([hidden])').waitFor(); await page.locator('[data-ai-prompt]').focus();
   const zoomAI=await measure('.ai-formatting-dialog');if(zoomAI.failures.some(f=>f.kind==='overflow'))throw new Error('AI dialog failed large-text reflow');
   await page.screenshot({path:'output/playwright/workflow-ai-text-200.png'}); await page.locator('[data-ai-close]').click();await page.evaluate(()=>{document.documentElement.style.fontSize='';});
   await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});await openHistory();
@@ -69,7 +70,7 @@ async page => {
     await page.locator('#appearance-toggle').click();await page.locator('#appearance-mode').selectOption(mode);const original=await page.locator('#appearance-accent').inputValue();
     for(const accent of ['#000000','#ffffff','#777777']){
       await page.locator('#appearance-accent').fill(accent);await page.keyboard.press('Escape');
-      await page.locator('#open-ai-formatting').click();await page.locator('.ai-request-summary:not([hidden])').waitFor();
+      await openAI();await page.locator('.ai-request-summary:not([hidden])').waitFor();
       await page.locator('.ai-formatting-dialog .tool-actions').first().evaluate(host=>{const probe=document.createElement('button');probe.type='button';probe.className='primary';probe.dataset.workflowContrastProbe='true';probe.textContent='Contrast probe';host.append(probe);});
       const probe=page.locator('[data-workflow-contrast-probe]');await probe.hover();await probe.focus();await page.keyboard.press('ArrowRight');
       const result=await probe.evaluate(element=>{

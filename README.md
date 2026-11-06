@@ -45,6 +45,12 @@ Open the localhost URL printed by Vite. The explicitly labeled browser preview u
 
 **Ctrl P / Cmd P** or **View > Open note** searches saved titles, text and tags locally without changing dock visibility. Arrow keys and Enter open a result; Escape returns to writing. Switching saves the current draft first. The picker identifies an updating search index, supports paging and retries, and preserves the editor/Undo when cancelled. See [Open note](docs/open-note.md).
 
+**Back / Forward**, **View > Note history**, or **Alt Left / Alt Right** on Windows return to previous visits with their reading position and selection. History keeps up to 100 visits in memory, preserves unavailable Trash entries and follows Restore. Failed saves and loads leave the draft and destination available for retry. See [Note history](docs/note-history.md).
+
+Explicitly started AI jobs have a status strip that remains available after closing their dialog. Open generation or Review proposal returns to the correct note through save-before-switch. Closed-dialog polling reads local job metadata only; it does not send more notes or wake agents. See [AI formatting](docs/ai-formatting.md).
+
+**View > Note actions** always provides presets, schemas, AI formatting, Copy block link and Move note to Trash. In short writing areas, this replaces the wrapping action row to keep the document visible.
+
 **Appearance** offers System, Light and Dark, accent swatches and a custom color picker. Appearance and panel choices are saved on this device separately from notes, with independent **Reset appearance** and **Reset layout** actions. Explicit note colors and component styles remain authored content. Brief fluid transitions follow the system reduced-motion preference; typing does not wait for animations.
 
 `sidebar-smoke.js` checks the accepted docked layout; `daily-workflow-smoke.js`, `daily-workflow-faults.js` and `daily-workflow-visual.js` cover quick switching and AI disclosure. Run through Playwright CLI with guarded synthetic fixtures on port 1436 or a disposable `noted-sidebar-ui-*` native workspace. Tests create notes and change only fixture preferences. Do not use private imports as test data.
