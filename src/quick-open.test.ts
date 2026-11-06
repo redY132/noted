@@ -108,3 +108,11 @@ test('an updating index is not reported as an empty library and incomplete folde
     assert.match(h.$('[data-quick-results]').textContent!, /Folder unavailable/); assert.equal(h.$('[data-quick-retry]').hidden, true);
   } finally { h.close(); }
 });
+test('closing makes an exiting dialog inert and reopening restores keyboard interaction', async () => {
+  const h = setup(async () => page([note(1)]));
+  try {
+    h.ui.show(); await tick(); assert.equal(h.$<HTMLElement>('dialog').inert, false);
+    h.$('[data-quick-close]').click(); assert.equal(h.$<HTMLElement>('dialog').inert, true);
+    h.ui.show(); await tick(); assert.equal(h.$<HTMLElement>('dialog').inert, false); assert.equal(h.dom.window.document.activeElement, h.$('#quick-open-search'));
+  } finally { h.close(); }
+});

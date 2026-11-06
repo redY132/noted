@@ -12,9 +12,11 @@ export function initializeQuickOpen(host: HTMLElement, options: Options) {
   host.innerHTML = `<dialog class="quick-open-dialog" aria-labelledby="quick-open-title"><header><h2 id="quick-open-title">Open note</h2><button type="button" data-quick-close>Close</button></header><label for="quick-open-search">Find a saved note<input id="quick-open-search" type="search" autocomplete="off" aria-describedby="quick-open-help quick-open-status" placeholder="Search titles, text or tags"></label><p id="quick-open-help">Search stays on this device. Use arrow keys to browse results and Enter to open a note.</p><p id="quick-open-status" role="status" aria-live="polite"></p><div data-quick-results aria-label="Matching saved notes"></div><div class="quick-open-actions"><button type="button" data-quick-more hidden>Show more notes</button><button type="button" data-quick-retry hidden>Retry search</button></div></dialog>`;
   const $ = <T extends HTMLElement>(selector: string) => host.querySelector<T>(selector)!;
   const dialog = $<HTMLDialogElement>('dialog'), input = $<HTMLInputElement>('#quick-open-search'), results = $('[data-quick-results]');
+  dialog.inert = true;
   let ticket = 0, timer: ReturnType<typeof setTimeout> | undefined, items: NoteSummary[] = [], cursor: number | null = null, total = 0;
   let searching = false, opening = false, returnFocus: HTMLElement | null = null;
   function status(text: string) { $('#quick-open-status').textContent = text; }
+  function closeDialog() { ++ticket; clearTimeout(timer); searching = false; dialog.inert = true; dialog.close(); }
   function folderPath(id: string | null) {
     const path: string[] = [], seen = new Set<string>(), folders = options.folders();
     while (id && !seen.has(id)) { seen.add(id); const folder = folders.find(f => f.id === id); if (!folder) return path.length ? `Folder unavailable / ${path.join(' / ')}` : 'Folder unavailable'; path.unshift(folder.name); id = folder.parentId; }
@@ -70,7 +72,7 @@ export function initializeQuickOpen(host: HTMLElement, options: Options) {
     opening = true; searching = false; ++ticket; clearTimeout(timer); results.removeAttribute('aria-busy'); controls(); status('Saving your current draft and opening the note.');
     try {
       if (!await options.open(id)) throw new Error('Navigation refused');
-      dialog.close(); options.focusEditor();
+      closeDialog(); options.focusEditor();
     } catch { status('The note could not open. Your current draft is preserved. Check the save or recovery message, then try again.'); }
     finally { opening = false; controls(); if (dialog.open) Array.from(results.querySelectorAll<HTMLButtonElement>('button')).find(row => row.dataset.quickNote === id)?.focus(); }
   }
@@ -81,7 +83,7 @@ export function initializeQuickOpen(host: HTMLElement, options: Options) {
   };
   results.onclick = event => { const id = (event.target as Element).closest<HTMLElement>('[data-quick-note]')?.dataset.quickNote; if (id) void openNote(id); };
   dialog.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); if (!opening) dialog.close(); return; }
+    if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); if (!opening) closeDialog(); return; }
     if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
     const rows = Array.from(results.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
     if (!rows.length) return;
@@ -91,20 +93,21 @@ export function initializeQuickOpen(host: HTMLElement, options: Options) {
     if (event.key === 'Enter' && event.target === input && !searching) { event.preventDefault(); void openNote(rows[0].dataset.quickNote!); }
     if ((event.key === 'Home' || event.key === 'End') && at >= 0) { event.preventDefault(); rows[event.key === 'Home' ? 0 : rows.length - 1].focus(); }
   });
-  $('[data-quick-close]').onclick = () => dialog.close();
+  $('[data-quick-close]').onclick = closeDialog;
   $('[data-quick-more]').onclick = () => void search(false);
   $('[data-quick-retry]').onclick = () => void search();
-  dialog.addEventListener('cancel', event => { if (opening) event.preventDefault(); });
+  dialog.addEventListener('cancel', event => { if (opening) event.preventDefault(); else { ++ticket; clearTimeout(timer); dialog.inert = true; } });
   dialog.addEventListener('close', () => {
-    ++ticket; clearTimeout(timer); searching = false;
+    if (dialog.open) return;
+    ++ticket; clearTimeout(timer); searching = false; dialog.inert = true;
     if (!opening) { if (returnFocus?.isConnected && !returnFocus.closest('[hidden],[inert]')) returnFocus.focus({ preventScroll: true }); else options.focusEditor(); }
   });
   return {
     show(returnTo?: HTMLElement) {
       if (dialog.open) { input.focus(); input.select(); return; }
       if (host.ownerDocument.querySelector('dialog[open]')) return;
-      returnFocus = returnTo ?? host.ownerDocument.activeElement as HTMLElement | null; input.value = ''; dialog.showModal(); input.focus(); void search();
+      returnFocus = returnTo ?? host.ownerDocument.activeElement as HTMLElement | null; input.value = ''; dialog.inert = false; dialog.showModal(); input.focus(); void search();
     },
-    destroy() { ++ticket; clearTimeout(timer); if (dialog.open) dialog.close(); host.replaceChildren(); },
+    destroy() { ++ticket; clearTimeout(timer); if (dialog.open) closeDialog(); host.replaceChildren(); },
   };
 }

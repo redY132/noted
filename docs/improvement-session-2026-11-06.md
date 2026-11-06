@@ -25,12 +25,14 @@ Status: implementation complete; final verification and packaging recorded below
 ## Recorded verification
 
 - TypeScript and production frontend/Windows executable builds passed.
-- Frontend: **196 passed**. Native library: **101 passed**, four optional model/corpus tests ignored.
+- Frontend: **197 passed**. Native library: **101 passed**, four optional model/corpus tests ignored.
 - Actual Windows app: **26 new workflow checks**, no page/console errors and no Generate action. Guide tests used a captured synthetic document; fixture sharing stayed disabled.
 - Accepted sidebar: **119 checks / 14 theme-window profiles** passed, retaining the dock, document displacement, continuous background, large graph, hover/focus behavior and customization.
 - Native dialog visuals: both dialogs passed at 1200x800, 800x560 and 390x840 in Light/Dark, plus 200% text. Minimum text contrast: Quick Open **5.015:1 Light / 7.255:1 Dark**; AI **6.029:1 Light / 7.822:1 Dark**. No large-text overflow, contrast or target failures remained.
 - Six non-generating primary-button style fixtures exercised black, white and mid-gray accents in both themes. Minimum text contrast **4.689:1**; keyboard outline contrast met 3:1. These were style probes, not model executions.
 - Seven browser fault-injection checks passed: failure/retry, delayed loading, stale result rejection, index readiness/refresh and failed opening. Original preview methods were restored afterward.
+- A packaged first-run review exposed a closed picker remaining accessible during its exit animation. The picker now becomes inert immediately on close/cancel/success, clears pending work and restores interaction on reopen. A dedicated regression covers this lifecycle.
+- Six native first-run/accessibility checks passed after that fix, including immediate removal from the accessibility tree during exit and creating/opening the first saved note. The 26-check native workflow also passed again on the rebuilt executable.
 
 Evidence is ignored under `output/sprint-*.log` and `output/playwright/workflow-*.png`. Reproduction scripts are `daily-workflow-smoke.js`, `daily-workflow-faults.js`, `daily-workflow-visual.js` and the existing `sidebar-smoke.js`. All tests use explicitly synthetic browser storage or fresh `noted-sidebar-ui-*` workspaces/profiles.
 
