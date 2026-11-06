@@ -7,6 +7,11 @@ async page => {
   if (!await page.evaluate(() => localStorage.getItem('noted-sidebar-fixture'))) throw new Error('Synthetic fixture required');
   await page.reload(); await page.waitForFunction(() => document.querySelector('#note-title')?.value);
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (let visit=0;visit<6;visit++) {
+    await page.keyboard.press('Control+p'); await page.locator('#quick-open-search').fill(visit%2?'Synthetic observation 105':'Synthetic trail map');
+    await page.locator('[data-quick-note]').first().click(); await page.locator('.quick-open-dialog').waitFor({state:'hidden'});
+  }
+  const openHistory=async()=>{await page.locator('#view-toggle').click();await page.locator('#shell-note-history').click();};
   const measure = async selector => page.locator(selector).evaluate(root => {
     const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true }); canvas.width = canvas.height = 1;
     const color = value => { context.clearRect(0, 0, 1, 1); context.fillStyle = value; context.fillRect(0, 0, 1, 1); return [...context.getImageData(0, 0, 1, 1).data]; };
@@ -43,7 +48,10 @@ async page => {
       await page.locator('#open-ai-formatting').click(); await page.locator('.ai-request-summary:not([hidden])').waitFor(); await page.locator('[data-ai-prompt]').focus();
       const ai=await measure('.ai-formatting-dialog');if(ai.failures.length)throw new Error(JSON.stringify({mode,width,ai}));
       await page.screenshot({path:`output/playwright/workflow-ai-${mode}-${width}.png`}); await page.locator('[data-ai-close]').click();
-      profiles.push({mode,width,height,quick,ai});
+      await openHistory(); await page.locator('[data-history-close]').focus();
+      const history=await measure('.note-history-dialog');if(history.failures.length)throw new Error(JSON.stringify({mode,width,history}));
+      await page.screenshot({path:`output/playwright/workflow-history-${mode}-${width}.png`});await page.keyboard.press('Escape');
+      profiles.push({mode,width,height,quick,ai,history});
     }
   }
   await page.setViewportSize({width:800,height:600}); await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});
@@ -53,6 +61,9 @@ async page => {
   await page.locator('#open-ai-formatting').click(); await page.locator('.ai-request-summary:not([hidden])').waitFor(); await page.locator('[data-ai-prompt]').focus();
   const zoomAI=await measure('.ai-formatting-dialog');if(zoomAI.failures.some(f=>f.kind==='overflow'))throw new Error('AI dialog failed large-text reflow');
   await page.screenshot({path:'output/playwright/workflow-ai-text-200.png'}); await page.locator('[data-ai-close]').click();await page.evaluate(()=>{document.documentElement.style.fontSize='';});
+  await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});await openHistory();
+  const zoomHistory=await measure('.note-history-dialog');if(zoomHistory.failures.length)throw new Error(JSON.stringify({zoomHistory}));
+  await page.screenshot({path:'output/playwright/workflow-history-text-200.png'});await page.keyboard.press('Escape');await page.evaluate(()=>{document.documentElement.style.fontSize='';});
   const primaryStyleProbes=[];
   for(const mode of ['light','dark']){
     await page.locator('#appearance-toggle').click();await page.locator('#appearance-mode').selectOption(mode);const original=await page.locator('#appearance-accent').inputValue();
@@ -70,5 +81,5 @@ async page => {
     }
     await page.locator('#appearance-accent').fill(original);await page.keyboard.press('Escape');
   }
-  return {passed:true,native,syntheticOnly:true,profiles,textZoom200Percent:{quick:zoomQuick,ai:zoomAI},primaryStyleProbes};
+  return {passed:true,native,syntheticOnly:true,profiles,textZoom200Percent:{quick:zoomQuick,ai:zoomAI,history:zoomHistory},primaryStyleProbes};
 }

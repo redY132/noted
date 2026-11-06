@@ -25,3 +25,9 @@ Verify with synthetic fixtures only. Do not load the private Logseq source, its 
 Keep the docked navigator unchanged. Open note is a focused native dialog for local saved-note search: a labeled field, plain rows with folder context, keyboard navigation and a clear way back to writing. Reuse the existing theme, accent, typography and 44px controls. Empty, loading and retry states explain the next action. No decorative cards or new visual assets are needed.
 
 AI formatting should name the note and requested goal before generation and clearly state whether a full guidance document is included. A visible scope summary serves informed consent; it does not add permissions or start a request. Preserve the existing preview and approval flow. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.
+
+## Evening navigation and job awareness
+
+Back/Forward is a writing aid: restore the user's reading position and selection, keep note content authoritative on disk, and retain only bounded session metadata/view state. Familiar directional controls have a navigation purpose. At narrow writing widths, expose the same commands in View and by keyboard rather than crowding the top bar. A plain history list explains unavailable visits and permits choosing another entry.
+
+Explicitly started AI work needs a small, persistent status affordance while its dialog is closed. It should name its state and provide a route back to review without starting new work. Preserve the quiet neutral shell, existing accent, 44px controls, visible focus and reduced-motion behavior. Do not change the dock composition. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.

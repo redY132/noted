@@ -40,6 +40,10 @@ import './navigation-panel.css';
 import { initializeQuickOpen } from './quick-open';
 import './quick-open.css';
 import './ai-request-summary.css';
+import { NavigationHistory, type HistoryTarget } from './navigation-history';
+import { captureNoteView, restoreNoteView } from './note-view-state';
+import { initializeNoteHistory } from './note-history-ui';
+import './note-history.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -63,7 +67,7 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
-  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div>
+  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Core editing and keyword search work offline. Generate proposal sends the approved saved note and instructions to OpenAI through your signed-in Codex client. Permitted agents can read explicitly shared folders or active one-note requests and may send that text to their model provider. Full-document guidance requires per-request consent. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
@@ -73,6 +77,8 @@ let notes: NoteSummary[] = [];
 let workspaceTotal = 0;
 let navigationUI: ReturnType<typeof initializeNavigation> | null = null;
 let quickOpenUI: ReturnType<typeof initializeQuickOpen> | null = null;
+const noteHistory = new NavigationHistory();
+let historyUI: ReturnType<typeof initializeNoteHistory> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
@@ -103,7 +109,7 @@ $('#interactive-library').onclick=()=>documentTools.openComponents();
 $('#document-operations').onclick=()=>documentTools.openOperations();
 const presets=initializePresets($('#presets-ui-host'),{editor:()=>editor,note:()=>session?.note??null,flush,error});
 async function refreshLibrary(){const page=await api.pageNotes('',undefined,0,80);notes=page.items;folders=await api.folders();renderFolders();await renderList();if(session)refreshMetadata();connectionsUI.changed();}
-const library=initializeLibrary($('#library-ui-host'),{schema:()=>schemaRegistry.get(editor?.state.doc.attrs.schemaReference??{id:session?.note.presentation.schemaId??'default',version:1}),note:()=>session?.note??null,editor:()=>editor,folders:()=>folders,flush,open:openNote,adopt:note=>{clearTimeout(saveTimer);showNote(note);$('#error-banner').hidden=true;},closed:()=>{clearTimeout(saveTimer);clearTimeout(countTimer);editor?.destroy();editor=null;componentRuntime?.destroy();componentRuntime=null;releaseAssets();session=null;saveError=false;$('#note-pane').hidden=true;$('#empty-state').hidden=false;updateSaveState();},refresh:refreshLibrary,error,proposal:(ops,settings)=>documentTools.openProposal(ops,settings)});
+const library=initializeLibrary($('#library-ui-host'),{schema:()=>schemaRegistry.get(editor?.state.doc.attrs.schemaReference??{id:session?.note.presentation.schemaId??'default',version:1}),note:()=>session?.note??null,editor:()=>editor,folders:()=>folders,flush,open:openNote,adopt:note=>{clearTimeout(saveTimer);captureCurrentVisit();showNote(note);noteHistory.record(note);historyUI?.sync();resetReadingPosition();$('#error-banner').hidden=true;},closed:()=>{clearTimeout(saveTimer);clearTimeout(countTimer);captureCurrentVisit();if(session)noteHistory.unavailable(session.note.id);editor?.destroy();editor=null;componentRuntime?.destroy();componentRuntime=null;releaseAssets();session=null;saveError=false;$('#note-pane').hidden=true;$('#empty-state').hidden=false;updateSaveState();historyUI?.sync();},restored:note=>{noteHistory.restored(note);historyUI?.sync();},refresh:refreshLibrary,error,proposal:(ops,settings)=>documentTools.openProposal(ops,settings)});
 $('#manage-folders').onclick=()=>library.open('folders');$('#open-trash').onclick=()=>library.open('trash');$('#open-review').onclick=()=>library.open('review');$('#open-agent').onclick=()=>library.open('agent');$('#recover-draft').onclick=()=>library.open('conflict');$('#open-presets').onclick=()=>presets.open();$('#open-ai-formatting').onclick=()=>library.open('ai');$('#trash-current').onclick=()=>library.trashCurrent();
 
 initializeBackupUI($('#workspace-backup-host'),{native:!browserPreview,api,flush,error});
@@ -122,6 +128,10 @@ quickOpenUI = initializeQuickOpen($('#quick-open-host'), {
   current: () => session?.note.id ?? null,
   open: async id => { await openNote(id); return !navigating && session?.note.id === id; },
   focusEditor: () => editor?.view.focus(),
+});
+historyUI = initializeNoteHistory($('#note-history-host'), {
+  history: noteHistory, busy: () => navigating, folder: folderPath,
+  go: target => navigate(() => api.load(target.id), target), focusEditor: () => editor?.view.focus(),
 });
 $('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
@@ -220,6 +230,7 @@ function upsertSummary(note: NoteSummary) {
   const previous = notes[index];
   const changed = !previous || previous.title !== title || previous.folderId !== folderId || previous.tags.join('\0') !== tags.join('\0');
   if (index < 0) notes.push(summary); else notes[index] = summary;
+  noteHistory.update(summary);
   return changed;
 }
 function folderPath(id: string | null): string {
@@ -269,6 +280,7 @@ async function renderList(reset = true) {
 function refreshMetadata() {
   if (!session) return;
   const note = session.note;
+  noteHistory.update(note); historyUI?.sync();
   $<HTMLInputElement>('#note-title').value = note.title;
   $<HTMLInputElement>('#note-tags').value = note.tags.join(', ');
   $<HTMLSelectElement>('#note-folder').value = note.folderId ?? '';
@@ -317,14 +329,37 @@ function showNote(note: Note) {
   });
   wordCount(); updateSaveState(); editingUI.sync(); editingUI.reset(); componentUI.sync(); schemaUI.sync(); connectionsUI.changed(); void renderList();
 }
-async function navigate(action: () => Promise<Note>) {
-  if (navigating) return;
+function captureCurrentVisit() {
+  if (session && editor) noteHistory.capture(session.note.id, captureNoteView(editor, $('.document-scroll'), session.note.revisionToken));
+}
+function resetReadingPosition() {
+  const currentEditor = editor;
+  $('.document-scroll').scrollTo(0, 0);
+  requestAnimationFrame(() => { if (editor === currentEditor) $('.document-scroll').scrollTo(0, 0); });
+}
+async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
+  if (navigating || (target && !noteHistory.valid(target))) return false;
   navigating = true;
+  historyUI?.sync();
   $('#note-pane').inert = true;
   editor?.setEditable(false, false);
-  try { await flush(); const note = await action(); upsertSummary(note); showNote(note); }
-  catch (reason) { error(reason); }
-  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); }
+  try {
+    await flush(); captureCurrentVisit();
+    // A repeated visit to the open note restores its view without discarding editor Undo.
+    const note = target && session && target.id === session.note.id ? session.note : await action();
+    if (note !== session?.note) { upsertSummary(note); showNote(note); }
+    if (!target || !noteHistory.commit(target, note)) noteHistory.record(note);
+    if (target && editor) {
+      const currentEditor = editor, scroll = $('.document-scroll');
+      $('#note-pane').inert = false;
+      restoreNoteView(editor, scroll, note.revisionToken, target.view);
+      const top = scroll.scrollTop, left = scroll.scrollLeft;
+      requestAnimationFrame(() => { if (editor === currentEditor) { scroll.scrollTop = top; scroll.scrollLeft = left; } });
+    } else resetReadingPosition();
+    return true;
+  }
+  catch (reason) { error(reason); return false; }
+  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); }
 }
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
 async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
@@ -391,9 +426,9 @@ $('#daily-note').onclick = () => { void dailyNote().catch(error); };
 $('#all-notes').onclick = () => { selectedFolder = 'all'; navigationUI?.choose('all'); renderFolders(); void renderList(); };
 $('#note-list').onclick = event => { if ((event.target as HTMLElement).closest('#show-more')) { void renderList(false); return; } const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-note]'); if (button) void openNote(button.dataset.note!).then(() => { if (session?.note.id === button.dataset.note) navigationUI?.noteOpened(); }); };
 $('#search').oninput = () => { clearTimeout(searchTimer); searchGeneration++; searchTimer = setTimeout(() => { void renderList(); }, 180); };
-$('#note-title').oninput = () => { const title = $<HTMLInputElement>('#note-title').value; edit(n => { n.title = title; }); const handle=$<HTMLButtonElement>('#header-connection-handle [data-connect-source]'); handle.dataset.sourceTitle=title || 'Untitled'; handle.setAttribute('aria-label','Connections for '+(title || 'Untitled')); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
+$('#note-title').oninput = () => { const title = $<HTMLInputElement>('#note-title').value; edit(n => { n.title = title; }); if(session){noteHistory.update(session.note);historyUI?.sync();} const handle=$<HTMLButtonElement>('#header-connection-handle [data-connect-source]'); handle.dataset.sourceTitle=title || 'Untitled'; handle.setAttribute('aria-label','Connections for '+(title || 'Untitled')); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
 $('#note-tags').oninput = () => { const tags = [...new Set($<HTMLInputElement>('#note-tags').value.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))]; edit(n => { n.tags = tags; }); };
-$('#note-folder').onchange = () => { edit(n => { n.folderId = $<HTMLSelectElement>('#note-folder').value || null; }); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${session!.note.title || 'Untitled'}`; };
+$('#note-folder').onchange = () => { edit(n => { n.folderId = $<HTMLSelectElement>('#note-folder').value || null; }); if(session){noteHistory.update(session.note);historyUI?.sync();} $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${session!.note.title || 'Untitled'}`; };
 $('#schema').onchange = () => { const schemaId = $<HTMLSelectElement>('#schema').value as SchemaId; edit(n => { n.presentation.schemaId = schemaId; }); $('.document').dataset.schema = schemaId; editingUI.sync(); };
 $('#add-folder').onclick = () => { $('#folder-parent').innerHTML = `<option value="">Workspace root</option>${folders.map(f => `<option value="${escape(f.id)}">${escape(folderPath(f.id))}</option>`).join('')}`; $<HTMLSelectElement>('#folder-parent').value = selectedFolder === 'all' ? '' : selectedFolder ?? ''; $<HTMLInputElement>('#folder-name').value = ''; $<HTMLDialogElement>('#folder-dialog').showModal(); };
 $('#folder-form').onsubmit = async event => {

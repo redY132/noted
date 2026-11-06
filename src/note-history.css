@@ -1,0 +1,18 @@
+.note-history-controls { display: flex; gap: 2px; }
+.note-history-controls[hidden] { display: none; }
+.note-history-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); }
+.note-history-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.note-history-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.note-history-dialog h2 { font: 600 1.125rem/1.4 system-ui; margin: 0; }
+.note-history-dialog header h2 { min-width: 0; overflow-wrap: anywhere; }
+.note-history-dialog header button { flex-shrink: 0; }
+.note-history-dialog p { font-size: .8125rem; line-height: 1.5; color: var(--ui-muted); margin: 0; }
+.note-history-dialog button { min-height: 44px; min-width: 44px; padding: 8px; border-radius: 4px; cursor: pointer; }
+.note-history-dialog [data-history-list] { min-height: 44px; max-height: 55dvh; overflow: auto; overscroll-behavior: contain; }
+.note-history-dialog [data-history-list] button { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-bottom: 3px; text-align: left; }
+.note-history-dialog strong { font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.note-history-dialog [data-history-list] span { font-size: .75rem; line-height: 1.5; color: var(--ui-muted); overflow-wrap: anywhere; }
+.note-history-dialog [aria-current=page] { background: var(--accent-soft); }
+.note-history-dialog [data-history-list] button:disabled { opacity: 1; cursor: default; }
+.note-history-dialog button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+#view-popover :is(#shell-history-back,#shell-history-forward,#shell-note-history) { min-height: 44px; }

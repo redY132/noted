@@ -1,0 +1,54 @@
+# Evening UI delivery checks
+
+Navigation checkpoint: **PASS**, November 6, 2026. The anti-slop package could not be inspected because its cached directory is missing. The user's selected During mode and previously loaded rules were applied manually; this is not a claim that the plugin loaded again. Direction was recorded before implementation in `DESIGN.md`.
+
+## Hard gate
+
+| Rule | Result | Evidence |
+| --- | --- | --- |
+| R-02 Copy | PASS | Back, Forward, Note history and Clear previous visits describe their actions. |
+| R-03 Reflow | PASS | Native history navigation at 1600, 1200, 800 and 390 pixels; dialog profiles in both themes at 1200, 800 and 390; 200% text. No horizontal overflow. |
+| R-17 Numbers | PASS | Bounded 100-visit model; test and contrast values come from actual checks. |
+| R-18 Testimonials | PASS | None added. |
+| R-23 Assets and structure | PASS | Two local SVG directional chevrons represent actual navigation actions. No decorative assets added. |
+| R-24 Navigation | PASS | Toolbar, View, keyboard and history rows navigate saved note IDs. Branches and Trash/Restore were exercised. |
+| R-25 Contrast | PASS | Native history text minimum 4.979:1 Light and 6.135:1 Dark; focus and targets pass the shared rendered checks. |
+| R-26 Controls | PASS | All new commands have implemented behavior. Clear keeps the active note and changes only in-memory visits. |
+| R-27 States | PASS | No history, current visit, unavailable visit, pending open, failed save/load, retry and externally changed revision covered by synthetic tests. |
+| R-28 FAQ | PASS | None added. |
+| R-32 Keyboard | PASS | Alt Left/Right, View access, history rows, modal guarding, Escape and focus restoration checked. macOS word-navigation gestures are left available. |
+| R-33 Source implementation | PASS | Production TypeScript/CSS edited directly. Test scripts do not rewrite app source. |
+| R-34 Themes | PASS | Light and Dark rendered checks passed with the app's existing accent behavior. |
+| R-35 Run and verify | PASS | Frontend and Windows release built; native history, sidebar and dialog checks passed without uncaught errors. |
+| R-36 Claims | PASS | No new hardware, hosting, certification or model-quality claims. The tests use disposable synthetic notes. |
+| R-37 Direction | PASS | Session reading aid and narrow-toolbar behavior specified in DESIGN before implementation. |
+| R-38 Content | PASS | History displays actual session metadata, with titles inserted as text. No filler content in production. |
+| R-39 Semantics | PASS | Named buttons, current-visit marker, native dialog, status feedback and inert closed dialog. |
+| R-40 Mechanisms | PASS | Up to 100 in-memory visits and a resize observer; no continuous animation, network service or media added. |
+
+## Purpose gate and quality locks
+
+| Rule/check | Result | Reason |
+| --- | --- | --- |
+| R-01 Color / R-29 Palette | PASS | Existing neutral surfaces and the user's accent distinguish the current visit. |
+| R-04 Icons / R-08 Arrows | PASS | Familiar left/right chevrons are functional Back/Forward controls. |
+| R-06 Type | PASS | System UI type distinguishes navigation from authored note typography. |
+| R-07 Background / R-10 Glass / R-13 Glow | PASS | Plain theme surface; no texture, filter or glow. |
+| R-09 Badges / R-18 Testimonials | PASS | No decorative badges, claims or social proof. |
+| R-12 Shadow / R-11 Radius | PASS | Existing native-dialog treatment; no additional navigation boxes or shadows. |
+| R-14 Cards | PASS | Compact visit rows serve navigation, with no feature-card layout. |
+| R-19 Motion | PASS | No new motion; reduced-motion checks passed with the retained shell. |
+| R-22 Illustration | PASS | No illustration. |
+| R-05 Layout / C-3 Composition | PASS | Accepted dock and large graph preserved; history controls hide before crowding narrow writing areas. |
+| R-15 Actions / R-16 Copy | PASS | Direct action labels with explanatory failure/recovery messages. |
+| R-20 Identity / R-30 Originality | PASS | Spatial folder browsing remains the user's chosen composition; history supports writing. |
+| R-21 Dark mode | PASS | Both resolved themes tested. |
+| R-31 Reasons / C-1 Intentionality | PASS | Toolbar placement, bounded session state and plain list have recorded reasons. |
+| C-2 Completeness | PASS | Rendered click-through and fault injection exercise real commands. |
+| C-4 Resilience | PASS | Save/load failure, revision change, repeated clicks, unavailable destinations, resizing and large text covered. |
+| C-5 Evidence | PASS | Tests distinguish real native rendering from preview-only fault injection. |
+| Design dials | PASS | ENERGY 1 / RHYTHM 2 / MOTION 2 retained. |
+| Focal point / whitespace | PASS | Document and persistent graph retain their roles; history is temporary and scrolls internally. |
+| Comment hygiene | PASS | Comments explain session scope, stale revision safety and native shortcut behavior. |
+
+Evidence scripts: `note-history-smoke.js`, `note-history-faults.js`, `daily-workflow-visual.js`, `sidebar-smoke.js`; unit coverage in the three navigation/view/history test modules. Generated screenshots remain ignored under `output/playwright/`.

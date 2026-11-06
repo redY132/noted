@@ -6,6 +6,12 @@ async page => {
   } else if (new URL(page.url()).origin !== 'http://127.0.0.1:1436') throw new Error('Isolated workflow preview required');
   const fixture = await page.evaluate(() => JSON.parse(localStorage.getItem('noted-sidebar-fixture') || 'null'));
   if (!fixture?.notes?.length) throw new Error('Synthetic workflow fixture required');
+  const expectedLocation = await page.evaluate(async ({ native, id }) => {
+    const folders = native ? await window.__TAURI_INTERNALS__.invoke('list_folders') : await (await import('/src/api.ts')).api.folders();
+    const path = [], seen = new Set();
+    while (id && !seen.has(id)) { seen.add(id); const folder = folders.find(f => f.id === id); if (!folder) throw new Error('Synthetic folder missing'); path.unshift(folder.name); id = folder.parentId; }
+    return path.join(' / ');
+  }, { native, id: fixture.observations });
   const checks = [], errors = [];
   const record = (name, value) => { if (!value) throw new Error(name); checks.push(name); };
   page.on('pageerror', error => errors.push(error.message));
@@ -18,7 +24,7 @@ async page => {
   await page.waitForFunction(() => document.querySelectorAll('[data-quick-note]').length === 40);
   record('View opens a focused local note picker', await search.evaluate(el => el === document.activeElement));
   record('picker leaves the dock closed', await browse.getAttribute('aria-expanded') === 'false');
-  record('folder context uses the saved hierarchy', (await page.locator('[data-quick-results]').innerText()).includes('Synthetic field journal / Research / Observations'));
+  record('folder context uses the saved hierarchy', (await page.locator('[data-quick-results]').innerText()).includes(expectedLocation));
   record('long results scroll inside the picker', await page.locator('[data-quick-results]').evaluate(el => el.scrollHeight > el.clientHeight));
   await page.locator('[data-quick-more]').click(); await page.waitForFunction(() => document.querySelectorAll('[data-quick-note]').length === 80);
   record('paging reveals more notes and focuses a new result', await page.locator('[data-quick-note]').nth(40).evaluate(el => el === document.activeElement));
