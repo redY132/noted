@@ -47,6 +47,8 @@ import './note-history.css';
 import './ai-activity.css';
 import { initializeNoteActions } from './note-actions-ui';
 import './note-actions.css';
+import { initializeDocumentOutline } from './document-outline-ui';
+import './document-outline.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -71,7 +73,7 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
-  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div>
+  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div><div id="document-outline-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Core editing and keyword search work offline. Generate proposal sends the approved saved note and instructions to OpenAI through your signed-in Codex client. Permitted agents can read explicitly shared folders or active one-note requests and may send that text to their model provider. Full-document guidance requires per-request consent. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
@@ -83,10 +85,12 @@ let navigationUI: ReturnType<typeof initializeNavigation> | null = null;
 let quickOpenUI: ReturnType<typeof initializeQuickOpen> | null = null;
 const noteHistory = new NavigationHistory();
 let historyUI: ReturnType<typeof initializeNoteHistory> | null = null;
+let outlineUI: ReturnType<typeof initializeDocumentOutline> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
 let navigating = false;
+let readingPositionEpoch = 0;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let countTimer: ReturnType<typeof setTimeout> | undefined;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -138,6 +142,7 @@ historyUI = initializeNoteHistory($('#note-history-host'), {
   go: target => navigate(() => api.load(target.id), target), focusEditor: () => editor?.view.focus(),
 });
 initializeNoteActions($('.workspace'), $('#view-popover'));
+outlineUI = initializeDocumentOutline($('#document-outline-host'), { menu: $('#view-popover'), editor: () => editor, noteId: () => session?.note.id ?? null, title: () => session?.note.title ?? '', busy: () => navigating, scroll: () => $('.document-scroll'), beforeJump: () => { readingPositionEpoch++; } });
 $('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};
@@ -175,6 +180,7 @@ function updateSaveState() {
   $('#save-state').textContent = saveError ? 'Not saved · draft kept open' : session?.saving ? 'Saving…' : session?.dirty ? 'Unsaved changes' : session ? '✓ Saved on this device' : 'Ready';
   $('#save-state').classList.toggle('save-error', saveError);
   if (session) $('#revision-label').textContent = `Revision ${session.note.revision}`;
+  outlineUI?.sync();
 }
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -338,14 +344,20 @@ function captureCurrentVisit() {
   if (session && editor) noteHistory.capture(session.note.id, captureNoteView(editor, $('.document-scroll'), session.note.revisionToken));
 }
 function resetReadingPosition() {
-  const currentEditor = editor;
+  const currentEditor = editor, ticket = ++readingPositionEpoch;
   $('.document-scroll').scrollTo(0, 0);
-  requestAnimationFrame(() => { if (editor === currentEditor) $('.document-scroll').scrollTo(0, 0); });
+  requestAnimationFrame(() => { if (editor === currentEditor && ticket === readingPositionEpoch) $('.document-scroll').scrollTo(0, 0); });
+}
+function focusDestinationBlock(id: string) {
+  // An explicit destination wins over an earlier deferred note-start/history scroll.
+  readingPositionEpoch++;
+  return editor ? focusBlock(editor, id) : false;
 }
 async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
   if (navigating || (target && !noteHistory.valid(target))) return false;
   navigating = true;
   historyUI?.sync();
+  outlineUI?.sync();
   $('#note-pane').inert = true;
   editor?.setEditable(false, false);
   try {
@@ -358,13 +370,13 @@ async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
       const currentEditor = editor, scroll = $('.document-scroll');
       $('#note-pane').inert = false;
       restoreNoteView(editor, scroll, note.revisionToken, target.view);
-      const top = scroll.scrollTop, left = scroll.scrollLeft;
-      requestAnimationFrame(() => { if (editor === currentEditor) { scroll.scrollTop = top; scroll.scrollLeft = left; } });
+      const top = scroll.scrollTop, left = scroll.scrollLeft, ticket = ++readingPositionEpoch;
+      requestAnimationFrame(() => { if (editor === currentEditor && ticket === readingPositionEpoch) { scroll.scrollTop = top; scroll.scrollLeft = left; } });
     } else resetReadingPosition();
     return true;
   }
   catch (reason) { error(reason); return false; }
-  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); }
+  finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); outlineUI?.sync(); }
 }
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
 async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
@@ -416,7 +428,7 @@ function interceptEditorLink(event: MouseEvent) {
   if (window.getSelection()?.isCollapsed === false) return;
   const target = noteLinkTarget(anchor.getAttribute('href'));
   if (!target) { error('This link is not a supported note or web address.'); return; }
-  if (target.kind === 'note') void openNote(target.destination).then(()=>{if(target.blockId&&session?.note.id===target.destination&&editor&&!focusBlock(editor,target.blockId))error('The linked block is missing. The note remains open.');});
+  if (target.kind === 'note') void openNote(target.destination).then(()=>{if(target.blockId&&session?.note.id===target.destination&&editor&&!focusDestinationBlock(target.blockId))error('The linked block is missing. The note remains open.');});
   else if (browserPreview) window.open(target.destination, '_blank', 'noopener,noreferrer');
   else void openUrl(target.destination).catch(error);
 }

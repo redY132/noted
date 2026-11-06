@@ -36,6 +36,10 @@ Two synthetic Generate attempts in an early native test reached the actual signe
 
 The unsafe interception test was removed. Final simulated-job tests run in a separate browser-only harness with every AI/account method supplied as a local stub and no native IPC. Final native review tests use prewritten proposals and never click Generate or invoke the start command. Test reports distinguish simulated UI behavior from real native persistence and rendered validation.
 
-## Next independent milestone
+## Heading navigation milestone
 
 Add **View > Go to heading** for the open note: a searchable, paginated H1-H6 list in logical document order, keyboard access and navigation by stable block ID. Preserve the mounted editor, authored content, selection when cancelled and Undo. Handle empty outlines, long titles, missing/stale headings and large lists. This is local navigation of the open editor and does not query AI or change the accepted dock.
+
+Implemented and verified. The final frontend suite passed 239 tests, including ten outline cases. Production frontend and Windows release built. Browser and actual native webview each passed 17 interactions, six theme/size profiles and 200% text. Minimum native text contrast was 4.979:1 Light and 6.135:1 Dark; focus, field boundaries, 44px targets and overflow passed. Screenshots were manually inspected. The native 20-check Back/Forward regression also passed.
+
+Rendered verification found two existing scrolling issues: selection scrolling required editor focus before dispatch, and a deferred note-start reset could override an explicit cross-note block destination. Both are fixed, with tests waiting for deferred frames before checking the visible destination. Heading jumps do not write a revision and preserve Undo. See [Go to heading](go-to-heading.md).

@@ -70,3 +70,19 @@ Result: **PASS** for the changed activity/review/command UI. The same manual Dur
 | R-37, R-31, C-1 Direction | PASS | Status density and responsive commands were specified before implementation in DESIGN. |
 
 Test scripts: `ai-activity-harness-smoke.js` and `ai-activity-cache-smoke.js`. The browser fixture has no native IPC or real AI/account methods. Native cached checks never click Generate. No private notes or original Logseq data are test inputs.
+
+## Heading navigation
+
+Result: **PASS** under the same manual During rules; no new plugin load is claimed. The native dialog reuses existing theme, typography, focus and target sizing, without adding a sidebar, decorative assets, motion or nested surfaces. Plain rows identify actual headings and levels.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-03, R-05, C-3 Reflow | PASS | Native and browser Light/Dark at 1200x800, 800x560 and 390x840 plus 200% text; bounded dialog and internally scrolling results. Screenshots manually reviewed. |
+| R-24, R-26, R-27, C-2, C-4 States | PASS | 130 headings, logical order, long-title search, paging/focus, filtered-empty and no-heading guidance, changed/removed/duplicate heading guards and modal exclusion. |
+| R-25, R-34 Contrast | PASS | Native text minimum 4.979:1 Light, 6.135:1 Dark. Focus and field boundaries pass 3:1; active targets pass 44px. |
+| R-32, R-39 Keyboard/semantics | PASS | Named native dialog and results region, labelled search, H1-H6 context, current-location marker, arrows/Home/End/Enter, one Escape and inert close. |
+| R-33, R-35, R-36, C-5 Verification | PASS | Direct source edits, 239 frontend tests, production and Windows builds, 17 native and 17 browser checks. Saved revision unchanged by navigation; Undo and selection/scroll cancellation checked. Native history regression passes 20 checks. |
+| R-37, C-1 Direction | PASS | Long-note navigation specified in DESIGN before implementation. Accepted continuous dock and persistent graph preserved. |
+| R-40 Mechanisms | PASS | Current editor snapshot only while open; no polling, generation, account access or additional note retrieval. |
+
+Evidence: `document-outline-smoke.js`, outline model/UI tests and ignored `output/playwright/outline-*` screenshots. Existing block-link behavior now correctly reveals the selected block after deferred navigation frames.

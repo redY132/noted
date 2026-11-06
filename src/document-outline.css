@@ -1,0 +1,17 @@
+.document-outline-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); }
+.document-outline-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.document-outline-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.document-outline-dialog h2 { min-width: 0; overflow-wrap: anywhere; font: 600 1.125rem/1.4 system-ui; margin: 0; }
+.document-outline-dialog header button { flex-shrink: 0; }
+.document-outline-dialog button { min-height: 44px; min-width: 44px; padding: 8px; border-radius: 4px; cursor: pointer; }
+.document-outline-dialog label { display: flex; flex-direction: column; gap: 6px; font-size: .875rem; }
+.document-outline-dialog input { width: 100%; min-height: 44px; padding: 8px 10px; background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-muted); border-radius: 4px; font: inherit; }
+.document-outline-dialog p { margin: 0; font-size: .8125rem; line-height: 1.5; color: var(--ui-muted); overflow-wrap: anywhere; }
+.document-outline-dialog [data-outline-results] { min-height: 44px; max-height: 50dvh; overflow: auto; overscroll-behavior: contain; }
+.document-outline-dialog [data-outline-results] button { display: flex; flex-direction: column; gap: 4px; width: 100%; padding-inline-start: calc(8px + var(--heading-depth,0) * 10px); text-align: left; }
+.document-outline-dialog strong { font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.document-outline-dialog [data-outline-results] span { font-size: .75rem; color: var(--ui-muted); }
+.document-outline-dialog [aria-current=location] { background: var(--accent-soft); }
+.document-outline-dialog :is(button,input):focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.document-outline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#shell-go-heading { min-height: 44px; }
