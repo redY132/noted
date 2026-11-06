@@ -1,0 +1,25 @@
+.review-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); font: .875rem/1.5 system-ui, sans-serif; overflow: auto; }
+.review-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.review-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.review-dialog h2 { margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
+.review-dialog p { margin: 0; color: var(--ui-muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.review-dialog button { min-height: 44px; min-width: 44px; padding: 8px; border-radius: 4px; font: inherit; }
+.review-dialog :is(input:not([type=checkbox]), select) { min-height: 44px; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--ui-muted); border-radius: 4px; color: var(--ui-text); background: var(--ui-surface); font: inherit; }
+.review-dialog label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.review-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.review-dialog .review-hidden { flex-direction: row; align-items: center; min-height: 44px; }
+.review-refresh { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.review-refresh p { flex: 1 1 200px; }
+.review-dialog [data-review-list] { min-height: 44px; max-height: 50dvh; overflow: auto; overscroll-behavior: contain; }
+.review-dialog article { padding: 10px 6px 16px; margin-bottom: 8px; }
+.review-dialog h3 { margin: 0 0 6px; font: 600 1rem/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }
+.review-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
+.review-dialog :is(button,input,select):focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+@media (max-width: 520px) { .review-filters { grid-template-columns: minmax(0, 1fr); } }
+/* In short windows the filters must not squeeze the queue into a tiny scroller. */
+@media (max-height: 650px) {
+  .review-dialog[open] { display: block; }
+  .review-dialog > :not(:last-child) { margin-bottom: 10px; }
+  .review-dialog header { position: sticky; top: 0; z-index: 1; background: var(--ui-surface); }
+  .review-dialog [data-review-list] { max-height: none; overflow: visible; }
+}

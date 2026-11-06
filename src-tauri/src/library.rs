@@ -1,6 +1,6 @@
 //! Reversible library operations. Authored links/assets survive Trash.
 use crate::store::{atomic_write, valid_id, Folder, Note, NoteSummary, Store};
-use chrono::{Duration, Utc};
+use chrono::{Duration, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::Path};
 type Result<T> = std::result::Result<T, String>;
@@ -262,7 +262,20 @@ impl Store {
         tag: String,
         include_hidden: bool,
     ) -> Result<Vec<ReviewItem>> {
-        let now = Utc::now();
+        self.review_feed_at(folder_id, tag, include_hidden, Local::now())
+    }
+    // Use the zone itself, rather than today's fixed offset: historical instants
+    // may have a different daylight-saving offset. Stored timestamps stay UTC.
+    fn review_feed_at<Tz: TimeZone>(
+        &self,
+        folder_id: Option<String>,
+        tag: String,
+        include_hidden: bool,
+        now: chrono::DateTime<Tz>,
+    ) -> Result<Vec<ReviewItem>> {
+        let instant = now.with_timezone(&Utc);
+        let today = now.date_naive();
+        let zone = now.timezone();
         let mut ranked = vec![];
         for note in self.list_notes()? {
             if folder_id
@@ -273,26 +286,24 @@ impl Store {
                 continue;
             }
             let state = self.review_state(&note.id)?;
-            let today = now.date_naive();
             let reviewed = state
                 .reviewed_at
                 .as_deref()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok());
+            let reviewed_today = reviewed
+                .as_ref()
+                .is_some_and(|d| d.with_timezone(&zone).date_naive() == today);
             let sleeping = state
                 .snooze_until
                 .as_deref()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                .is_some_and(|d| d > now);
-            if !include_hidden
-                && (state.dismissed
-                    || sleeping
-                    || reviewed.is_some_and(|d| d.date_naive() == today))
-            {
+                .is_some_and(|d| d > instant);
+            if !include_hidden && (state.dismissed || sleeping || reviewed_today) {
                 continue;
             }
             let days = chrono::DateTime::parse_from_rfc3339(&note.updated_at)
                 .ok()
-                .map(|d| (now - d.with_timezone(&Utc)).num_days().max(0))
+                .map(|d| (instant - d.with_timezone(&Utc)).num_days().max(0))
                 .unwrap_or(0);
             let connections: i64 = self
                 .relations
@@ -313,10 +324,13 @@ impl Store {
                 reasons.push("Excluded from review".into());
             }
             if sleeping {
-                reasons.push("Snoozed until tomorrow".into());
+                reasons.push("Snoozed".into());
+            }
+            if reviewed_today {
+                reasons.push("Reviewed today".into());
             }
             let age = reviewed
-                .map(|d| (now - d.with_timezone(&Utc)).num_days().max(0))
+                .map(|d| (instant - d.with_timezone(&Utc)).num_days().max(0))
                 .unwrap_or(days + 30);
             let tie = format!("{today}{}", note.id)
                 .bytes()
@@ -392,6 +406,86 @@ mod tests {
         assert_eq!(s.review_feed(None, "".into(), false).unwrap().len(), 1);
         s.review_action(&a.id, "reviewed").unwrap();
         assert!(s.review_feed(None, "".into(), false).unwrap().is_empty());
+    }
+    #[test]
+    fn review_uses_the_device_calendar_day_in_both_directions_from_utc() {
+        let t = tempfile::tempdir().unwrap();
+        let mut s = Store::open(t.path()).unwrap();
+        let note = s
+            .create_note("Synthetic calendar note".into(), None)
+            .unwrap();
+        let note_path = s.path("notes", &note.id).unwrap();
+        let original = fs::read(&note_path).unwrap();
+        let review = directory(&s.root, "review")
+            .unwrap()
+            .join(format!("{}.json", note.id));
+        for (now, reviewed_at, hidden) in [
+            ("2026-11-06T20:00:00-05:00", "2026-11-06T23:30:00Z", true),
+            ("2026-11-07T00:00:00-05:00", "2026-11-07T04:59:59Z", false),
+            ("2026-11-07T00:00:00-05:00", "2026-11-07T05:00:00Z", true),
+            (
+                "2026-11-07T01:00:00-05:00",
+                "2026-11-07T14:01:00+09:00",
+                true,
+            ),
+            ("2026-11-07T01:00:00+13:00", "2026-11-06T10:59:59Z", false),
+            ("2026-11-07T01:00:00+13:00", "2026-11-06T11:00:00Z", true),
+            ("2026-11-07T14:00:00+13:00", "2026-11-06T11:30:00Z", true),
+            ("2026-11-07T01:00:00-05:00", "invalid", false),
+        ] {
+            atomic_write(
+                &review,
+                &serde_json::to_vec(&ReviewState {
+                    reviewed_at: Some(reviewed_at.into()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .unwrap();
+            let clock = chrono::DateTime::parse_from_rfc3339(now).unwrap();
+            let due = s.review_feed_at(None, "".into(), false, clock).unwrap();
+            assert_eq!(due.is_empty(), hidden, "clock {now}, review {reviewed_at}");
+            let all = s.review_feed_at(None, "".into(), true, clock).unwrap();
+            assert_eq!(all.len(), 1);
+            assert_eq!(all[0].reasons.iter().any(|r| r == "Reviewed today"), hidden);
+        }
+        assert_eq!(fs::read(note_path).unwrap(), original);
+    }
+    #[test]
+    fn snooze_uses_an_instant_and_expires_without_rewriting_review_state() {
+        let t = tempfile::tempdir().unwrap();
+        let mut s = Store::open(t.path()).unwrap();
+        let note = s.create_note("Synthetic snooze note".into(), None).unwrap();
+        let review = directory(&s.root, "review")
+            .unwrap()
+            .join(format!("{}.json", note.id));
+        let state = serde_json::to_vec(&ReviewState {
+            snooze_until: Some("2026-03-09T06:30:00Z".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        atomic_write(&review, &state).unwrap();
+        for (now, sleeping) in [
+            ("2026-03-09T02:29:59-04:00", true),
+            ("2026-03-09T02:30:00-04:00", false),
+            ("2026-03-09T02:30:01-04:00", false),
+        ] {
+            let clock = chrono::DateTime::parse_from_rfc3339(now).unwrap();
+            assert_eq!(
+                s.review_feed_at(None, "".into(), false, clock)
+                    .unwrap()
+                    .is_empty(),
+                sleeping
+            );
+            assert_eq!(
+                s.review_feed_at(None, "".into(), true, clock).unwrap()[0]
+                    .reasons
+                    .iter()
+                    .any(|r| r == "Snoozed"),
+                sleeping
+            );
+        }
+        assert_eq!(fs::read(review).unwrap(), state);
     }
 }
 

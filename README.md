@@ -45,6 +45,8 @@ Open the localhost URL printed by Vite. The explicitly labeled browser preview u
 
 **View > Go to heading** searches the open note's H1-H6 titles in logical reading order. Choose a heading to move within the same editor, or Escape to return without changing the selection. Long outlines load in pages. Heading and block-link jumps preserve Undo and reliably reveal the destination. See [Go to heading](docs/go-to-heading.md).
 
+**Browse > Review notes** revisits original notes offline. Filters update the queue directly; Reviewed today follows the device's local calendar and Snooze lasts 24 hours. Include hidden notes to reset reviewed, snoozed or excluded choices. Opening saves the current draft first and does not mark a note reviewed. See [review behavior and checks](docs/review-notes.md).
+
 **Ctrl P / Cmd P** or **View > Open note** searches saved titles, text and tags locally without changing dock visibility. Arrow keys and Enter open a result; Escape returns to writing. Switching saves the current draft first. The picker identifies an updating search index, supports paging and retries, and preserves the editor/Undo when cancelled. See [Open note](docs/open-note.md).
 
 **Back / Forward**, **View > Note history**, or **Alt Left / Alt Right** on Windows return to previous visits with their reading position and selection. History keeps up to 100 visits in memory, preserves unavailable Trash entries and follows Restore. Failed saves and loads leave the draft and destination available for retry. See [Note history](docs/note-history.md).

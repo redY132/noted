@@ -41,3 +41,11 @@ When the writing area is shorter than 360px, its five note-action buttons move i
 ## Long-note navigation
 
 Go to heading is a temporary native dialog reached from View, not another sidebar. Plain heading rows follow the document's logical reading order and label their H1-H6 levels. Search and paging keep a long outline manageable. Choosing a row moves the caret and scrolls to its stable block without changing words or remounting the editor; cancelling restores the prior writing context. Empty and changed-document states provide a useful recovery action. Reuse the existing neutral theme, 44px controls, focus treatment and dialog dimensions. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.
+
+## Daily review calendar
+
+Reviewed today means the current date on this device, matching Today's note. Stored review timestamps remain UTC instants; changing timezone recalculates the current local day without rewriting notes or review files. Snooze remains an elapsed 24 hours rather than an ambiguous calendar reset. Explain this in the existing review dialog, without a new setting or decorative status surface. Keep local-only review distinct from AI and do not change any sharing controls.
+
+Review opens immediately into a named dialog with plain, internally scrolling note rows. Folder, tag and hidden-state filters update the queue with visible pending feedback; old rows become unavailable as soon as a filter changes. Each note offers the existing review actions. Show Reset review when hidden-state notes are included, where restoring those choices is relevant. Loading, failed reads, empty selections and failed saves explain recovery. Keep keyboard focus near the next item after marking or snoozing, and return to the opener on cancellation. Only an open review dialog checks for a changed local day; closing clears its retained metadata and timer. No new card surfaces, assets, animation or sidebar sections. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.
+
+Below 650px window height, use a single dialog scroll with its Close heading retained at the top. Filters and explanatory copy must not squeeze the queue into a 44px nested viewport at large text. Normal desktop windows keep an internally scrolling queue.

@@ -86,3 +86,19 @@ Result: **PASS** under the same manual During rules; no new plugin load is claim
 | R-40 Mechanisms | PASS | Current editor snapshot only while open; no polling, generation, account access or additional note retrieval. |
 
 Evidence: `document-outline-smoke.js`, outline model/UI tests and ignored `output/playwright/outline-*` screenshots. Existing block-link behavior now correctly reveals the selected block after deferred navigation frames.
+
+## Offline review queue
+
+Result: **PASS** under the same manual During rules. Plain note rows replace the older boxed review cards. Existing actions, neutral theme and typography remain; no new assets, effects, animation or dock sections.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-03, R-05, C-3 Reflow | PASS | Native/browser at 1200x800, 800x560, 390x840 in both themes, plus 200% text. Short windows use one dialog scroll; every profile reaches the last action. Screenshots manually inspected. |
+| R-24, R-26, R-27, C-2, C-4 States | PASS | Loading, filter changes, late responses, read failure/Refresh, duplicate actions, write failure, successful write with failed refresh, hidden/reset/empty states and safe Open refusal tested. |
+| R-25, R-34 Contrast | PASS | Minimum 6.029:1 Light and 7.822:1 Dark. Active targets/checkbox label meet 44px; focus and field boundaries pass 3:1. |
+| R-32, R-39 Keyboard/semantics | PASS | Named native dialog/results region, implicit field labels, live status, inert closed dialog, first Escape and next-item focus. Saving/opening blocks duplicate navigation and cancellation until the draft is safe. |
+| R-33, R-35, R-36, C-5 Verification | PASS | Direct UI source edits, 252 frontend tests, 103 native tests with four optional cases ignored, production/Windows builds, 25 browser and 25 native rendered checks. |
+| R-37, C-1 Direction | PASS | Local-day semantics and queue states specified in DESIGN before implementation. Short-window correction follows actual large-text inspection. |
+| R-40 Mechanisms | PASS | Local metadata only, tag debounce and obsolete-response guard. Only an open dialog checks for changed local days; no AI, background notifications or new sharing. |
+
+Evidence: `review-smoke.js`, review UI/calendar tests, native library fixtures and ignored `output/playwright/review-*` screenshots. Timestamp tests use isolated clocks and child-process timezones, never the system settings or personal data.

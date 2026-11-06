@@ -4,6 +4,7 @@ import { MAX_IMAGE_BYTES, rasterDimensions, rasterMime, validateImageDimensions 
 import { registerImageSource, unregisterImageSource } from './component-motion';
 import { previewRelationOperation, type PreviewRelations } from './relations-preview';
 import { documentFromEditor, documentToEditor, previewDocumentOperations, type DocumentPermission, type DocumentOperation } from './document-model';
+import { reviewTiming } from './review-calendar';
 import type { Page, PairState, PairMutation, PickerNote, ConnectionEntry, ReferenceEntry, RelatedNote, ConnectionSearchPage, ConnectionSearchScope } from './model';
 
 export const browserPreview = !isTauri();
@@ -44,7 +45,13 @@ async function preview<T>(command: string, args: Record<string, unknown> = {}): 
     case 'restore_note':{const trash=JSON.parse(localStorage.getItem('noted-preview-trash')??'[]') as Note[],index=trash.findIndex(n=>n.id===args.id);if(index<0)throw new Error('Trashed note missing.');if(store.notes.some(n=>n.id===args.id))throw new Error('An active copy exists; nothing replaced.');result=trash[index];store.notes.push(trash[index]);persist(store);trash.splice(index,1);localStorage.setItem('noted-preview-trash',JSON.stringify(trash));break;}
     case 'recover_draft':{const draft=structuredClone(args.draft as Note),oldId=draft.id;draft.id=crypto.randomUUID();draft.revision=1;draft.revisionToken=crypto.randomUUID();draft.title=draft.title.slice(0,240)+' (recovered draft)';draft.createdAt=draft.updatedAt=new Date().toISOString();if(draft.folderId&&!store.folders.some(f=>f.id===draft.folderId))draft.folderId=null;await copyPreviewAssets(oldId,draft.id);store.notes.push(draft);persist(store);result=draft;break;}
     case 'review_action':{const id=String(args.id);if(!store.notes.some(n=>n.id===id))throw new Error('Note is missing.');const states=JSON.parse(localStorage.getItem('noted-preview-review')??'{}') as Record<string,{dismissed?:boolean;snoozeUntil?:string;reviewedAt?:string}>;const s=states[id]??{};if(args.action==='reset')delete states[id];else{if(args.action==='dismiss')s.dismissed=true;else if(args.action==='snooze')s.snoozeUntil=new Date(Date.now()+86400000).toISOString();else if(args.action==='reviewed'){s.reviewedAt=new Date().toISOString();delete s.snoozeUntil;}else throw new Error('Unknown review action.');states[id]=s;}localStorage.setItem('noted-preview-review',JSON.stringify(states));break;}
-    case 'review_feed':{const states=JSON.parse(localStorage.getItem('noted-preview-review')??'{}') as Record<string,{dismissed?:boolean;snoozeUntil?:string;reviewedAt?:string}>;const today=new Date().toISOString().slice(0,10);result=store.notes.filter(n=>{const s=states[n.id]??{};return (!args.folderId||n.folderId===args.folderId)&&(!args.tag||n.tags.some(t=>t.toLowerCase()===String(args.tag).toLowerCase()))&&(args.includeHidden||!s.dismissed&&(!s.snoozeUntil||s.snoozeUntil<new Date().toISOString())&&s.reviewedAt?.slice(0,10)!==today);}).sort((a,b)=>(states[a.id]?.reviewedAt??a.updatedAt).localeCompare(states[b.id]?.reviewedAt??b.updatedAt)).slice(0,30).map(note=>({note:summary(note),reasons:[states[note.id]?.dismissed?'Excluded from review':states[note.id]?.snoozeUntil?'Snoozed':'Resurfaced from your saved notes',...(note.tags.length?['Tags: '+note.tags.join(', ')]:[])]}));break;}
+    case 'review_feed': {
+      const states=JSON.parse(localStorage.getItem('noted-preview-review')??'{}') as Record<string,{dismissed?:boolean;snoozeUntil?:string;reviewedAt?:string}>, now=new Date();
+      result=store.notes.filter(n=>{const s=states[n.id]??{},timing=reviewTiming(s,now);return (!args.folderId||n.folderId===args.folderId)&&(!args.tag||n.tags.some(t=>t.toLowerCase()===String(args.tag).toLowerCase()))&&(args.includeHidden||!s.dismissed&&!timing.sleeping&&!timing.reviewedToday);})
+        .sort((a,b)=>(states[a.id]?.reviewedAt??a.updatedAt).localeCompare(states[b.id]?.reviewedAt??b.updatedAt)).slice(0,30)
+        .map(note=>{const state=states[note.id]??{},timing=reviewTiming(state,now);return {note:summary(note),reasons:['Resurfaced from your saved notes',...(state.dismissed?['Excluded from review']:[]),...(timing.sleeping?['Snoozed']:[]),...(timing.reviewedToday?['Reviewed today']:[]),...(note.tags.length?['Tags: '+note.tags.join(', ')]:[])]};});
+      break;
+    }
 
     case 'list_document_definitions': result=JSON.parse(localStorage.getItem(`noted-preview-definitions-${args.kind}`)??'[]');break;
     case 'save_document_definition': {

@@ -24,7 +24,7 @@ Preview renders the actual candidate in both themes and three widths. Apply reje
 
 **Review notes** shows up to 30 saved original notes, prioritizing notes least recently reviewed with a stable daily tie-breaker. Reasons include editing age, saved connection count and tags. Filter by exact folder and tag. Opening a note does not automatically mark it reviewed.
 
-**Reviewed today** removes it from today's queue, **Snooze one day** defers it for 24 hours, **Exclude** hides it indefinitely and **Reset review** clears those choices. Include reviewed/snoozed/excluded notes to restore a choice. Dates use UTC for the daily boundary. No summaries are generated and no notification automation is installed.
+**Reviewed today** removes it from today's queue, **Snooze 24 hours** defers it for 24 hours, **Exclude** hides it indefinitely and **Reset review** clears those choices. Include reviewed/snoozed/excluded notes to restore a choice. The November 6 update uses this device's local calendar for the daily boundary, matching Today's note; timestamps remain UTC. Filters update directly and stale responses cannot replace the current queue. No summaries are generated and no notification automation is installed. See [current review behavior](review-notes.md).
 
 ## Optional agent formatting
 

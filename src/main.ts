@@ -49,6 +49,7 @@ import { initializeNoteActions } from './note-actions-ui';
 import './note-actions.css';
 import { initializeDocumentOutline } from './document-outline-ui';
 import './document-outline.css';
+import { localCalendarDate } from './review-calendar';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -381,7 +382,7 @@ async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
 async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
 async function dailyNote() {
-  const now = new Date(); const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const now = new Date(), date = localCalendarDate(now)!;
   // Reconciliation can still be discovering an externally imported daily note.
   const status = await api.status();
   if (status.indexing) { error('Notes are still being indexed. Try opening today’s note again when indexing completes.'); return; }
