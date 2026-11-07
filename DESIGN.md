@@ -98,6 +98,16 @@ preview another note's proposal when an earlier creation finishes. If the
 selected request disappears, explain its absence and preserve other requests
 for deliberate selection rather than substituting an older ready proposal.
 
+## Local proposal recovery
+
+Once an owned job reports completion or failure, keep that state visible even
+if saved-request loading fails. Reuse the proposal action for a clearly named
+local reload when a completed proposal has not loaded, without creating another
+job. Saved proposals remain reviewable when sign-in discovery is unavailable;
+new generation stays disabled until sign-in is known. Preserve exact request
+identity, note eligibility, freshness, explicit Apply and Undo. Use the existing
+plain controls and status area; no new section, assets or animation.
+
 # Workspace recovery refinement
 
 Preserve the existing local Create → Inspect → Restore as a new workspace flow and separate-copy opening. Prevent late default paths from replacing a chosen path, disable operations during initial setup, release the form for manual paths if defaults fail, and invalidate inspection after every restore attempt. Ignore UI continuations after disposal without claiming to cancel a native copy already underway. Make the named Workspace dialog's Close stay reachable while scrolling; use existing plain controls, text-relative sizes, 44px targets, visible focus and 3:1 field boundaries. Check asynchronous failure/disposal with fake APIs, then actual Create/Inspect/Restore in guarded native fixtures and responsive themes/200% text. No changes to archive format, source workspaces, imported data, permissions or AI. ENERGY 1, RHYTHM 2, MOTION 2; no new assets or decorative sections.

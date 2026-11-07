@@ -18,7 +18,7 @@ function setup(){
   async subscriptionJob(){statusReads++;if(jobFailure||!jobResponse)throw new Error('Synthetic local status failure');return jobResponse;},
   async cancelSubscription(){calls.push('cancel-job');if(cancelFailure)throw new Error('Synthetic cancellation was not acknowledged');},
   async componentReply(){return {summary:'Counter',definition:counterComponent,properties:{label:'Fixture'}};},
-  async formattingReply(){return rows.some(r=>r.status==='ready')?{summary:'Clearer layout',operations:[]}:null;},
+  async formattingReply(id:string){return rows.some(r=>r.id===id&&r.status==='ready')?{summary:'Clearer layout',operations:[]}:null;},
   async cancelFormattingRequest(id:string){calls.push('remove:'+id);if(removeFailure)throw new Error('Synthetic request removal failed');rows=rows.filter(r=>r.id!==id);},
   async createFormattingRequest(id:string){calls.push('external');externalTargets.push(id);if(createGate)await createGate;return{id:'external',noteId:id,expiresAt:'2099-01-01'};},
  };
@@ -31,7 +31,7 @@ function setup(){
   dom,host,ui,calls,contexts,errors,requestReads,externalTargets,setAIAllowed:(value:boolean)=>aiAllowed=value,
   $:<T extends HTMLElement>(s:string)=>host.querySelector<T>(s)!,setRows:(r:typeof rows)=>rows=r,getReview:()=>review,
   setNote(id:string){note={...note,id,title:'Synthetic other note'};},setOpenFailure(value:boolean){openFailure=value;},setJobFailure(value:boolean){jobFailure=value;},invalidateReviewFlush(){invalidateOnReviewFlush=true;},statusReads:()=>statusReads,
-  setJobPhase(phase:string){jobResponse={...jobResponse,phase};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},setRequestsFailure(value:boolean){requestsFailure=value;},setAccountFailure(value:boolean){accountFailure=value;},
+  setJobPhase(phase:string,message?:string){jobResponse={...jobResponse,phase,...(message?{message}:{})};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},setRequestsFailure(value:boolean){requestsFailure=value;},setAccountFailure(value:boolean){accountFailure=value;},
   holdEligibility(){let release!:()=>void;eligibilityGate=new Promise<void>(resolve=>release=resolve);return()=>{eligibilityGate=null;release();};},
   holdFlush(){let release!:()=>void;flushGate=new Promise<void>(resolve=>release=resolve);return()=>{flushGate=null;release();};},
   holdCreate(){let release!:()=>void;createGate=new Promise<void>(resolve=>release=resolve);return()=>{createGate=null;release();};},
@@ -131,6 +131,84 @@ async function startRunning(f:ReturnType<typeof setup>,component=false){
  if(component){f.$<HTMLSelectElement>('[data-ai-goal]').value='component';f.$('[data-ai-goal]').dispatchEvent(new f.dom.window.Event('change'));await microtasks();}
  const prompt=f.$<HTMLTextAreaElement>('[data-ai-prompt]');prompt.value='Make bold';prompt.dispatchEvent(new f.dom.window.Event('input'));f.$('[data-subscription-send]').click();await microtasks();f.running();await microtasks();
 }
+
+test('a completed job retains its ready state through request-read failure and reloads locally',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const f=setup();try{
+  await startRunning(f);f.setRequestsFailure(true);f.completeBackground();t.mock.timers.tick(2000);await microtasks();await microtasks();
+  assert.equal(f.$('[data-activity-state]').textContent,'Proposal ready');assert.equal(f.$('[data-subscription-stop]').hidden,true);
+  assert.equal(f.$('[data-ai-preview]').hidden,false);assert.equal(f.$('[data-ai-preview]').textContent,'Load proposal');
+  f.setRequestsFailure(false);f.$('[data-ai-preview]').click();await microtasks();await microtasks();
+  assert.equal(f.calls.includes('review'),true);assert.equal(f.calls.filter(call=>call==='send').length,1);
+ }finally{f.close();}
+});
+
+test('a failed job keeps its authoritative failure when the saved-request list is unavailable',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const f=setup();try{
+  await startRunning(f);f.setRequestsFailure(true);f.setJobPhase('failed','Synthetic local generation failed');t.mock.timers.tick(2000);await microtasks();await microtasks();
+  assert.equal(f.$('[data-activity-state]').textContent,'Generation needs attention');assert.match(f.$('[data-ai-status]').textContent!,/Synthetic local generation failed/);
+  assert.equal(f.$('[data-subscription-stop]').hidden,true);assert.equal(f.$('[data-ai-preview]').hidden,true);assert.equal(f.calls.filter(call=>call==='send').length,1);
+ }finally{f.close();}
+});
+
+test('reopening failed-job details preserves the failure without depending on the saved-request list',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const f=setup();try{
+  await startRunning(f);f.setJobPhase('failed','Synthetic owned generation failure');t.mock.timers.tick(2000);await microtasks();await microtasks();
+  f.$('[data-ai-close]').click();f.setRequestsFailure(true);f.setAccountFailure(true);const reads=f.requestReads.length;
+  f.$('[data-activity-open]').click();await microtasks();await microtasks();
+  assert.match(f.$('[data-ai-status]').textContent!,/Synthetic owned generation failure/);assert.equal(f.requestReads.length,reads);
+  assert.equal(f.dom.window.document.activeElement,f.$('[data-ai-status]'));assert.equal(f.$('[data-ai-preview]').hidden,true);assert.equal(f.calls.filter(call=>call==='send').length,1);
+ }finally{f.close();}
+});
+
+test('an immediately completed proposal is not mislabeled as generation failure when its local read fails',async()=>{
+ const f=setup();try{
+  await f.ui.open();const prompt=f.$<HTMLTextAreaElement>('[data-ai-prompt]');prompt.value='Make bold';prompt.dispatchEvent(new f.dom.window.Event('input'));f.$('[data-subscription-send]').click();await microtasks();
+  f.setRequestsFailure(true);f.finish();await microtasks();await microtasks();assert.equal(f.$('[data-activity-state]').textContent,'Proposal ready');
+  f.setRequestsFailure(false);f.$('[data-ai-preview]').click();await microtasks();await microtasks();assert.equal(f.calls.includes('review'),true);assert.equal(f.calls.filter(call=>call==='send').length,1);
+ }finally{f.close();}
+});
+
+test('saved proposal review remains available when sign-in discovery fails, without enabling generation',async()=>{
+ const f=setup();try{
+  f.setRows([{id:'ready',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}]);f.setAccountFailure(true);await f.ui.open();
+  assert.equal(f.$<HTMLButtonElement>('[data-subscription-send]').disabled,true);assert.equal(f.$('[data-ai-preview]').hidden,false);
+  assert.match(f.$('[data-subscription-status]').textContent!,/could not be checked/);
+  f.$('[data-ai-preview]').click();await microtasks();await microtasks();assert.equal(f.calls.includes('review'),true);assert.equal(f.calls.includes('send'),false);
+ }finally{f.close();}
+});
+
+test('selecting a different saved request cannot expose a reload of the previous ready proposal',async()=>{
+ const f=setup();try{
+  f.setRows([{id:'older-ready',noteId:'fixture',prompt:'Older proposal',expiresAt:'2099-01-01',status:'ready'},{id:'pending',noteId:'fixture',prompt:'Selected pending request',expiresAt:'2099-01-01',status:'waiting'}]);await f.ui.open();
+  const select=f.$<HTMLSelectElement>('[data-ai-existing]');select.value='pending';select.dispatchEvent(new f.dom.window.Event('change'));await microtasks();await microtasks();
+  assert.equal(select.value,'pending');assert.equal(f.$('[data-ai-preview]').hidden,true);assert.equal(f.calls.includes('review'),false);
+ }finally{f.close();}
+});
+
+test('a newly completed result can reload after failure even when an older request was previously selected',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const f=setup();try{
+  f.setRows([{id:'older-ready',noteId:'fixture',prompt:'Older proposal',expiresAt:'2099-01-01',status:'ready'}]);await startRunning(f);
+  f.setRequestsFailure(true);f.completeBackground();t.mock.timers.tick(2000);await microtasks();await microtasks();
+  assert.equal(f.$('[data-ai-preview]').hidden,false);assert.equal(f.$('[data-ai-preview]').textContent,'Load proposal');
+  f.setRequestsFailure(false);f.$('[data-ai-preview]').click();await microtasks();await microtasks();
+  assert.equal(f.calls.includes('review'),true);assert.equal(f.calls.filter(call=>call==='send').length,1);
+ }finally{f.close();}
+});
+
+test('local proposal reload rechecks privacy and saved-note freshness before review',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const mode of ['private','outdated']){
+  const f=setup();try{
+   await startRunning(f);f.setRequestsFailure(true);f.completeBackground();t.mock.timers.tick(2000);await microtasks();await microtasks();
+   f.setRequestsFailure(false);const reads=f.requestReads.length;
+   if(mode==='private')f.setAIAllowed(false);else f.invalidateReviewFlush();
+   f.$('[data-ai-preview]').click();await microtasks();await microtasks();
+   assert.equal(f.calls.includes('review'),false);assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal(f.$('[data-ai-preview]').hidden,true);
+   if(mode==='private'){assert.equal(f.requestReads.length,reads);assert.match(f.$('[data-ai-status]').textContent!,/excluded from all AI access/);}
+   else assert.match(f.$('[data-ai-status]').textContent!,/[Oo]utdated/);
+  }finally{f.close();}
+ }
+});
 test('closed-dialog polling reads only the owned local job and resumes its original note and component goal',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});const f=setup();
  try{

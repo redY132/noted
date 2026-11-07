@@ -76,6 +76,18 @@ The explicit **Create interactive component** goal now produces an inert definit
 
 Private imports cannot be sent through either the one-note Generate flow or the external request queue, regardless of optional folder grants. The dialog explains that AI is excluded and disables generation. Captured schemas retain source-note provenance; private sources and legacy untraceable full guides are refused in private workspaces. See [AI exclusion](ai-privacy.md). Matching native protocol is now 5.
 
+### Local proposal recovery
+
+When a completed proposal could not be opened, **Load proposal** retries its
+existing local result. It does not create another request or call a model.
+Privacy, note identity, request identity and saved-note freshness are checked
+again before comparison; Apply, Reject and saved Undo remain explicit.
+
+If sign-in discovery fails, new generation stays disabled while saved proposals
+can still be checked. A job's reported completion or failure remains visible
+when saved-request loading fails. Reopening failed work shows its own message
+without substituting a different request or hiding it behind a list-read error.
+
 ### Cancellation status
 
 Advanced saved requests keep their exact identity through creation, polling and

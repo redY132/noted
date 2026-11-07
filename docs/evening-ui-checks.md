@@ -226,3 +226,17 @@ Creation, polling and explicit refresh retain the exact request ID; closed or
 superseded dialogs ignore late UI continuations. Missing IDs clear preview and
 explain recovery, preserving other saved requests. The browser queue is entirely
 simulated: no native request, live agent access or model call was created.
+
+Local proposal recovery: all 302 frontend tests and 50 focused controller/activity
+tests passed, with type checking. Seven rendered recovery checks passed three
+Light/Dark desktop/short/narrow layouts, including 390px with 200% text and
+keyboard-visible focus. The explicit Load action reads the existing local result
+and passed comparison, Apply and saved Undo while sign-in discovery failed,
+without another simulated generation. Privacy denial and stale saves block
+review; owned failed-job details reopen without a saved-request lookup. The
+narrow screenshot was inspected. All account/model calls remain explicit stubs.
+
+The final rendered regression also passed 17 normal workflow checks/16 profiles
+plus large text, eight external-request checks, four approval-scope checks and
+ten cancellation checks/18 strip plus ten dialog profiles. No new surface,
+palette, animation, sidebar section or access grant was added.

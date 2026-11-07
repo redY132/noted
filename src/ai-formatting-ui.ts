@@ -24,6 +24,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  let componentReply:import('./component-suggestions').ComponentSuggestion|null=null;let schemaReady=false,aiAllowed=true;
  let cancelRequested=false,cancelRequestRemoved=false;
  let lastCancellation:{requestId:string;noteId:string;message:string}|null=null;
+ let lastJobFailure:{requestId:string|null;noteId:string;message:string}|null=null;
  const cancellationMessage=(label=true)=>`${label?'Cancellation requested. ':''}Waiting for local runner status. ${cancelRequestRemoved?'Saved request removed. ':''}Already processed usage cannot be recalled.`;
  const component=()=>$<HTMLSelectElement>('[data-ai-goal]').value==='component';
  const goal=()=>$<HTMLSelectElement>('[data-ai-goal]').value==='schema';
@@ -37,7 +38,8 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  const eligible=(r:RequestEntry|null)=>r&&['waiting','ready'].includes(r.status);
  const matchesGoal=(r:RequestEntry)=>component()?r.kind==='component':r.kind?false:goal()?!!r.schema&&r.schema.id===o.schema?.()?.id&&r.schema.version===o.schema?.()?.version:!r.schema;
  function status(message:string){const label=$('[data-ai-status]');if(label.textContent!==message)label.textContent=message;}
- function sync(){syncActivity();requestScope.update({title:o.note()?.title||'Untitled',goal:component()?'component':goal()?'schema':'format',schema:o.schema?.(),includeGuide:$<HTMLInputElement>('[data-ai-include-guide]').checked,allowed:aiAllowed,native:o.native,busy,running});$<HTMLButtonElement>('[data-subscription-send]').disabled=!o.native||!aiAllowed||!account||busy||running||!prompt()||(goal()&&(!schemaReady||!o.schema?.()))||(component()&&(!schemaReady||!o.componentProposal));$('[data-subscription-stop]').hidden=!running;$<HTMLButtonElement>('[data-subscription-stop]').disabled=busy||cancelRequested;$('[data-ai-preview]').hidden=!reply&&!componentReply;$<HTMLButtonElement>('[data-ai-preview]').disabled=busy||running;$<HTMLTextAreaElement>('[data-ai-prompt]').disabled=running||busy;$<HTMLSelectElement>('[data-ai-goal]').disabled=running||busy;$<HTMLInputElement>('[data-ai-include-guide]').disabled=running||busy;for(const el of host.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('details button,details select'))el.disabled=!o.native||busy||running;$<HTMLButtonElement>('[data-ai-request]').disabled=!o.native||!aiAllowed||busy||running||component();$('[data-ai-request-status]').textContent=selected?`${selected.status[0].toUpperCase()+selected.status.slice(1)} · ${selected.prompt.slice(0,160)}${selected.schema?' · '+selected.schema.name+' v'+selected.schema.version+(selected.hasGuidance?' · full guidance included':' · rules only'):''}${eligible(selected)?' · Expires '+new Date(selected.expiresAt).toLocaleString():''}`:'No request selected.';}
+ function readyToLoad(){return Boolean(!reply&&!componentReply&&activity?.phase==='ready'&&activity.requestId&&(!selected||selected.id===activity.requestId)&&activity.noteId===o.note()?.id&&activity.goal===(component()?'component':goal()?'schema':'format'));}
+ function sync(){syncActivity();requestScope.update({title:o.note()?.title||'Untitled',goal:component()?'component':goal()?'schema':'format',schema:o.schema?.(),includeGuide:$<HTMLInputElement>('[data-ai-include-guide]').checked,allowed:aiAllowed,native:o.native,busy,running});$<HTMLButtonElement>('[data-subscription-send]').disabled=!o.native||!aiAllowed||!account||busy||running||!prompt()||(goal()&&(!schemaReady||!o.schema?.()))||(component()&&(!schemaReady||!o.componentProposal));$('[data-subscription-stop]').hidden=!running;$<HTMLButtonElement>('[data-subscription-stop]').disabled=busy||cancelRequested;const load=readyToLoad();$('[data-ai-preview]').hidden=!aiAllowed||(!reply&&!componentReply&&!load);$('[data-ai-preview]').textContent=load?'Load proposal':'Review proposal';$<HTMLButtonElement>('[data-ai-preview]').disabled=busy||running||!aiAllowed;$<HTMLTextAreaElement>('[data-ai-prompt]').disabled=running||busy;$<HTMLSelectElement>('[data-ai-goal]').disabled=running||busy;$<HTMLInputElement>('[data-ai-include-guide]').disabled=running||busy;for(const el of host.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('details button,details select'))el.disabled=!o.native||busy||running;$<HTMLButtonElement>('[data-ai-request]').disabled=!o.native||!aiAllowed||busy||running||component();$('[data-ai-request-status]').textContent=selected?`${selected.status[0].toUpperCase()+selected.status.slice(1)} · ${selected.prompt.slice(0,160)}${selected.schema?' · '+selected.schema.name+' v'+selected.schema.version+(selected.hasGuidance?' · full guidance included':' · rules only'):''}${eligible(selected)?' · Expires '+new Date(selected.expiresAt).toLocaleString():''}`:'No request selected.';}
  async function run(action:()=>Promise<void>){if(busy)return;busy=true;sync();try{await action();}catch(e){status(e instanceof Error?e.message:String(e));o.error(e);}finally{busy=false;sync();}}
  async function eligibility(){aiAllowed=false;const n=o.note();if(!n)throw new Error('Open a saved note first.');aiAllowed=api.noteAIAllowed?await api.noteAIAllowed(n.id):true;sync();return aiAllowed;}
  function approval(){
@@ -51,7 +53,11 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   if(!allowed)throw new Error('This note is excluded from all AI access. You can edit it locally.');
   await o.flush();unchanged();return o.note()!;
  }
- async function accountStatus(){if(!o.native){account=false;$('[data-subscription-status]').textContent='AI formatting is available in the desktop app.';return;}const s=await api.subscriptionStatus();account=s.authentication==='chatgpt';$('[data-subscription-status]').textContent=s.message;}
+ async function accountStatus(){
+  account=false;if(!o.native){$('[data-subscription-status]').textContent='AI formatting is available in the desktop app.';return;}
+  try{const s=await api.subscriptionStatus();account=s.authentication==='chatgpt';$('[data-subscription-status]').textContent=s.message;}
+  catch{$('[data-subscription-status]').textContent='Sign-in could not be checked. You can still check saved proposals. Use Refresh sign-in under Advanced to retry.';}
+ }
  async function requests(preferred=selected?.id,exact=false){if(!o.native){entries=[];selected=null;return;}const n=o.note();if(!n)throw new Error('Open a saved note first.');const ticket=epoch;const list=await api.formattingRequests(n.id);if(ticket!==epoch||o.note()?.id!==n.id)return;if(list.some(r=>typeof r.status!=='string')){account=false;entries=[];selected=null;reply=null;componentReply=null;throw new Error('This window is running an older Noted backend. Save your work, close Noted, and open the updated desktop build.');}entries=list;selected=entries.find(r=>r.id===preferred)??(exact?null:entries.find(r=>eligible(r)&&matchesGoal(r)))??null;const select=$<HTMLSelectElement>('[data-ai-existing]');select.replaceChildren();const empty=host.ownerDocument.createElement('option');empty.value='';empty.textContent='No request selected';select.append(empty);for(const r of entries){const option=host.ownerDocument.createElement('option');option.value=r.id;option.textContent=`${r.status} · ${r.prompt.slice(0,80)}`;select.append(option);}select.value=selected?.id??'';sync();}
  function clearActivity(id:string){if(activity?.requestId===id){activity=null;syncActivity();}}
  function missingRequest(id:string){
@@ -111,6 +117,17 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   }else if(!running)status(terminalMessage??'Waiting for the external agent. Creating a request does not start generation.');
   sync();
  }
+ async function reviewOrLoad(){
+  if(reply||componentReply){await showReview();return;}
+  const current=activity,ticket=epoch;
+  if(!current||current.phase!=='ready'||!current.requestId||current.noteId!==o.note()?.id)return;
+  if(!await eligibility()){selected=null;autoReview=false;status('This note is excluded from all AI access. You can edit it locally.');sync();return;}
+  if(ticket!==epoch||!dialog.open||o.note()?.id!==current.noteId)return;
+  await o.flush();if(ticket!==epoch||!dialog.open||o.note()?.id!==current.noteId)return;
+  await requests(current.requestId,true);if(ticket!==epoch||!dialog.open)return;
+  if(missingRequest(current.requestId))return;
+  autoReview=false;await check();if(reply||componentReply)await showReview();
+ }
  async function job(j:Awaited<ReturnType<API['subscriptionJob']>>,refreshDialog=dialog.open&&aiAllowed){
   if(cancelRequested){
    running=j.phase==='running';runningRequestId=running?j.requestId:null;autoReview=false;
@@ -129,10 +146,21 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    status(running?(other?`Generating a proposal for "${activity!.title}". Use Open generation in its status strip to return to that note. Nothing applies automatically.`:'Generating your proposal. You can cancel; nothing applies automatically.'):other&&j.phase==='completed'?`Proposal received for "${activity!.title}". Use its status strip to return and review.`:j.message);
   }
   if(j.phase==='completed'){
-   jobId=null;
-   if(refreshDialog&&dialog.open&&j.noteId===o.note()?.id){const ticket=epoch;await requests(j.requestId,true);if(ticket===epoch&&dialog.open)await check();}
+   jobId=null;sync();
+   if(refreshDialog&&dialog.open&&j.noteId===o.note()?.id){
+    const ticket=epoch;
+    try{await requests(j.requestId,true);if(ticket===epoch&&dialog.open&&!missingRequest(j.requestId))await check();}
+    catch(error){
+     if(destroyed||activity?.requestId!==j.requestId)return;
+     autoReview=false;reply=null;componentReply=null;
+     const message='Proposal received, but it could not be opened. Use Load proposal to retry locally; no new generation is needed.';
+     activity={...activity,phase:'ready',message};
+     if(ticket===epoch&&dialog.open&&o.note()?.id===j.noteId)status(message);
+     if(o.note()?.id===j.noteId)o.error(error);sync();
+    }
+   }
    else autoReview=false;
-  }else if(!running){jobId=null;autoReview=false;terminalMessage=j.message;if(refreshDialog&&dialog.open&&j.noteId===o.note()?.id)await requests(j.requestId,true);}
+  }else if(!running){jobId=null;autoReview=false;reply=null;componentReply=null;selected=null;$<HTMLSelectElement>('[data-ai-existing]').value='';terminalMessage=j.message;lastJobFailure={noteId:j.noteId,requestId:j.requestId,message:j.message};}
   sync();
  }
  function poll(){
@@ -153,12 +181,12 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeDialog();});
  dialog.addEventListener('close',()=>{if(dialog.open)return;dialog.inert=true;epoch++;clearTimeout(timer);autoReview=false;$<HTMLInputElement>('[data-ai-include-guide]').checked=false;poll();});$('[data-ai-close]').onclick=closeDialog;
  $('[data-subscription-send]').onclick=()=>void run(async()=>{
-  epoch++;clearTimeout(timer);terminalMessage=null;cancelRequested=false;cancelRequestRemoved=false;lastCancellation=null;if(!o.native)throw new Error('Use the desktop app.');
+  epoch++;clearTimeout(timer);terminalMessage=null;cancelRequested=false;cancelRequestRemoved=false;lastCancellation=null;lastJobFailure=null;if(!o.native)throw new Error('Use the desktop app.');
   const approved=approval();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;const n=await savedForAI(approved.noteId);
-  autoReview=true;reply=null;componentReply=null;status('Starting generation for this saved note.');
+  autoReview=true;reply=null;componentReply=null;selected=null;$<HTMLSelectElement>('[data-ai-existing]').value='';status('Starting generation for this saved note.');
   activity={noteId:n.id,title:n.title||'Untitled',goal:approved.goal,requestId:null,phase:'starting',message:'Preparing the explicitly approved saved note.'};pollErrors=0;pollPaused=false;syncActivity();
   try{const j=await api.startSubscription(n,approved.prompt,approved.context);jobId=j.phase==='running'?j.id:null;await job(j);poll();}
-  catch(e){if(activity)activity={...activity,phase:'failed',message:e instanceof Error?e.message:String(e)};throw e;}
+  catch(e){if(activity){activity={...activity,phase:'failed',message:e instanceof Error?e.message:String(e)};lastJobFailure={noteId:activity.noteId,requestId:activity.requestId,message:activity.message};}throw e;}
  });
  $('[data-subscription-stop]').onclick=()=>void run(async()=>{
   if(!jobId||cancelRequested)return;
@@ -174,9 +202,10 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   if(activity)activity={...activity,phase:'cancelling',message:cancellationMessage(false)};
   terminalMessage=cancellationMessage();status(terminalMessage);poll();
  });
- $('[data-ai-preview]').onclick=()=>void run(showReview);
+ $('[data-ai-preview]').onclick=()=>void run(reviewOrLoad);
  $('[data-ai-request]').onclick=()=>void run(async()=>{
   const ticket=epoch,approved=approval();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;
+  if(activity?.noteId===approved.noteId&&!running)activity=null;
   selected=null;reply=null;componentReply=null;autoReview=false;
   const n=await savedForAI(approved.noteId);terminalMessage=null;
   const r=await api.createFormattingRequest(n.id,approved.prompt,approved.context);
@@ -196,7 +225,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  $('[data-ai-dismiss]').onclick=()=>{$('[data-ai-outcome]').hidden=true;};$('[data-ai-undo]').onclick=()=>void run(async()=>{const p=applied;if(!p||o.editor()!==p.editor||p.editor.state.doc!==p.doc){throw new Error('The note changed after formatting. Use the editor Undo controls to step back through later edits.');}if(!p.editor.commands.undo())throw new Error('Nothing to undo.');await o.flush();$('[data-ai-outcome-text]').textContent='Formatting undone. ';$<HTMLButtonElement>('[data-ai-undo]').disabled=true;applied=null;});
  async function openDialog(mode:AIGoal,preferred?:string,reviewWhenReady=false){
   if(destroyed||dialog.open||host.ownerDocument.querySelector('dialog[open]'))return;
-  let showCancellationStatus=false;
+  let focusOwnedStatus=false;
   autoReview=reviewWhenReady&&!cancelRequested;
   $<HTMLSelectElement>('[data-ai-goal]').value=mode;$<HTMLInputElement>('[data-ai-include-guide]').checked=false;schemaState();dialog.inert=false;dialog.showModal();
   status(running?'Checking running generation.':'Describe a change, then generate a proposal.');
@@ -205,9 +234,12 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    const n=o.note();if(!n)throw new Error('Open a note first.');
    const cancelled=lastCancellation&&lastCancellation.noteId===n.id&&lastCancellation.requestId===activity?.requestId&&['cancelled','failed'].includes(activity.phase)?lastCancellation:null;
    if(selected?.noteId!==n.id||selected&&!matchesGoal(selected)){selected=null;reply=null;componentReply=null;terminalMessage=null;}
-   if(cancelled){selected=null;reply=null;componentReply=null;autoReview=false;status(cancelled.message);showCancellationStatus=true;return;}
-   if(cancelRequested){reply=null;componentReply=null;selected=null;status(cancellationMessage());showCancellationStatus=true;return;}
+   if(cancelled){selected=null;reply=null;componentReply=null;autoReview=false;status(cancelled.message);focusOwnedStatus=true;return;}
+   if(cancelRequested){reply=null;componentReply=null;selected=null;status(cancellationMessage());focusOwnedStatus=true;return;}
    await accountStatus();await schemaCapabilities();
+   if(lastJobFailure&&activity?.phase==='failed'&&activity.noteId===n.id&&o.note()?.id===n.id&&activity.goal===mode&&activity.noteId===lastJobFailure.noteId&&activity.requestId===lastJobFailure.requestId&&(preferred??null)===lastJobFailure.requestId){
+    selected=null;reply=null;componentReply=null;autoReview=false;terminalMessage=activity.message;$<HTMLSelectElement>('[data-ai-existing]').value='';status(activity.message);focusOwnedStatus=true;return;
+   }
    if(mode==='schema'&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';
    await requests(preferred,Boolean(preferred));
    if(preferred&&!selected){
@@ -217,7 +249,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    if(selected&&(preferred||!prompt()))$<HTMLTextAreaElement>('[data-ai-prompt]').value=selected.prompt;
    await check();
   });
-  if(dialog.open&&showCancellationStatus){$('[data-ai-status]').focus({preventScroll:true});$('[data-ai-status]').scrollIntoView?.({block:'nearest'});}
+  if(dialog.open&&focusOwnedStatus){$('[data-ai-status]').focus({preventScroll:true});$('[data-ai-status]').scrollIntoView?.({block:'nearest'});}
   else if(dialog.open&&!running)$<HTMLTextAreaElement>('[data-ai-prompt]').focus();poll();
  }
  async function resumeActivity(){
