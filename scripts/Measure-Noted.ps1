@@ -6,6 +6,10 @@ param(
  [ValidateRange(1024,65535)][int]$Port=1431
 )
 $ErrorActionPreference='Stop'
+function Get-NotedSha256([string]$Path){
+ $stream=[IO.File]::OpenRead($Path);$algorithm=[Security.Cryptography.SHA256]::Create()
+ try {return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose();$stream.Dispose()}
+}
 $kitRoot=$PSScriptRoot
 $node=(Get-Command node -ErrorAction Stop).Source
 if(-not $PlaywrightCLI){
@@ -16,7 +20,7 @@ if(-not $PlaywrightCLI -or -not(Test-Path -LiteralPath $PlaywrightCLI -PathType 
 $PlaywrightCLI=(Resolve-Path -LiteralPath $PlaywrightCLI).Path
 if(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue){throw "Port $Port is occupied. Choose an unused port; existing processes will not be stopped."}
 $manifest=Get-Content -LiteralPath (Join-Path $kitRoot 'kit-manifest.json') -Raw|ConvertFrom-Json
-foreach($item in $manifest.files){$file=Join-Path $kitRoot $item.path;if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $item.sha256){throw "Kit checksum mismatch: $($item.path)"}}
+foreach($item in $manifest.files){$file=Join-Path $kitRoot $item.path;if((Get-NotedSha256 $file) -ne $item.sha256){throw "Kit checksum mismatch: $($item.path)"}}
 $runs=Join-Path $kitRoot 'runs';New-Item -ItemType Directory -Path $runs -Force|Out-Null
 $run=Join-Path $runs ((Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8));New-Item -ItemType Directory -Path $run|Out-Null
 $workspace=Join-Path $run 'workspace';Copy-Item -LiteralPath (Join-Path $kitRoot 'fixtures') -Destination $workspace -Recurse

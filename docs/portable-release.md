@@ -8,6 +8,8 @@ Every payload has a size and SHA-256 in the manifest. The ZIP has a separate `.s
 
 The verifier is also bundled for use after extraction. Its result includes the verified GUI hash so the reference-test kit can prove it copied that same executable, rather than a stale build output.
 
+Hashing and ZIP creation/inspection use .NET streams and explicitly loaded compression assemblies. They do not depend on `Get-FileHash` or the PowerShell Archive module being available in a child shell.
+
 ```powershell
 ./scripts/Build-Portable.ps1
 ./scripts/Test-Portable.ps1 -Archive ./output/Noted-alpha-<stamp>-<commit>.zip

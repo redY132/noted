@@ -4,9 +4,14 @@ param(
 )
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression
+function Get-NotedSha256([string]$Path){
+ $stream=[IO.File]::OpenRead($Path);$algorithm=[Security.Cryptography.SHA256]::Create()
+ try {return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose();$stream.Dispose()}
+}
 $archivePath=(Resolve-Path -LiteralPath $Archive).Path
 if(-not(Test-Path -LiteralPath $archivePath -PathType Leaf)){throw 'PACKAGE_ARCHIVE_MISSING'}
-$digest=(Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$digest=Get-NotedSha256 $archivePath
 $sidecar=Get-Content -LiteralPath ($archivePath+'.sha256') -Raw
 $expectedLine='^([a-fA-F0-9]{64})  '+[regex]::Escape([IO.Path]::GetFileName($archivePath))+'\s*$'
 if($sidecar -notmatch $expectedLine -or $Matches[1].ToLowerInvariant() -ne $digest){throw 'PACKAGE_ARCHIVE_CHECKSUM_MISMATCH'}

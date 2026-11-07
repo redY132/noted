@@ -1,5 +1,10 @@
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression
+function Get-FixtureSha256([string]$Path){
+ $stream=[IO.File]::OpenRead($Path);$algorithm=[Security.Cryptography.SHA256]::Create()
+ try {return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose();$stream.Dispose()}
+}
 $fixtureRoot=Join-Path ([IO.Path]::GetTempPath()) ('noted-package-verify-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
 $sourceCommit='a'*40
@@ -34,7 +39,7 @@ function New-Archive([string]$name,[string]$mutation){
   if($mutation -eq 'unsafe'){Write-Entry $zip ($archiveRoot+'/../outside.txt') 'synthetic unsafe path'}
   if($mutation -eq 'multiple-roots'){Write-Entry $zip 'portable-20261107-000001-aaaaaaa/extra.txt' 'synthetic second root'}
  } finally {$zip.Dispose()}
- $digest=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+ $digest=Get-FixtureSha256 $archive
  if($mutation -eq 'sidecar'){$digest='0'*64}
  "$digest  $([IO.Path]::GetFileName($archive))" | Set-Content -LiteralPath ($archive+'.sha256') -Encoding ascii
  return $archive

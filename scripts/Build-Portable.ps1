@@ -1,4 +1,10 @@
 $ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression
+function Get-NotedSha256([string]$Path){
+ $stream=[IO.File]::OpenRead($Path);$algorithm=[Security.Cryptography.SHA256]::Create()
+ try {return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose();$stream.Dispose()}
+}
 $repoRoot=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 Push-Location -LiteralPath $repoRoot
 try {
@@ -46,11 +52,11 @@ Test-Portable.ps1 is included for archive integrity verification. From the extra
  $readme | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8
  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Test-Portable.ps1') -Destination (Join-Path $destination 'Test-Portable.ps1')
  foreach($name in @('ai-privacy.md','logseq-sqlite.md','ai-formatting.md','component-authoring.md','schema-authoring.md','document-schema.schema.json','noted-document-v2.schema.json','migration-plan.md','milestone-verification.md','backup-restore.md','agent-integration.md','hosted-chat-setup.md','reference-benchmark.md','sidebar-goal.md','sidebar-navigation.md','sidebar-antislop-checks.md','open-note.md','improvement-session-2026-11-06.md','note-history.md','go-to-heading.md','review-notes.md','previous-save.md','reading-order-performance.md','help-and-shortcuts.md','evening-session-2026-11-06.md','evening-ui-checks.md','portable-release.md')){Copy-Item -LiteralPath (Join-Path $repoRoot ('docs\'+$name)) -Destination (Join-Path $destination $name)}
- $files=Get-ChildItem -LiteralPath $destination -File | ForEach-Object {@{path=$_.Name;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
+ $files=Get-ChildItem -LiteralPath $destination -File | ForEach-Object {@{path=$_.Name;bytes=$_.Length;sha256=(Get-NotedSha256 $_.FullName)}}
  @{formatVersion=1;sourceCommit=$sourceCommit;createdAt=(Get-Date).ToUniversalTime().ToString('o');signed=$false;hardwareCertified=$false;files=@($files)} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destination 'manifest.json') -Encoding utf8
  $zip=Join-Path $repoRoot ('output\Noted-alpha-'+$stamp+'-'+$sourceCommit.Substring(0,7)+'.zip')
- Compress-Archive -LiteralPath $destination -DestinationPath $zip
- $digest=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+ [IO.Compression.ZipFile]::CreateFromDirectory($destination,$zip,[IO.Compression.CompressionLevel]::Optimal,$true)
+ $digest=Get-NotedSha256 $zip
  "$digest  $([IO.Path]::GetFileName($zip))" | Set-Content -LiteralPath ($zip+'.sha256') -Encoding ascii
  & (Join-Path $PSScriptRoot 'Test-Portable.ps1') -Archive $zip -ExpectedSourceCommit $sourceCommit
  @{path=$zip;sha256=$digest;sourceCommit=$sourceCommit} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repoRoot 'output\portable-latest.json') -Encoding utf8
