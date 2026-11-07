@@ -278,3 +278,14 @@ zero repeated summary writes during an unchanged layout update. All 304
 frontend tests, type checking and 123 rendered sidebar checks across 14 profiles
 passed, including actual edge updates, failure recovery, hover/focus, nested
 folders, scrolling, resizing and the accepted docked layout.
+
+The verified `e301879` Windows package also passed the prewritten cached-proposal
+flow against the real native backend: ten checks, six Light/Dark layouts and
+200% text. It preserved status after Close, opened comparison directly, saved
+another generated draft before returning, applied and undid formatting, and
+kept sharing disabled. The native test now requires its exact generated workspace
+and note plus disabled-runner/sharing guards before AI controls are used. Only
+the verified GUI was copied; no companion or model client was launched. The
+owned fixture app closed afterward. This is local cache evidence, not a live
+generation test. `output/packaged-cached-proposal-state.json` records the source
+and local log; generated native screenshots remain under `output/playwright/`.

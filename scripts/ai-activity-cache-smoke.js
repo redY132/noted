@@ -1,11 +1,18 @@
 async page => {
   if (!await page.evaluate(() => Boolean(window.__TAURI_INTERNALS__))) throw new Error('Native cached-proposal fixture required');
-  const status = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('workspace_status'));
-  if (!status.path.includes('noted-simple-ai-')) throw new Error('Disposable cached-proposal workspace required');
+  const guarded = await page.evaluate(async () => {
+    const expected = window.notedCachedFixture;
+    if (!expected?.workspace || !/^[0-9a-f-]{36}$/.test(expected.noteId || '') || !/^[0-9a-f-]{36}$/.test(expected.requestId || '')) return false;
+    const normalize = value => String(value).replaceAll('\\', '/').replace(/^\/\/\?\//, '').replace(/\/+$/, '').toLowerCase();
+    const [status, runner, access] = await Promise.all(['workspace_status', 'subscription_status', 'agent_access'].map(command => window.__TAURI_INTERNALS__.invoke(command)));
+    return normalize(status.path) === normalize(expected.workspace) && runner.authentication === 'disabled' && !runner.available && !access.enabled && !access.allowHosted && access.folderIds.length === 0;
+  });
+  if (!guarded) throw new Error('Exact generated fixture, disabled runner and disabled sharing required');
   const checks = [], record = (name, okay) => { if (!okay) throw new Error(name); checks.push(name); };
   await page.setViewportSize({ width: 1200, height: 800 }); await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForFunction(() => document.querySelector('#note-title')?.value.startsWith('Simple AI synthetic fixture'));
   const id = await page.locator('#header-connection-handle button').getAttribute('data-connect-source');
+  if (id !== await page.evaluate(() => window.notedCachedFixture.noteId)) throw new Error('Expected generated note required');
   const current = target => page.waitForFunction(id => document.querySelector('#header-connection-handle button')?.dataset.connectSource === id, target);
   const comparison = () => page.waitForFunction(() => document.querySelector('#document-operations-dialog').open && !document.querySelector('[data-operations-apply]').disabled, null, { timeout: 60000 });
   // This script never clicks Generate and never invokes start_subscription_formatting.
