@@ -103,7 +103,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    terminalMessage=`${result} ${cancelRequestRemoved?'Saved request removed. ':'The saved request may remain under Advanced. '}No proposal was applied. Already processed usage cannot be recalled.`;
    lastCancellation={requestId:j.requestId,noteId:j.noteId,message:terminalMessage};
    if(activity)activity={...activity,phase:j.phase==='cancelled'?'cancelled':'failed',message:terminalMessage};
-   if(refreshDialog){await requests('',true);selected=null;status(terminalMessage);}sync();return;
+   if(refreshDialog){$<HTMLSelectElement>('[data-ai-existing]').value='';status(terminalMessage);}sync();return;
   }
   running=j.phase==='running';runningRequestId=running?j.requestId:null;
   if(activity?.noteId===j.noteId)activity={...activity,requestId:j.requestId,phase:running?'running':j.phase==='completed'?'ready':'failed',message:running?'You can keep writing. Nothing applies automatically.':j.phase==='completed'?'Open this note to check and review the proposal. Nothing has been applied.':j.message};
@@ -150,9 +150,13 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   const id=runningRequestId;autoReview=false;cancelRequested=true;cancelRequestRemoved=false;pollPaused=false;pollErrors=0;
   try{await api.cancelSubscription(jobId);}catch(error){cancelRequested=false;if(activity)activity={...activity,phase:'unknown',message:'Cancellation could not be confirmed. Status checking continues; you can retry Cancel.'};poll();throw error;}
   reply=null;componentReply=null;selected=null;
-  if(id)try{await api.cancelFormattingRequest(id);cancelRequestRemoved=true;}catch(error){o.error(error);}
+  if(id)try{
+   await api.cancelFormattingRequest(id);cancelRequestRemoved=true;
+   entries=entries.filter(entry=>entry.id!==id);
+   for(const option of Array.from($<HTMLSelectElement>('[data-ai-existing]').options))if(option.value===id)option.remove();
+  }catch(error){o.error(error);}
+  $<HTMLSelectElement>('[data-ai-existing]').value='';
   if(activity)activity={...activity,phase:'cancelling',message:cancellationMessage(false)};
-  if(dialog.open&&aiAllowed)await requests('',true);
   terminalMessage=cancellationMessage();status(terminalMessage);poll();
  });
  $('[data-ai-preview]').onclick=()=>void run(showReview);
@@ -172,14 +176,14 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   status(running?'Checking running generation.':'Describe a change, then generate a proposal.');
   await run(async()=>{
    if(!await eligibility()){selected=null;reply=null;componentReply=null;autoReview=false;status('This note is excluded from all AI access. You can edit it locally.');return;}
-   await accountStatus();await schemaCapabilities();
-   if(mode==='schema'&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';
    const n=o.note();if(!n)throw new Error('Open a note first.');
    const cancelled=lastCancellation&&lastCancellation.noteId===n.id&&lastCancellation.requestId===activity?.requestId&&['cancelled','failed'].includes(activity.phase)?lastCancellation:null;
    if(selected?.noteId!==n.id||selected&&!matchesGoal(selected)){selected=null;reply=null;componentReply=null;terminalMessage=null;}
-   await requests(cancelled?'':preferred,Boolean(preferred)||Boolean(cancelled));
    if(cancelled){selected=null;reply=null;componentReply=null;autoReview=false;status(cancelled.message);showCancellationStatus=true;return;}
    if(cancelRequested){reply=null;componentReply=null;selected=null;status(cancellationMessage());showCancellationStatus=true;return;}
+   await accountStatus();await schemaCapabilities();
+   if(mode==='schema'&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';
+   await requests(preferred,Boolean(preferred));
    if(preferred&&!selected){
     const message=running?'The saved request is unavailable. Check or cancel the running generation before creating another proposal.':'This saved request is no longer available. Describe the current change to create a new proposal.';
     if(activity?.requestId===preferred)activity={...activity,phase:running?'unknown':'failed',message};status(message);reply=null;componentReply=null;autoReview=false;return;

@@ -192,3 +192,11 @@ No private Logseq source, imported notes or source assets were opened or changed
 No persistent connection, permission or actual model cancellation is inferred
 from these UI simulations. The historical two live attempts still have an
 unverified terminal outcome.
+
+Cancellation recovery follow-up: three targeted tests reproduced auxiliary
+request/account failures hiding local outcomes or preventing polling restart.
+The corrected flow passed 37 focused controller/activity tests and ten rendered
+cancellation checks over the same 18 strip and ten dialog profiles, with both
+auxiliary APIs deliberately unavailable after generation starts. Confirmed
+removal updates only its cached request; failed removal and unrelated requests
+remain recoverable under Advanced. No additional generation was requested.

@@ -83,6 +83,13 @@ remains disabled while local job status is still running. You can close the
 dialog and keep writing; the status strip retains the pending cancellation.
 Reopening still works after the saved request was removed.
 
+Cancellation details use the owned local job metadata even when account
+discovery or saved-request listing is unavailable. Confirmed deletion removes
+only that cached request; failed deletion remains available under Advanced.
+An auxiliary list refresh cannot pause cancellation status checks or hide a
+reported terminal result. New generation and proposal review retain their
+ordinary eligibility, sign-in, freshness and consent checks.
+
 A returned cancellation request is not terminal confirmation. The UI waits for
 local job status before showing cancellation reported, failure, or a generation
 that finished before cancellation was reported. A completion race never opens or

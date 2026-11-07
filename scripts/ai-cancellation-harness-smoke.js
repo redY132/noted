@@ -5,6 +5,7 @@ async page => {
   await page.evaluate(() => { window.__notedActivityHarness.state.holdCancellation = true; });
   await page.locator('#fixture-open-ai').click(); await page.locator('[data-ai-prompt]').fill('Synthetic cancellation check');
   await page.locator('[data-subscription-send]').click(); await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent === 'Generating proposal');
+  const auxiliaryReads=await page.evaluate(()=>{const state=window.__notedActivityHarness.state;state.failAccount=true;state.failRequests=true;return{requests:state.requestReads.length,accounts:state.accountReads};});
   await page.locator('[data-subscription-stop]').click();
   await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent === 'Cancellation requested');
   record('an acknowledgement does not claim terminal cancellation', await page.locator('[data-ai-status]').textContent().then(text => text.includes('Waiting for local runner status')));
@@ -54,6 +55,7 @@ async page => {
     }
   }
   await page.evaluate(()=>{document.documentElement.style.fontSize='';});
+  record('pending and terminal cancellation remain usable during an auxiliary-service outage',await page.evaluate(before=>{const state=window.__notedActivityHarness.state;return state.failAccount&&state.failRequests&&state.accountReads===before.accounts&&state.requestReads.length===before.requests;},auxiliaryReads));
   await page.locator('[data-activity-dismiss]').click();record('terminal cancellation can be dismissed',await page.locator('.ai-job-status').isHidden());
   record('no unexpected harness errors',await page.evaluate(()=>window.__notedActivityHarness.errors.length===0));
   return{passed:true,browserOnly:true,simulatedAIAndAccount:true,noNativeIPC:true,checks,profiles,dialogProfiles};

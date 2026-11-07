@@ -7,12 +7,12 @@ function setup(){
  let note={id:'fixture',title:'Synthetic job note',revision:1,revisionToken:'saved'} as Note;
  let rows:{id:string;noteId:string;prompt:string;expiresAt:string;status:string;kind?:'component'}[]=[],review:ProposalReview|null=null,release:((j:unknown)=>void)|undefined;
  const calls:string[]=[],errors:unknown[]=[],contexts:unknown[]=[],requestReads:string[]=[];
- let aiAllowed=true,jobResponse:any=null,jobFailure=false,cancelFailure=false,removeFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
+ let aiAllowed=true,jobResponse:any=null,jobFailure=false,cancelFailure=false,removeFailure=false,requestsFailure=false,accountFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
  const api={
   async noteAIAllowed(){return aiAllowed;},
   async schemaGuidanceCapabilities(){return{formattingProtocol:4,perRequestGuidanceConsent:true,componentSuggestions:true};},
-  async subscriptionStatus(){calls.push('account');return{available:true,authentication:'chatgpt',message:'Signed in'};},
-  async formattingRequests(id:string){requestReads.push(id);return rows.filter(r=>r.noteId===id);},
+  async subscriptionStatus(){calls.push('account');if(accountFailure)throw new Error('Synthetic account discovery failure');return{available:true,authentication:'chatgpt',message:'Signed in'};},
+  async formattingRequests(id:string){requestReads.push(id);if(requestsFailure)throw new Error('Synthetic saved-request read failure');return rows.filter(r=>r.noteId===id);},
   async startSubscription(_n:Note,_p:string,context?:unknown){startedNoteId=_n.id;contexts.push(context);calls.push('send');return await new Promise<any>(r=>release=r);},
   async subscriptionJob(){statusReads++;if(jobFailure||!jobResponse)throw new Error('Synthetic local status failure');return jobResponse;},
   async cancelSubscription(){calls.push('cancel-job');if(cancelFailure)throw new Error('Synthetic cancellation was not acknowledged');},
@@ -30,7 +30,7 @@ function setup(){
   dom,host,ui,calls,contexts,errors,requestReads,setAIAllowed:(value:boolean)=>aiAllowed=value,
   $:<T extends HTMLElement>(s:string)=>host.querySelector<T>(s)!,setRows:(r:typeof rows)=>rows=r,getReview:()=>review,
   setNote(id:string){note={...note,id,title:'Synthetic other note'};},setOpenFailure(value:boolean){openFailure=value;},setJobFailure(value:boolean){jobFailure=value;},invalidateReviewFlush(){invalidateOnReviewFlush=true;},statusReads:()=>statusReads,
-  setJobPhase(phase:string){jobResponse={...jobResponse,phase};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},
+  setJobPhase(phase:string){jobResponse={...jobResponse,phase};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},setRequestsFailure(value:boolean){requestsFailure=value;},setAccountFailure(value:boolean){accountFailure=value;},
   completeBackground(kind?:'component'){rows=[{kind,id:'running',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];jobResponse={id:'job',requestId:'running',noteId:'fixture',phase:'completed',message:'Proposal received'};},
   running(){rows=[{id:'running',noteId:note.id,prompt:'Make bold',expiresAt:'2099-01-01',status:'waiting'}];jobResponse={id:'job',requestId:'running',noteId:note.id,phase:'running',message:'Generating'};release!(jobResponse);},
   finish(kind?:'component'){rows=[{kind,id:'ready',noteId:startedNoteId,prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];release!({id:'job',requestId:'ready',noteId:startedNoteId,phase:'completed',message:'Cached proposal ready'});},
@@ -171,6 +171,56 @@ test('owned-job polling cannot replace a private-note denial with a generation m
  const f=setup();try{
   await startRunning(f);f.$('[data-ai-close]').click();await microtasks();f.setNote('other');f.setAIAllowed(false);const reads=f.requestReads.length;
   await f.ui.open();await microtasks();assert.match(f.$('[data-ai-status]').textContent!,/excluded from all AI access/);assert.equal(f.requestReads.length,reads);
+ }finally{f.close();}
+});
+
+test('terminal cancellation is shown even when saved-request reads fail',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const f=setup();
+ try{
+  await startRunning(f);f.$('[data-subscription-stop]').click();await microtasks();
+  f.setRequestsFailure(true);f.setJobPhase('cancelled');t.mock.timers.tick(2000);await microtasks();await microtasks();
+  assert.equal(f.$('[data-activity-state]').textContent,'Cancellation reported');
+  assert.match(f.$('[data-ai-status]').textContent!,/Cancellation reported by the local runner/);
+  assert.equal(f.$<HTMLButtonElement>('[data-subscription-send]').disabled,false);assert.equal(f.$('[data-subscription-stop]').hidden,true);
+  assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal(f.calls.includes('review'),false);
+ }finally{f.close();}
+});
+
+test('cancellation updates only its owned cached request and retains failed removal for recovery',async()=>{
+ for(const fails of [false,true]){
+  const f=setup();try{
+   f.setRows([{id:'running',noteId:'fixture',prompt:'Owned request',expiresAt:'2099-01-01',status:'waiting'},{id:'unrelated',noteId:'fixture',prompt:'Keep this request',expiresAt:'2099-01-01',status:'ready'}]);
+   await startRunning(f);f.setRequestsFailure(true);f.setRemoveFailure(fails);f.$('[data-subscription-stop]').click();await microtasks();
+   const select=f.$<HTMLSelectElement>('[data-ai-existing]'),ids=Array.from(select.options).map(option=>option.value);
+   assert.ok(ids.includes('unrelated'));assert.equal(ids.includes('running'),fails);assert.equal(select.value,'');
+   assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal(f.calls.includes('remove:unrelated'),false);assert.equal(f.calls.includes('review'),false);
+  }finally{f.close();}
+ }
+});
+
+test('cancelling a paused status check resumes polling without a saved-request refresh',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const f=setup();
+ try{
+  await startRunning(f);f.setJobFailure(true);
+  for(const delay of [2000,4000,8000]){t.mock.timers.tick(delay);await microtasks();}
+  const paused=f.statusReads();t.mock.timers.tick(60000);await microtasks();assert.equal(f.statusReads(),paused);
+  f.setJobFailure(false);f.setRequestsFailure(true);f.$('[data-subscription-stop]').click();await microtasks();
+  f.setJobPhase('cancelled');t.mock.timers.tick(2000);await microtasks();await microtasks();
+  assert.ok(f.statusReads()>paused);assert.equal(f.$('[data-activity-state]').textContent,'Cancellation reported');
+  assert.equal(f.calls.filter(call=>call==='send').length,1);
+ }finally{f.close();}
+});
+
+test('reopening cancellation details does not depend on account discovery or saved-request reads',async()=>{
+ const f=setup();try{
+  await startRunning(f);f.$('[data-subscription-stop]').click();await microtasks();f.$('[data-ai-close]').click();await microtasks();
+  f.setRequestsFailure(true);f.setAccountFailure(true);const reads=f.requestReads.length,accounts=f.calls.filter(call=>call==='account').length;
+  f.$('[data-activity-open]').click();await microtasks();await microtasks();
+  assert.match(f.$('[data-ai-status]').textContent!,/Waiting for local runner status/);assert.equal(f.dom.window.document.activeElement,f.$('[data-ai-status]'));
+  assert.equal(f.requestReads.length,reads);assert.equal(f.calls.filter(call=>call==='account').length,accounts);
+  f.setJobPhase('cancelled');f.$('[data-ai-close]').click();await microtasks();await microtasks();f.$('[data-activity-open]').click();await microtasks();await microtasks();
+  assert.match(f.$('[data-ai-status]').textContent!,/Cancellation reported by the local runner/);assert.equal(f.requestReads.length,reads);
+  assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal(f.calls.includes('review'),false);
  }finally{f.close();}
 });
 test('review rechecks the exact request after saving and refuses a newly outdated proposal',async()=>{

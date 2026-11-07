@@ -72,6 +72,17 @@ behavior, native focus/close handling and the dock composition. Verify rendered
 closing frames with generated markup in both themes and short/narrow windows.
 ENERGY 1, RHYTHM 2, MOTION 2; no added animation, assets or data operations.
 
+## Cancellation recovery
+
+Owned local cancellation status must remain readable when saved-request lists
+or account discovery are temporarily unavailable. Keep the acknowledgement
+pending until local job status resolves, continue its metadata-only polling,
+and show terminal status without waiting for an unrelated list refresh. Remove
+only the request whose deletion was confirmed; retain failed deletions for an
+explicit retry under Advanced. Reopening cancellation details first checks the
+current note's AI exclusion, then uses the already owned status. No generation,
+new access, note transmission or automatic proposal application is added.
+
 # Workspace recovery refinement
 
 Preserve the existing local Create → Inspect → Restore as a new workspace flow and separate-copy opening. Prevent late default paths from replacing a chosen path, disable operations during initial setup, release the form for manual paths if defaults fail, and invalidate inspection after every restore attempt. Ignore UI continuations after disposal without claiming to cancel a native copy already underway. Make the named Workspace dialog's Close stay reachable while scrolling; use existing plain controls, text-relative sizes, 44px targets, visible focus and 3:1 field boundaries. Check asynchronous failure/disposal with fake APIs, then actual Create/Inspect/Restore in guarded native fixtures and responsive themes/200% text. No changes to archive format, source workspaces, imported data, permissions or AI. ENERGY 1, RHYTHM 2, MOTION 2; no new assets or decorative sections.

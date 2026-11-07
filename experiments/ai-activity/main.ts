@@ -47,7 +47,7 @@ const error = (reason: unknown) => { errors.push(String(reason instanceof Error 
 const saved = () => { $('#fixture-save').textContent = session?.dirty ? 'Unsaved fixture draft' : 'Saved in fixture browser storage'; };
 async function flush() { await session?.flush(); saved(); }
 const state = {
-  starts: 0, statusReads: 0, requestReads: [] as string[], cancels: 0, removes: 0, failStatus: false, failOpen: false, denied: false, holdCancellation: false, nextPhase: 'running',
+  starts: 0, statusReads: 0, accountReads: 0, requestReads: [] as string[], cancels: 0, removes: 0, failStatus: false, failOpen: false, failAccount: false, failRequests: false, denied: false, holdCancellation: false, nextPhase: 'running',
   job: null as { id: string; requestId: string; noteId: string; phase: string; message: string } | null,
   row: null as { id: string; noteId: string; prompt: string; expiresAt: string; status: string } | null,
   operations: [] as DocumentOperation[], requestToken: '',
@@ -66,7 +66,7 @@ const tools = initializeDocumentTools($('#fixture-tools'), { getEditor: () => ed
 const mock: Parameters<typeof initializeAIFormatting>[1]['api'] = {
   async noteAIAllowed() { return !state.denied; },
   async schemaGuidanceCapabilities() { return { formattingProtocol: 4, perRequestGuidanceConsent: true, componentSuggestions: true }; },
-  async subscriptionStatus() { return { available: true, authentication: 'chatgpt', message: 'Synthetic sign-in fixture. No account or model is used.' }; },
+  async subscriptionStatus() { state.accountReads++; if (state.failAccount) throw new Error('Synthetic account discovery failure'); return { available: true, authentication: 'chatgpt', message: 'Synthetic sign-in fixture. No account or model is used.' }; },
   async startSubscription(note, prompt) {
     state.starts++; const savedNote = await api.load(note.id);
     const source = savedNote.document ?? documentFromEditor(savedNote.content, savedNote.id);
@@ -83,7 +83,7 @@ const mock: Parameters<typeof initializeAIFormatting>[1]['api'] = {
   },
   async subscriptionJob() { state.statusReads++; if (state.failStatus) throw new Error('Synthetic status failure'); if (!state.job) throw new Error('No fixture job'); return structuredClone(state.job); },
   async cancelSubscription() { state.cancels++; if (state.job && !state.holdCancellation) state.job.phase = 'cancelled'; },
-  async formattingRequests(noteId) { state.requestReads.push(noteId); if (state.denied) throw new Error('Synthetic note excluded from AI access'); if (state.row?.noteId !== noteId) return []; const row = structuredClone(state.row); if ((await api.load(noteId)).revisionToken !== state.requestToken) row.status = 'outdated'; return [row]; },
+  async formattingRequests(noteId) { state.requestReads.push(noteId); if (state.failRequests) throw new Error('Synthetic saved-request read failure'); if (state.denied) throw new Error('Synthetic note excluded from AI access'); if (state.row?.noteId !== noteId) return []; const row = structuredClone(state.row); if ((await api.load(noteId)).revisionToken !== state.requestToken) row.status = 'outdated'; return [row]; },
   async formattingReply(id) { return state.row?.id === id && state.row.status === 'ready' ? { summary: 'Synthetic bold proposal; words retained.', operations: structuredClone(state.operations) } : null; },
   async componentReply() { throw new Error('Component generation is not used in this fixture'); },
   async createFormattingRequest() { throw new Error('External-agent requests are not used in this fixture'); },
