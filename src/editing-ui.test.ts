@@ -160,3 +160,52 @@ test('Highlight keyboard shortcut does not also open Find', () => {
     assert.equal(h.element('#find-panel').hidden, true);
   } finally { h.dispose(); }
 });
+
+test('find and link shortcuts preserve composition and do not repeat their action', () => {
+  const h = harness([paragraph(text('needle and needle'))]);
+  try {
+    const key = (value: string, extra: KeyboardEventInit = {}) => {
+      const event = new h.dom.window.KeyboardEvent('keydown', { key: value, ctrlKey: true, bubbles: true, cancelable: true, ...extra });
+      h.element('#find-query').dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    for (const value of ['f', 'h', 'k']) {
+      assert.equal(key(value, { isComposing: true }), false, `${value} must leave composition alone`);
+      assert.equal(h.element('#find-panel').hidden, true);
+      assert.equal(key(value, { repeat: true }), true, `${value} repeat must not reach browser commands`);
+      assert.equal(h.element('#find-panel').hidden, true);
+    }
+    assert.equal(key('f'), true);
+    assert.equal(h.element('#find-panel').hidden, false);
+    assert.equal(document.activeElement, h.element('#find-query'));
+  } finally { h.dispose(); }
+});
+
+test('find Enter and Escape leave composition alone and retain normal match navigation', () => {
+  const h = harness([paragraph(text('needle and needle'))]);
+  try {
+    h.find('needle');
+    const before = h.editor.state.selection.toJSON();
+    const key = (value: string, extra: KeyboardEventInit = {}) => {
+      const event = new h.dom.window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...extra });
+      h.element('#find-query').dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    for (const value of ['Enter', 'Escape']) {
+      assert.equal(key(value, { isComposing: true }), false);
+      assert.equal(h.element('#find-panel').hidden, false);
+      assert.deepEqual(h.editor.state.selection.toJSON(), before);
+      assert.equal(h.element('#find-count').textContent, '1 of 2');
+    }
+    for (const modifier of ['ctrlKey', 'metaKey', 'altKey']) {
+      assert.equal(key('Enter', { [modifier]: true }), false);
+      assert.equal(h.element('#find-count').textContent, '1 of 2');
+    }
+    assert.equal(key('Enter'), true);
+    assert.equal(h.element('#find-count').textContent, '2 of 2');
+    assert.equal(key('Enter', { shiftKey: true }), true);
+    assert.equal(h.element('#find-count').textContent, '1 of 2');
+    assert.equal(key('Escape'), true);
+    assert.equal(h.element('#find-panel').hidden, true);
+  } finally { h.dispose(); }
+});

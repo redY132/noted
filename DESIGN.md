@@ -40,6 +40,14 @@ When the writing area is shorter than 360px, its five note-action buttons move i
 
 ## Long-note navigation
 
+Find and replace keeps its existing inline workflow and neutral theme. Its
+controls need the same 44px targets as other current shell work, with text that
+responds to the root text size. Bound the panel's share of the writing area and
+allow its controls to scroll in constrained layouts. Escape returns to writing;
+composition and unrelated modified keys must not trigger Find, Link or match
+navigation. No dock, document-format or model-access change is needed. Dials
+remain ENERGY 1 / RHYTHM 2 / MOTION 2.
+
 Go to heading is a temporary native dialog reached from View, not another sidebar. Plain heading rows follow the document's logical reading order and label their H1-H6 levels. Search and paging keep a long outline manageable. Choosing a row moves the caret and scrolls to its stable block without changing words or remounting the editor; cancelling restores the prior writing context. Empty and changed-document states provide a useful recovery action. Reuse the existing neutral theme, 44px controls, focus treatment and dialog dimensions. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.
 
 ## Daily review calendar

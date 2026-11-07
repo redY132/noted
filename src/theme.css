@@ -124,6 +124,8 @@ kbd { border-color:var(--ui-strong-border); color:var(--ui-muted); }
 .find-panel input:not([type=checkbox]), .find-panel button, dialog form input,
 dialog form select, #connection-query { background:var(--ui-surface); border-color:var(--ui-border); }
 .find-panel { background:var(--ui-subtle); border-color:var(--ui-border); }
+.find-panel input:not([type=checkbox]) { border-color:var(--ui-muted); }
+.find-panel:focus-visible, .find-panel :is(button,input):focus-visible { outline:2px solid var(--accent-text); outline-offset:-2px; }
 .highlight-icon { background:#f5dc78; color:#29210a; }
 .document-scroll, .connections-body, #connection-picker-results, .folders, .note-list {
   scrollbar-color:var(--ui-strong-border) transparent;

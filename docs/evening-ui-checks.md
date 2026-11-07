@@ -371,3 +371,22 @@ zero active, and all ten media checks. The closed mode observed eight visible
 controls; the docked mode observed a one-to-four visible subset of eight stored
 instances. These confirm corrected preparation, not endurance or inexpensive
 hardware acceptance.
+
+Find follow-up: two focused tests reproduced composing shortcuts opening Find
+and composing Enter moving the current match. Find/Link now leave composition
+alone, consume held shortcut repeats without reopening controls and preserve
+normal Enter/Shift Enter, Escape, replacement and Undo. All 312 frontend tests
+and type checking passed; the final markup also passed all nine editing tests.
+These are synthetic events, not physical IME certification.
+
+The rendered probe found 19-29px-high Find targets. Controls now have 44px hit
+areas, root-relative field/status text, visible field boundaries and focus
+outlines. The existing inline panel scrolls within a bounded share of the note
+area. The final browser fixture passed 37 checks across ten Light/Dark,
+viewport/short-window/large-text profiles, including keyboard scrolling and
+focus reaching every control. Minimum text and field-boundary contrast was
+5.34:1, the smallest tested writing viewport was 84px high, and no root overflow
+was observed. Narrow and large-text screenshots were inspected. The reusable
+`find-keyboard-smoke.js` also requires an exact generated native workspace plus
+disabled runner/sharing before native commands; native package evidence is
+recorded separately in `output/packaged-cached-proposal-state.json`.

@@ -35,7 +35,7 @@ export const editingMarkup = `
  </div>
  <p id="indent-policy" class="indent-policy"></p>
 </div>
-<section id="find-panel" class="find-panel" aria-label="Find and replace" hidden>
+<section id="find-panel" class="find-panel" aria-label="Find and replace" tabindex="0" hidden>
  <div><input id="find-query" aria-label="Find in note" placeholder="Find in this note" /><label><input type="checkbox" id="find-case" /> Match case</label><button id="find-prev" aria-label="Previous match">↑</button><button id="find-next" aria-label="Next match">↓</button><span id="find-count" role="status" aria-live="polite"></span><button id="find-close" aria-label="Close find">×</button></div>
  <div><input id="replace-text" aria-label="Replacement text" placeholder="Replace with" /><button id="replace-one">Replace</button><button id="replace-all">Replace all</button></div>
 </section>
@@ -173,11 +173,11 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  $('#find-next').onclick=()=>{refreshMatches();if(matches.length){current=(current+1)%matches.length;revealMatch();}};
  $('#find-prev').onclick=()=>{refreshMatches();if(matches.length){current=(current-1+matches.length)%matches.length;revealMatch();}};
  $('#replace-one').onclick=()=>replacement(false); $('#replace-all').onclick=()=>replacement(true); $('#find-close').onclick=closeFind;
- $('#find-query').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();(event.shiftKey ? $('#find-prev') : $('#find-next')).click();}};
+ $('#find-query').onkeydown=event=>{if(event.key==='Enter' && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey){event.preventDefault();(event.shiftKey ? $('#find-prev') : $('#find-next')).click();}};
  document.addEventListener('keydown',event=>{
-   if(!getEditor() || document.querySelector('dialog[open]')) return;
-   if(!event.defaultPrevented && !event.shiftKey && !event.altKey && (event.ctrlKey||event.metaKey) && ['f','h','k'].includes(event.key.toLowerCase())) {
-     event.preventDefault();if(event.key.toLowerCase()==='k') openURL();else openFind();
+   if(event.isComposing || event.defaultPrevented || !getEditor() || document.querySelector('dialog[open]')) return;
+   if(!event.shiftKey && !event.altKey && (event.ctrlKey||event.metaKey) && ['f','h','k'].includes(event.key.toLowerCase())) {
+     event.preventDefault();if(!event.repeat){if(event.key.toLowerCase()==='k') openURL();else openFind();}
    }
    if(event.key==='Escape' && !$('#find-panel').hidden) {event.preventDefault();closeFind();}
  });
