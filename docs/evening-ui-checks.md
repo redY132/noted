@@ -418,3 +418,37 @@ refusal, read-only refusal, normal selected-text links, insertion, Cancel,
 Escape and Undo. No external URL was followed and no model was called. The
 reusable `link-context-smoke.js` requires the same exact disabled generated
 native fixture as the Find check; packaged evidence is recorded separately.
+
+The `a173880` package passed the native cache flow (ten checks/six profiles),
+Find (37 checks/ten profiles) and web-link safeguards (11 checks). A separate
+fresh native sidebar passed 125 checks/14 profiles, including hover exit,
+keyboard focus, quiet unchanged refreshes, nested folders and scrolling.
+All owned windows closed; sharing and model execution stayed disabled. The
+sidebar's first launch stopped at its guard before seeding. Canonical Windows
+path normalization was corrected while retaining exact workspace, disabled
+runner and disabled sharing checks. Source-specific evidence is retained in
+`output/packaged-link-a173-state.json` and
+`output/packaged-sidebar-a173-state.json`.
+
+A later test reproduced custom URL validation surviving Cancel and blocking a
+valid saved link after reopening. Each opening now clears that old validation.
+The extended web-link browser flow passed 13 checks. Its empty-note preparation
+uses Select All/Delete and waits for an empty editor model; an earlier `fill`
+precondition had left part of the generated text in place.
+
+The local-note link picker also reproduced applying stale positions to changed
+text. It now binds its selection to the editor, equal document and source note,
+rejects noneditable contexts, separates its Undo step, and releases result rows
+and pending search generations when closed. One Escape closes a nonempty search;
+composition is left alone. A cancelled search cannot repopulate a hidden picker.
+
+Its rendered probe found a 17px-high search input. Scoped styles now give the
+named dialog and result group 44px controls, wrapping titles/paths, root-relative
+text, clear field boundaries and bounded keyboard scrolling. All 320 frontend
+tests and type checking passed. The generated browser fixture passed 34 checks
+across ten Light/Dark, viewport/short-window/large-text profiles, including a
+300-character title and a 40-result window. Minimum text contrast was 4.98:1 and
+field-boundary contrast 6.03:1; viewing preserved the document. Narrow and
+large-text screenshots were inspected. The delayed-reply control uses a
+browser-only API stub; native checks use the actual local picker and separate
+generated workspaces, with packaged evidence recorded in the current state file.

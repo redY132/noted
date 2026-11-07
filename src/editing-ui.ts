@@ -74,6 +74,7 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
    const href = editor.getAttributes('link').href ?? '';
    $('#url-label-row').hidden = linkRange.from !== linkRange.to;
    $<HTMLInputElement>('#url-value').value = /^https?:/.test(href) ? href : '';
+   $<HTMLInputElement>('#url-value').setCustomValidity('');
    $<HTMLInputElement>('#url-label').value = '';
    $<HTMLDialogElement>('#url-dialog').showModal();
    $('#url-value').focus();

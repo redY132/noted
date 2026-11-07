@@ -322,3 +322,17 @@ test('undoing an inserted link preserves immediately preceding typing', () => {
     h.button('undo').click(); assert.equal(h.editor.state.doc.textContent,'Before');
   } finally { h.dispose(); }
 });
+
+test('reopening a link dialog clears validation from an earlier rejected URL', () => {
+  const h=harness([paragraph(text('Alpha',[{type:'link',attrs:{href:'https://example.com/'}}]))]);
+  try {
+    h.editor.commands.setTextSelection(2); h.button('url').click();
+    const field=h.element<HTMLInputElement>('#url-value'); field.value='ftp://example.com/';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.equal(field.validity.customError,true);
+    h.element('#url-cancel').click(); h.button('url').click();
+    assert.equal(field.value,'https://example.com/');
+    assert.equal(field.checkValidity(),true,'a valid saved link must not inherit the previous error');
+    assert.equal(field.validationMessage,'');
+  } finally { h.dispose(); }
+});

@@ -1,4 +1,5 @@
 import { Editor, getSchema } from '@tiptap/core';
+import { closeHistory } from '@tiptap/pm/history';
 import { createEditorExtensions } from './editor-extensions';
 import { editingMarkup, initializeEditingUI } from './editing-ui';
 import { api, browserPreview } from './api';
@@ -43,6 +44,7 @@ import { initializeNavigation, navigationMarkup } from './navigation-panel';
 import './navigation-panel.css';
 import { initializeQuickOpen } from './quick-open';
 import './quick-open.css';
+import './note-link-picker.css';
 import './ai-request-summary.css';
 import { NavigationHistory, type HistoryTarget } from './navigation-history';
 import { captureNoteView, restoreNoteView } from './note-view-state';
@@ -84,7 +86,7 @@ $('#app').innerHTML = `
   ${shellPopovers}
   <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div><div id="document-outline-host"></div><div id="previous-save-host"></div><div id="help-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
-  <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
+  <dialog id="link-dialog" aria-labelledby="link-dialog-title"><h2 id="link-dialog-title">Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results" role="group" aria-label="Matching notes" tabindex="0"></div><div class="dialog-actions"><button type="button" data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog" aria-labelledby="workspace-title"><header class="workspace-header"><h2 id="workspace-title">Workspace</h2><button type="button" data-close="workspace-dialog">Close</button></header><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Core editing and keyword search work offline. Generate proposal sends the approved saved note and instructions to OpenAI through your signed-in Codex client. Permitted agents can read explicitly shared folders or active one-note requests and may send that text to their model provider. Full-document guidance requires per-request consent. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button></div></dialog>`;
 
 let folders: Folder[] = [];
@@ -108,7 +110,7 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchGeneration = 0;
 let saveError = false;
 let workspaceWarningKey = '';
-let linkSelection: { from: number; to: number } | null = null;
+let linkSelection: { from:number; to:number; editor:Editor; doc:Editor['state']['doc']; noteId:string } | null = null;
 let listCursor: number | null = null;
 let loadedList: NoteSummary[] = [];
 let listRefreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -424,14 +426,18 @@ async function dailyNote() {
   if (session?.note.tags.includes(`daily:${date}`)) navigationUI?.noteOpened();
 }
 async function linkResults() {
-  const note = session?.note; if (!note) return;
+  const context=linkSelection, dialog=$<HTMLDialogElement>('#link-dialog');
+  if(!context || !dialog.open || session?.note.id!==context.noteId || editor!==context.editor) return;
   const generation = ++inlineSearchGeneration;
+  inlineLinkNotes.clear(); $('#link-results').textContent='Searching saved notes…'; $('#link-results').setAttribute('aria-busy','true');
   try {
-    const page = await api.picker(note.id, $<HTMLInputElement>('#link-search').value, 0, 40);
-    if (generation !== inlineSearchGeneration || session?.note.id !== note.id) return;
+    const page = await api.picker(context.noteId, $<HTMLInputElement>('#link-search').value, 0, 40);
+    if (generation !== inlineSearchGeneration || !dialog.open || linkSelection!==context) return;
+    if(session?.note.id!==context.noteId || editor!==context.editor || !editor?.isEditable){closeInlineLink();error('The note changed or is no longer editable. Reopen the note-link picker and choose the text again.');return;}
     inlineLinkNotes = new Map(page.items.map(entry=>[entry.note.id,entry.note]));
     $('#link-results').innerHTML = page.items.map(({note:n}) => `<button data-link="${escape(n.id)}" data-note-target="${escape(n.id)}"><span>${escape(n.title || 'Untitled')}</span><small>${escape(folderPath(n.folderId))}</small></button>`).join('') || '<p class="dialog-description">No other notes found. Try another title, folder, or tag.</p>';
-  } catch(reason) { if(generation===inlineSearchGeneration)error(reason); }
+  } catch(reason) { if(generation===inlineSearchGeneration && dialog.open){$('#link-results').textContent='Notes could not be searched. Change the search or reopen this picker to try again.';error(reason);} }
+  finally {if(generation===inlineSearchGeneration)$('#link-results').removeAttribute('aria-busy');}
 }
 
 // ProseMirror's handleClick can run from its mouseup processing, before the
@@ -476,18 +482,34 @@ $('#folder-form').onsubmit = async event => {
   catch (reason) { error(reason); }
   finally { button.disabled = false; }
 };
-$('#insert-link').onclick = () => { if (!editor) return; linkSelection = { from: editor.state.selection.from, to: editor.state.selection.to }; $<HTMLInputElement>('#link-search').value = ''; linkResults(); $<HTMLDialogElement>('#link-dialog').showModal(); };
+function clearInlineLink() {linkSelection=null;++inlineSearchGeneration;inlineLinkNotes.clear();$('#link-results').replaceChildren();$('#link-results').removeAttribute('aria-busy');}
+function closeInlineLink() {clearInlineLink();$<HTMLDialogElement>('#link-dialog').close();}
+$('#link-dialog').addEventListener('close',()=>{if(!$<HTMLDialogElement>('#link-dialog').open)clearInlineLink();});
+$('#link-dialog').addEventListener('cancel',()=>clearInlineLink());
+$('#link-dialog').addEventListener('keydown',event=>{if(event.key==='Escape'&&!event.isComposing){event.preventDefault();event.stopPropagation();closeInlineLink();}});
+$('#insert-link').onclick = () => {
+  if(!editor || editor.isDestroyed || !editor.isEditable || !session || navigating || document.querySelector('dialog[open]'))return;
+  clearInlineLink();
+  linkSelection={from:editor.state.selection.from,to:editor.state.selection.to,editor,doc:editor.state.doc,noteId:session.note.id};
+  $<HTMLInputElement>('#link-search').value='';$<HTMLDialogElement>('#link-dialog').showModal();$('#link-search').focus();void linkResults();
+};
 $('#link-search').oninput = linkResults;
 $('#link-results').onclick = event => {
   const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-link]');
   const note = inlineLinkNotes.get(target?.dataset.link ?? '');
-  if (!note || !editor || !linkSelection) return;
+  const context=linkSelection;
+  if(!note || !context)return;
+  if(!editor || editor.isDestroyed || editor!==context.editor || session?.note.id!==context.noteId || !editor.isEditable || !editor.state.doc.eq(context.doc)){
+    closeInlineLink();error('The note changed or is no longer editable. Reopen the note-link picker and choose the text again.');return;
+  }
   const href = `noted://note/${note.id}`;
-  if (linkSelection.from === linkSelection.to) editor.chain().focus().insertContentAt(linkSelection, { type: 'text', text: note.title || 'Untitled', marks: [{ type: 'link', attrs: { href } }] }).run();
-  else editor.chain().focus().setTextSelection(linkSelection).setLink({ href }).run();
-  $<HTMLDialogElement>('#link-dialog').close();
+  const range={from:context.from,to:context.to};
+  editor.view.dispatch(closeHistory(editor.state.tr));
+  if (range.from === range.to) editor.chain().focus().insertContentAt(range, { type: 'text', text: note.title || 'Untitled', marks: [{ type: 'link', attrs: { href } }] }).run();
+  else editor.chain().focus().setTextSelection(range).setLink({ href }).run();
+  editor.view.dispatch(closeHistory(editor.state.tr));closeInlineLink();
 };
-document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button => { button.onclick = () => $<HTMLDialogElement>(`#${button.dataset.close}`).close(); });
+document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button => { button.onclick = () => {if(button.dataset.close==='link-dialog')closeInlineLink();else $<HTMLDialogElement>(`#${button.dataset.close}`).close();}; });
 $('#dismiss-error').onclick = () => { $('#error-banner').hidden = true; };
 $('#retry-save').onclick = () => { void flush().then(() => { $('#error-banner').hidden = true; }).catch(() => {}); };
 $('#download-draft').onclick = () => {

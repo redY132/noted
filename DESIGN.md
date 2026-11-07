@@ -40,6 +40,13 @@ When the writing area is shorter than 360px, its five note-action buttons move i
 
 ## Long-note navigation
 
+The local-note link picker keeps its existing modal search and explicit target
+choice. Use the shell's neutral colors and type, 44px controls, readable wrapped
+titles and folder paths, and a bounded scroll region. Small windows may scroll
+the dialog as well. Give the dialog and result group names, preserve composition,
+and keep stale selections/search replies from changing another note. No extra
+sidebar, icons or surfaces are needed. Dials remain ENERGY 1 / RHYTHM 2 / MOTION 2.
+
 Find and replace keeps its existing inline workflow and neutral theme. Its
 controls need the same 44px targets as other current shell work, with text that
 responds to the root text size. Bound the panel's share of the writing area and

@@ -1,0 +1,27 @@
+#link-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 18px;
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  font: .875rem/1.5 system-ui, sans-serif;
+  overflow: auto;
+}
+#link-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+#link-dialog h2 { flex: 0 0 auto; margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
+#link-dialog .dialog-description { flex: 0 0 auto; margin: 0; font: inherit; color: var(--ui-muted); overflow-wrap: anywhere; }
+#link-dialog .search-box { flex: 0 0 auto; display: block; margin: 0; padding: 0; border: 0; background: transparent; }
+#link-dialog input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--ui-muted); border-radius: 4px; font: inherit; color: var(--ui-text); background: var(--ui-surface); }
+#link-dialog .link-results { flex: 1 1 auto; min-height: 80px; max-height: min(300px, 40dvh); margin: 0; overflow: auto; overscroll-behavior: contain; }
+#link-dialog button { min-width: 44px; min-height: 44px; padding: 8px; border-radius: 4px; font: inherit; }
+#link-dialog .link-results button { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; width: 100%; text-align: left; }
+#link-dialog .link-results :is(span,small) { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+#link-dialog .link-results small { font-size: .8125rem; color: var(--ui-muted); }
+#link-dialog button:hover { background: var(--ui-hover); }
+#link-dialog .dialog-actions { flex: 0 0 auto; margin: 0; }
+#link-dialog :is(button,input,.link-results):focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+@media (max-height: 650px) {
+  #link-dialog[open] { display: block; }
+  #link-dialog :is(.dialog-description,.search-box,.link-results,.dialog-actions) { margin-top: 10px; }
+}

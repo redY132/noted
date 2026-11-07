@@ -30,6 +30,13 @@ async page=>{
   record('a replaced editor refuses the old link range',await snapshot()===destination&&await writer.locator('a').count()===0);
   await writer.fill('Gamma Delta');await open();await apply.click();await dialog.waitFor({state:'hidden'});
   record('normal Apply keeps the words and links the chosen text',await writer.textContent()==='Gamma Delta'&&await writer.locator('a').textContent()==='Gamma'&&await writer.locator('a').getAttribute('href')==='https://example.com/');
+  await writer.evaluate(el=>{el.editor.commands.setTextSelection(3);el.focus();});await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
+  await url.fill('ftp://example.com/');await apply.click();
+  record('unsupported URLs remain in the dialog with validation feedback',await dialog.isVisible()&&await url.evaluate(field=>field.validity.customError));
+  await page.locator('#url-cancel').click();
+  await writer.evaluate(el=>{el.editor.commands.setTextSelection(3);el.focus();});await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
+  record('reopening a saved link clears the previous validation error',await url.inputValue()==='https://example.com/'&&await url.evaluate(field=>field.checkValidity()));
+  await apply.click();await dialog.waitFor({state:'hidden'});
   await writer.press('Control+z');record('one Undo removes the explicit link',await writer.textContent()==='Gamma Delta'&&await writer.locator('a').count()===0);
   await open();const beforeCancel=await snapshot();await page.locator('#url-cancel').click();
   record('Cancel preserves the note',await snapshot()===beforeCancel&&!await dialog.isVisible());
@@ -39,7 +46,9 @@ async page=>{
   await apply.click();await dialog.waitFor({state:'hidden'});
   record('a no-longer-editable note refuses Apply',await snapshot()===readOnly);
   await writer.evaluate(el=>el.editor.setEditable(true));
-  await writer.fill('');await writer.focus();await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
+  await writer.focus();await writer.press('Control+a');await writer.press('Backspace');
+  await page.waitForFunction(()=>document.querySelector('#editor .tiptap').editor.state.doc.textContent==='');
+  await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
   await url.fill('https://example.com/');await page.locator('#url-label').fill('Example');await apply.click();await dialog.waitFor({state:'hidden'});
   record('caret insertion uses the explicit label',await writer.textContent()==='Example'&&await writer.locator('a').textContent()==='Example');
   await writer.press('Control+z');record('one Undo removes the caret insertion',await writer.textContent()==='');
