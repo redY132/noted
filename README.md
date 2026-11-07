@@ -118,62 +118,121 @@ The comparison runs at `http://127.0.0.1:1421/`. Its [README](experiments/editor
 
 ## Data and privacy
 
-The desktop prototype stores a local workspace in the Tauri application data directory. The interface reports the actual path. To use disposable data during development, set an absolute path before launching:
+Desktop notes live in the local workspace reported by the app. Note files use
+structured JSON and stable UUIDs. `index.sqlite3` and semantic indexes are
+rebuildable; `relations.sqlite3` stores authoritative connections and dismissals.
+Use a consistent workspace backup to preserve them together.
+
+For disposable development data, set an absolute path before launching:
 
 ```powershell
 $env:NOTED_WORKSPACE = Join-Path $PWD 'output\scratch-workspace'
 npm run desktop
 ```
 
-Note files are structured JSON, linked by stable UUID rather than filename or title. `index.sqlite3` and semantic indexes are rebuildable. `relations.sqlite3` contains authoritative connections and dismissals and must be included in a consistent workspace backup; Workspace details can also export these as JSON. The native store uses revision checks and file fingerprints to reject stale saves, and preserves a previous-file backup. This is not a substitute for user backups or encryption. External editing should be done with the app closed until a richer conflict-resolution workflow exists.
+The native store rejects stale saves using revisions and file fingerprints.
+Save conflicts offer Retry, Keep both and draft download; Previous save recovers
+one earlier completed save as a separate note. Local files are not application
+level encryption or a substitute for backups.
 
-The prototype has no cloud AI connection, telemetry, remote fonts, sync, app-wide plugin execution, or remote media fetching. Explicitly enabled note components run in the bundled bounded QuickJS Worker. Editor assets and the inference runtime are bundled; model weights are a separate explicit download/offline installation. Future AI formatting must go through validated scoped operations; the prototype's human editing command is not an AI-safe API.
+Noted does not automatically sync notes. Explicit **Generate proposal** sends
+the approved saved-note snapshot and instructions to OpenAI through the existing
+ChatGPT-signed-in Codex client. A full schema guidance document requires fresh
+per-request consent. Image bytes are not sent. Ordinary editing, review feeds,
+backups and local proposal loading do not start model calls. Private imports
+remain excluded from all AI routes, including explicit requests and embeddings;
+see [AI privacy](docs/ai-privacy.md).
+
+Appearance and panel preferences stay on this device. Optional local semantic
+discovery requires a separately installed model pack; no download runs
+automatically. Enabled note components execute in the bounded QuickJS Worker,
+with each exact code version disabled until explicitly enabled.
 
 ## Backup and restore
 
-Open **View → Workspace details → Backup and restore** in the desktop app. Create a new .noted-backup archive, inspect it, and restore to a **new folder**. Notes, assets, schema/component definitions and saved connections are preserved together. Existing destinations are never replaced. **Open restored copy** uses a separate window and fresh profile, so imported component code starts disabled. See [backup/restore](docs/backup-restore.md) for recovery warnings and limits.
+Open **View > Workspace details > Backup and restore**. Create a checksummed
+`.noted-backup` archive, inspect it, and restore into a **new folder**. Existing
+destinations are not replaced. Notes, supported assets, definitions, connections
+and private-note AI exclusion are preserved together. **Open restored copy**
+uses a separate window and fresh profile, with sharing and component execution
+disabled by default. See [backup and restore](docs/backup-restore.md).
 
-## Reference hardware testing
+## Optional AI and agents
 
-The [portable benchmark kit](docs/reference-benchmark.md) records actual hardware, instrumented startup, sampled process memory, writing workloads and eight active components. Build it with **npm run bench:reference:kit** after the release build. Tests on this Ryzen 9 machine do not certify an inexpensive laptop. A separate physical reference device and agreed resource budgets remain required.
+Choose **Format with AI**, describe the change and select **Generate proposal**.
+Review the validated current/proposed comparison, then Apply or Reject. Apply
+retains saved Undo. Goals cover formatting, schema adherence and interactive
+component suggestions; generated components require separate sandboxed preview
+and insert disabled. See [the current workflow](docs/ai-formatting.md).
 
-## Current boundaries
+The local client and MCP companion run on this computer; model inference is
+hosted. Generation uses existing official Codex ChatGPT sign-in and that
+account's available model/usage limits, with no API-key fallback. The current
+runner is configured for GPT-6.1 Sol/medium, one static saved-note snapshot up
+to 64 KiB, one running job and a three-minute timeout. Nothing applies
+automatically. Cancellation reports local status and cannot recall processed
+provider usage.
 
-- The JSON format is experimental and subject to migration as the document model develops.
-- Markdown shortcuts cover the editor's supported constructs; this is not a complete Markdown round-trip implementation.
-- Presentation presets demonstrate deterministic formatting. The small body/heading schema editor includes opt-in automatic rules; broader schema behaviors and cloud AI integration remain future work.
-- Zoomable drawing/canvas tools, folder overviews, animation FPS controls, flashbacks, and sync remain on the roadmap.
-- See [architecture](docs/architecture.md) and [performance](docs/performance.md) for decisions, limitations, and verification scope.
+**Load proposal** retries an existing local result without another generation.
+Saved proposals can be checked when sign-in discovery is unavailable; new
+generation remains disabled until sign-in is known. Privacy and freshness are
+checked again before review. The status strip retains explicitly started work
+after closing its dialog or visiting another note; its polling reads local
+metadata and does not wake an agent or resend notes.
 
-No project license has been selected yet. Third-party dependencies retain their respective licenses.
+**Advanced** contains external-agent requests, saved-request selection and
+sign-in refresh. Create request saves a revision-bound one-note request; it
+does not start a model. Such an explicit request may permit an authorized agent
+to read that note for up to 24 hours, including outside shared folders. Proposal
+validation and explicit approval still apply.
 
+**Agent access** selects saved folders for an optional local MCP agent. Its
+model provider determines where retrieved content is processed; local transport
+does not imply local inference. Access starts disabled and can be revoked while
+the server runs. Build the companion
+with `npm run agent:build`; no client configuration is changed automatically.
+See [agent setup and capabilities](docs/agent-integration.md).
 
-## Daily-use alpha and agents
+Hosted assistant access requires separate account/tunnel/plugin setup and
+explicit approval. Local Codex configuration does not establish that connection; see
+[hosted-chat setup](docs/hosted-chat-setup.md). No hosted credential or connection
+is created by the build or test workflows.
 
-The library now has folder rename/move, note Trash/Restore and **Recover draft / keep both** after save conflicts. **Note presets** previews Lecture, Project and Journal layouts before applying one undoable change. **Review notes** resurfaces original notes offline with folder/tag filters, reviewed/snooze/exclude/reset controls. See [daily-use behavior and verification](docs/daily-use-alpha.md).
+## Importing exported notes
 
-**Agent access** lets you explicitly select exact folders for a local MCP agent to search and read. Access is disabled by default and can be revoked while the server runs. **Ask agent for layout** creates an explicit revision-bound request; proposals require rendered preview, acceptance and support Undo. Build the companion with `npm run agent:build`; no agent configuration is changed automatically. This is a tested local transport/inbox, not a connected hosted Dot plugin or automatic model client. See [setup, privacy, actual capabilities and limits](docs/agent-integration.md).
+**Workspace details** supports dry-run imports of Markdown folders, Obsidian
+vault copies and Logseq file graphs into a separate workspace. Review the loss
+report and explicitly accept supported fallbacks before publication. Original
+bytes remain recoverable, supported heading/block links use stable IDs, and
+new workspaces start unshared. See [migration scope and limits](docs/migration-plan.md).
 
+The developer SQLite adapter is a separate, gated path. Missing asset bytes or
+unsupported live/dynamic features block publication. It is not full Logseq DB
+parity or an ordinary in-app SQLite import. Keep the original export; use
+generated fixtures for automated testing. See [SQLite conversion and privacy](docs/logseq-sqlite.md).
 
-## Proposed migration support
+## Verification and release gates
 
-Migration from Obsidian and Logseq has been assessed, including Markdown, links/anchors, folder structure, attachments, block references, source recovery and explicit loss reports. It is **planned, not implemented**. See [the migration proposal and dependencies](docs/migration-plan.md). No personal vaults are read by this feature assessment.
+The latest implementation checks passed **303 frontend tests** and **113 native
+tests**, with four optional model/corpus tests ignored. Rendered AI workflows
+use explicit account/model stubs. Native runner ownership tests use a bounded
+inert test executable, never Codex. Earlier synthetic live-model evidence is
+recorded separately in [milestone verification](docs/milestone-verification.md).
+See [UI checks](docs/evening-ui-checks.md) for rendered scope and limitations.
 
-## Exported-folder migration and live agent evidence
+The [reference kit](docs/reference-benchmark.md) includes pristine generated
+notes, no-model isolation, timing proxies and a disconnected resource mode.
+Build it after `scripts/Build-Portable.ps1` from the same clean source commit
+using `npm run bench:reference:kit`. Development-PC runs do not certify an
+inexpensive laptop, physical key-to-paint, normal cold startup or agreed resource
+budgets. The [memory investigation](docs/memory-investigation-2026-11-07.md)
+records the fixed image lifetime leak and the actual eight/fifteen-minute controls.
 
-Workspace details supports dry-run Markdown, Obsidian and Logseq file-graph imports into a separate workspace, with explicit fallback acceptance and recoverable original bytes. See [migration scope](docs/migration-plan.md). Heading/block links navigate by stable ID; imported folders start unshared.
-
-A synthetic GPT-6.1 Sol request using existing official Codex ChatGPT sign-in passed the MCP permission, queued proposal and native preview/Apply/Undo flow. Inference is hosted; no personal notes were transmitted. This hosted chat is still unconnected, and the explicit in-app send controls now use existing ChatGPT sign-in. See [agent integration](docs/agent-integration.md) and [current verification/release gates](docs/milestone-verification.md).
-
-
-### Subscription controls resumed after scope clarification
-
-The later deferral applied to Afterglow, not Noted. The authorized Noted controls are now implemented: explicit **Send this saved note using ChatGPT**, existing official Codex ChatGPT sign-in only, fixed GPT-6.1 Sol/medium, one temporary static-note snapshot (64 KiB maximum), one running job, cancellation and a three-minute timeout. The model has only the temporary formatting-request/proposal tools; no other notes or personal sharing policy are copied. No API-key fallback, credentials or hosted-chat access is added. Proposals still require rendered preview and explicit acceptance; nothing auto-applies.
-
-Passive polling checks local job/proposal status while its dialog is open and does not initiate model calls. Transport heartbeat is separate from sharing policy and never claims this hosted chat is verified. Hosted-chat activation still requires its separate account/tunnel/plugin setup and approval. Earlier references to deferral describe the prior checkpoint, superseded by this clarification.
-
-Current validation: 160 frontend tests and 83 desktop/native tests pass (four optional model/corpus tests skipped). The Windows release and matching agent companion build successfully. Live native subscription evidence is retained in ignored `output/subscription-live-start.log` and `output/subscription-live-finish.log`.
-
-## Simplified AI formatting
-
-Choose **Format with AI**, describe the change, then **Generate proposal**. A validated current/proposed comparison opens automatically; choose **Apply** or **Reject**, with visible Undo after Apply. External-agent requests and technical JSON remain under Advanced. Duplicate requests are reused and inactive history is labelled. No background model generation or new sharing is enabled. See [workflow and verification](docs/ai-formatting.md). Restart with the updated native build after saving any open work.
+The JSON format is experimental. Markdown shortcuts and migration do not
+provide complete Markdown, Obsidian or Logseq round-trip parity. Broader schema
+rules, document drawing/zoom, full version history and sync remain future work.
+Real reference hardware, release budgets, installer/signing and the project
+license/distribution decision remain pending. Generated portable ZIPs are
+private unsigned developer alphas. Third-party dependencies retain their
+respective licenses. See [architecture](docs/architecture.md),
+[performance](docs/performance.md) and [portable release verification](docs/portable-release.md).
