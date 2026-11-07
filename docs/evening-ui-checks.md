@@ -257,3 +257,8 @@ sidebar checks across 14 viewport/theme profiles passed. The existing visual
 fixture also passed its Light/Dark contrast and hit-target checks, 200% text
 access and six custom-accent hover/focus combinations. Layout, folder sharing
 and stored documents are unchanged.
+
+Help now explains Load proposal as a local retry and distinguishes pending
+cancellation from a reported outcome. Its generated-note browser fixture passed
+16 workflow checks and six layout/theme/text-size profiles. Help does not invoke
+account discovery, generation or access settings.
