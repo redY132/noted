@@ -83,6 +83,6 @@ The follow-up still showed process-memory growth. Its role medians use 30–90 s
 | GPU | 260.6 | 309.8 |
 | Utility | 19.6 | 22.3 |
 
-The renderer accounts for most of the observed increase. A separate forced-GC diagnostic retained about 6.0/7.3/8.0MB of main JS heap after baseline/40 ordinary switches/40 component switches. This does not establish the cause of whole-process growth. Renderer/native allocations, decoded assets, caches and ordinary GC behavior need a dedicated fixture investigation. No bounded-memory or inexpensive-device acceptance is claimed.
+The renderer accounts for most of the observed increase. A separate forced-GC diagnostic retained about 6.0/7.3/8.0MB of main JS heap after baseline/40 ordinary switches/40 component switches. This does not establish the cause of whole-process growth. Renderer/native allocations, decoded assets, caches and ordinary GC behavior need a dedicated fixture investigation. Include a fresh-corpus baseline with the debugger detached to separate instrumentation effects. No bounded-memory or inexpensive-device acceptance is claimed.
 
 The completed-run metadata is in ignored `output/reference-initial-trial-state.json` and `output/reference-trial-state.json`; each identifies its local report. The transferable kit contains pristine generated fixtures and scripts, without trial profiles, runs or hardware reports. Its build source is `ad21771`.
