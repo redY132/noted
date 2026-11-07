@@ -1,153 +1,138 @@
 # AI formatting
 
-November 6 UI update: **Before generating** names the current note and explains the next generation's contents. Schema rules and a full guidance document are shown separately; checking the per-use guide box updates the summary without creating a request. Detailed data/account explanations are under **Data and usage details**. The summary is hidden during preparation/generation so it does not describe a later unchecked checkbox as the active job's scope. Existing private-note denial, explicit generation, rendered comparison, Apply/Reject and Undo remain enforced. No connection, credential or model execution behavior changed.
+Noted's default flow is **Describe change > Generate proposal > Compare >
+Apply or Reject**. AI is optional; ordinary editing does not start generation.
 
-The default workflow is **Describe change → Generate proposal → Visual comparison → Apply or Reject**, followed by **Undo** when desired.
+## Generate and review
 
-1. Open a note and choose **Format with AI**. Enter instructions above Generate proposal.
-2. Review the on-screen consent and click **Generate proposal**. This explicitly sends one saved static note and your instructions through the official Codex client using existing ChatGPT sign-in, GPT-6.1 Sol/medium and the account's normal Codex limits. It does not send other notes or image bytes, enable sharing, or start this hosted chat. No API-key fallback or credential creation is added.
-3. The app shows generation progress and opens the visual comparison automatically when the proposal passes native validation. **Current note** and **Proposed note** are read-only, keyboard-scrollable panes. There is no second Preview click in the default workflow. Wording, links, task state and logical reading order remain protected. Real rendered validation still checks both themes and multiple widths before Apply becomes available.
-4. **Apply** saves the reviewed proposal and exposes an Undo button. Ctrl+Z also works in the same editor. The shortcut refuses to undo unrelated later edits; use normal editor Undo after making further edits. **Reject** removes the selected proposal request and leaves the note unchanged. Closing the comparison retains the proposal for later review.
+1. Open a saved note and choose **Format with AI**. Describe the change and
+   choose a goal: formatting, schema adherence or an interactive component.
+2. Check **Before generating**, which names the note and the contents of this
+   request. **Generate proposal** explicitly sends its saved static snapshot and
+   your instructions through the official Codex client using existing ChatGPT
+   sign-in. Full-document guidance needs its own fresh checkbox consent. Image
+   bytes and unrelated notes are not included.
+3. For formatting and schema proposals, the validated **Current note / Proposed
+   note** comparison opens automatically. Both panes are read-only and keyboard
+   scrollable. Formal checks protect wording, links, tasks and logical reading
+   order; rendered checks cover contrast and geometry before Apply is enabled.
+4. Choose **Apply** or **Reject**. Apply saves the reviewed change and exposes
+   Undo. Ctrl+Z also works while that change is the current editor action; after
+   further edits, use normal editor Undo. Reject removes this request without
+   changing the note. Closing the comparison retains the proposal for later.
 
-An explicitly started job has a status strip below the writing toolbar. It remains visible when the AI dialog is closed or another note is open. **Open generation** returns to its note and goal; **Review proposal** opens the rendered comparison directly after checking that exact saved request. Returning saves the current draft first. Missing, expired, outdated or newly private requests cannot be substituted with another proposal. **Dismiss status** hides a terminal status and returns focus to writing; it does not delete a saved proposal.
+Generation uses GPT-6.1 Sol/medium, one bounded static-note snapshot up to 64 KiB,
+one running job per app instance and a three-minute timeout. The local client
+and MCP companion run on this computer; inference is hosted by OpenAI and uses
+the signed-in account's available Codex model/usage limits. There is no API-key
+fallback or credential creation, and this does not connect a hosted chat.
 
-Review saves any current draft and then rechecks the exact request and AI eligibility. A proposal that became outdated during that save does not open comparison, even if only manual formatting changed. In short writing areas, the five note-action commands remain under **View > Note actions** instead of consuming the document viewport. Status condenses its description while retaining the full note title in accessible text and a tooltip.
+The approval belongs to the note, instructions, goal and guidance consent from
+the click. Submission stops if navigation changes the note during eligibility
+or saving. Closing during an unchanged note's save retains that already
+approved scope; the next request still needs fresh guidance consent.
 
-While the dialog is closed, polling reads only the owned local job metadata. It does not fetch another note's requests, wake an agent, start a model call or apply a proposal. Local status is checked about every two seconds; failures back off and pause after three attempts. Explicitly reopening retries. A still-running job keeps cancellation available even if its saved request disappeared. Unchanged polls do not rewrite the live status text. Long titles wrap, the strip scrolls internally, and resizing keeps a focused control visible.
+## Progress, cancellation and local recovery
 
-External-agent requests continue to be checked only while the AI dialog is open. Closing the generation dialog leaves an explicitly started job running. **Cancel generation** stops that owned job and removes its one-note request. Already processed model usage and copies read by an agent cannot be recalled. Generation has a three-minute timeout and supports one running job per app instance. Static-note and size restrictions remain in effect. The activity strip is session state; reopening a note's AI dialog can rediscover saved valid proposals after a restart.
+An explicitly started job keeps a status strip below the writing toolbar after
+you close the dialog or visit another note. **Open generation** returns to its
+note and goal; **Review proposal** checks the exact saved request before opening
+comparison. Returning saves the current draft first. Missing, expired, outdated
+or newly private requests cannot be replaced with an unrelated result.
+**Dismiss status** hides a terminal status without deleting its saved proposal.
+
+Closing the dialog leaves generation running. **Cancel generation** requests a
+stop and attempts to remove only that job's one-note request. **Cancellation requested**
+remains pending until local job metadata reports an outcome. You can keep
+writing and return through **Check cancellation**. A completion race does not
+automatically open or apply a result. Failed acknowledgement can be retried;
+failed request deletion is not described as successful.
+
+Local cancellation reports do not confirm that provider processing or usage
+stopped. Already processed usage and copies read by an agent cannot be recalled.
+Normal desktop exit requests cancellation of the owned runner; forced process
+termination and OS crashes are not covered by that callback.
+
+If a completed result could not open, **Load proposal** reads that existing
+local result without another generation. Privacy, exact request identity and
+saved-note freshness are checked again before comparison. Sign-in discovery
+failure disables new generation while saved proposals remain available to
+check. Changing the goal or saved-request selection supersedes older pending
+reads, so a late response cannot replace the newer choice.
+
+Status polling reads local metadata about explicitly started work, about every
+two seconds. Failures back off and pause after three attempts; reopening retries.
+Polling does not send another note, wake an agent or apply a proposal. The strip
+is session state; after restart, open AI formatting to rediscover saved requests.
+Cancellation status stays accessible even when account discovery, request
+listing or the request itself is unavailable.
+
+## Schemas and interactive components
+
+**Schemas & layout** supports saved Free Placement schemas and full-document
+guidance capture. The **Adhere to selected schema** goal shows local mismatches
+and includes formal rules. A guide defaults off, needs per-request consent and
+is stripped from the request unless approved. Formal rules take priority over
+the optional untrusted example. Capturing or selecting a guide does not send it.
+See [schema authoring](schema-authoring.md) for authoring and validation limits.
+
+**Create interactive component** uses the explicit generation flow to return an
+inert definition. Review its code and separately approve a bounded QuickJS
+preview. Insertion starts disabled; running it requires approval for that exact
+code version. No generated code runs merely because it arrived. External
+formatting requests remain presentation-only. See [component authoring](component-authoring.md).
+
+Private imported notes are excluded from all AI routes, regardless of optional
+folder grants. Guidance also checks source-note provenance; private sources and
+untraceable legacy full guides in private workspaces cannot be sent. See
+[AI privacy](ai-privacy.md). Local editing and backup do not grant model access.
 
 ## Advanced workflows
 
-**Advanced: external agents and saved requests** retains the manual Create request / Refresh / Remove flow. Creating an external request does not launch a model. A connected agent allowed by Agent access must pick it up; exact selected-folder permissions and the existing explicit 24-hour one-note request exception remain unchanged. A hosted connection still requires separate setup/approval. Neither access setting is enabled by this UI change.
+**Advanced: external agents and saved requests** contains Create request,
+Refresh, Remove, saved-request selection and sign-in refresh. Create request
+saves a revision-bound request without launching a model or waking an agent.
+An allowed connected agent may read that one note for up to 24 hours, including
+outside selected folders. Exact folder grants, private-note denial and separate
+hosted connection approval still apply. Closing the dialog stops external-inbox
+polling. See [agent integration](agent-integration.md).
 
-Request history labels **waiting**, **ready**, **expired**, **outdated**, **duplicate**, and **invalid** states. Expired and outdated entries are not treated as usable proposals. Identical valid requests reuse the same note/revision fingerprint and trimmed instructions; cached valid proposals do not start a new model job. Native single-job reuse protects repeated clicks. MCP discovery suppresses legacy duplicate copies without deleting them, including pending copies already covered by a valid answered request. Expired or invalid replies do not block a fresh request.
+History labels waiting, ready, expired, outdated, duplicate and invalid entries.
+Identical valid requests reuse their note/revision fingerprint and trimmed
+instructions. A valid cached proposal does not start another job. Missing
+selected IDs clear review and explain recovery; other saved requests remain
+available for deliberate selection.
 
-**Advanced: permissions and JSON** in the comparison preserves manual document operations. Editing JSON or permissions invalidates the rendered preview and requires another check. Default AI proposals use formatting and arrangement permissions. Changes to the note, theme or editor width invalidate an existing preview; Retry preview checks the current conditions before Apply is enabled again.
+**Advanced: permissions and JSON** in comparison retains manual operations.
+Changing JSON or permissions invalidates the rendered preview. Note, theme or
+editor-width changes also require another check before Apply. MCP layout nodes
+use explicit `style` fields; unsupported invented `attrs` fields fail validation.
+A successful client exit without a valid submitted proposal is still a failure.
 
-## Verification
+## Desktop setup and verification
 
-The November 6 evening activity checks are recorded in [the session report](evening-session-2026-11-06.md). The browser-only fixture under `experiments/ai-activity/` supplies every AI/account method as a local simulation and refuses native execution or an existing unrelated browser store. `scripts/ai-activity-harness-smoke.js` checks job transitions and rendered review. `scripts/ai-activity-cache-smoke.js` exercises the real Windows review path with a prewritten synthetic proposal and never clicks Generate. Generate is not a safe transport-interception probe in native Tauri: its IPC invoke property is immutable. Use the dedicated browser harness for simulated jobs.
+Use the matching updated app and `noted-agent.exe` companion. Save and close an
+older native window before opening the updated build; a new frontend cannot
+replace its running backend. Generate checks companion capabilities before
+sending note data. In development, `npm run agent:dev:build` rebuilds the matching
+companion without modifying notes or sign-in. Packaged builds keep it beside
+`noted.exe`. Model requests remain fallible and may need a deliberate retry.
 
-Frontend consent/state tests cover no model call on opening/typing, double clicks, automatic review, expired/outdated labels, Close/Apply/Reject lifecycle and scoped cancellation. Native tests cover request/job reuse, cache preference, history states and duplicate-free MCP discovery. Native Windows smoke tests use dedicated `noted-simple-ai-*` fixtures: comparison, Apply/visible Undo, Reject, reopen, stale preview and retry. A real synthetic signed-in Codex generation also passed automatic visual review and Reject without changing the note or sharing policy. No personal notes were used.
+The latest implementation checkpoint passed 304 frontend tests and 113 native
+tests, with four optional model/corpus tests ignored. Browser workflow tests
+under `experiments/ai-activity/` explicitly stub every account/model method and
+refuse native execution or an unrelated existing browser store. Native process
+ownership tests launch a bounded inert test executable, never Codex. Rendered
+scope is recorded in [UI checks](evening-ui-checks.md).
 
-The fixture-only smoke scripts are `scripts/simple-ai-native-smoke.js`, `simple-ai-reject-smoke.js` and `simple-ai-live-smoke.js`. The live script explicitly clicks Generate and uses account allowance; it is not run by npm test. Evidence remains under ignored output/simple-ai-*.log and output/playwright/. Existing optional model/corpus tests still require their separately supplied data.
+Earlier explicitly authorized live tests used only synthetic notes and existing
+official ChatGPT sign-in; their evidence is separate in
+[milestone verification](milestone-verification.md). Current UI and native
+checks do not run a model or prove provider-side cancellation.
 
-Native changes require the updated desktop executable and matching agent companion. Save and close an older development window, then open the updated build; the new frontend alone cannot update an already running native backend.
-
-Current checks: **165 frontend tests pass; 85 native tests pass with four optional model/corpus tests ignored**. The Windows release and matching MCP companion build successfully. `node scripts/create-ai-formatting-fixture.mjs` creates a new temporary fixture and output/simple-ai-state.json without starting any model. Launch Noted with that workspace and a separate WebView profile before attaching Playwright. Use a fresh fixture for independent cached-proposal tests. Opening and typing are tested to make no model call; the live smoke uses only an explicit Generate click.
-
-## Companion compatibility and missing-path recovery
-
-The development instance previously ran an older `target/debug/noted-agent.exe` that rejected the current `allowHosted` policy field. The Codex client itself existed and was signed in. When no proposal file was created, the app then surfaced a misleading Windows “path specified (os error 3)” error. This was reproduced on an empty synthetic queue: the old debug companion rejected the policy while the release companion accepted it.
-
-The debug companion has been rebuilt, and the same development executable passed a real explicitly clicked synthetic generation, automatic comparison and Reject. Development and release startup/build hooks now build the matching companion. Fresh jobs check `noted-agent --capabilities` before sending note data; stale or missing companions produce actionable messages. A client that exits successfully without a proposal now reports the missing proposal rather than a filesystem path error. Cached local proposals still need no client/companion launch.
-
-`npm run agent:dev:build` repairs the development companion without modifying notes or sign-in. Save and reopen an older native app to load the new diagnostics. 87 native tests passed, including missing-proposal and incompatible-companion regression cases; no personal note was used in reproduction.
-
-
-## Schema adherence and document examples
-
-**Schemas & layout** includes Free Placement, local full-document guide capture, immutable saved versions, and **AI adherence suggestions**. The AI dialog also offers **Goal → Adhere to selected schema**, with local mismatches shown before generation. Formal rules accompany that request. A whole-document guide requires its separate per-request checkbox; it defaults off and resets after sending or closing. The native command strips any guide unless `includeGuidance` is true, then validates and bounds the whole static snapshot. This does not enable bridge sharing or transmit an example merely because it is selected.
-
-Codex/MCP receives the approved schema in `request.schema`. Formal rules take priority over the optional untrusted example. Proposal submission, cached reply reads and review enforce the rules; the existing rendered contrast/geometry checks and Apply / Reject / Undo remain in place. See [schema authoring](schema-authoring.md) for limits and the exact workflow. Save work and restart an older desktop window to load the updated commands; the UI refuses guided generation against an older backend.
-
-
-The MCP proposal tool advertises a recursive layout-node contract with explicit `style` presentation fields. Unsupported `attrs` layout fields fail validation. A model that exits successfully without submitting a proposal remains a failed job; Noted can show its bounded structured failure summary without saving raw model/tool logs. Generation can fail or require a deliberate retry. No proposal is applied automatically.
-
-
-### Windows verification, 2026-11-04
-
-- 173 frontend tests and 91 native tests passed; four optional model-pack tests remain ignored. The Windows release build succeeded.
-- A disposable native workspace passed actual rendered Free Placement preview, Apply, saved one-step Undo, whole-document guide capture, immutable version persistence, and default-off guidance consent.
-- The saved guide and target reopened successfully after a regression fix for JSON object-key ordering in immutable schema comparisons. Real value changes still require a new version.
-- A real GPT-6.1 Sol / medium request through the existing ChatGPT-signed-in Codex client passed full-guide Generate → formal and rendered validation → Apply → Undo, then confirmed a fresh unchecked consent box and unchanged disabled fixture sharing. Only synthetic notes and a synthetic guide were transmitted.
-- An earlier guided attempt returned no proposal and left its note unchanged. A diagnostic run exposed invalid invented layout fields; the proposal tool now publishes the explicit recursive `style` layout contract. The final native flow passed. Model requests remain fallible and may require a deliberate retry.
-
-Local evidence (generated, excluded from source control): `output/schema-frontend-tests.log`, `output/schema-native-tests.log`, `output/schema-native-smoke.log`, `output/schema-live-smoke.log`, `output/schema-desktop-build.log`, and screenshots under `output/playwright/schema-*`. The synthetic diagnostic log is not included in a portable package. No personal workspace, access policy or credentials were changed.
-
-
-## Interactive component goal
-
-The explicit **Create interactive component** goal now produces an inert definition using the same ChatGPT-signed-in client. It uses a tool-free generation branch, then a separately approved isolated preview and optional disabled insertion with Undo. No generated code runs on arrival, no execution approval is saved, and the existing automated widget-layout restriction remains intact. See [component authoring](component-authoring.md) for the workflow and verified limits. External formatting requests remain presentation-only.
-
-
-### Private-note exclusion
-
-Private imports cannot be sent through either the one-note Generate flow or the external request queue, regardless of optional folder grants. The dialog explains that AI is excluded and disables generation. Captured schemas retain source-note provenance; private sources and legacy untraceable full guides are refused in private workspaces. See [AI exclusion](ai-privacy.md). Matching native protocol is now 5.
-
-### Local proposal recovery
-
-When a completed proposal could not be opened, **Load proposal** retries its
-existing local result. It does not create another request or call a model.
-Privacy, note identity, request identity and saved-note freshness are checked
-again before comparison; Apply, Reject and saved Undo remain explicit.
-
-If sign-in discovery fails, new generation stays disabled while saved proposals
-can still be checked. A job's reported completion or failure remains visible
-when saved-request loading fails. Reopening failed work shows its own message
-without substituting a different request or hiding it behind a list-read error.
-
-Changing the goal or selected saved request supersedes pending local reads.
-An older response cannot replace the newer choice or open its comparison.
-The newly selected request continues polling locally; changing these controls
-does not start another generation.
-
-### Cancellation status
-
-Advanced saved requests keep their exact identity through creation, polling and
-Refresh. If a selected request disappears, the dialog explains its absence;
-it does not automatically substitute or preview an older proposal. Other saved
-requests remain available for deliberate selection. A successfully created
-request stays with its original note if you close or navigate before its
-response arrives; the late response does not inspect the newly opened note.
-
-Cancel requests a stop and removes only the job's own saved request. Generation
-remains disabled while local job status is still running. You can close the
-dialog and keep writing; the status strip retains the pending cancellation.
-Reopening still works after the saved request was removed.
-
-Cancellation details use the owned local job metadata even when account
-discovery or saved-request listing is unavailable. Confirmed deletion removes
-only that cached request; failed deletion remains available under Advanced.
-An auxiliary list refresh cannot pause cancellation status checks or hide a
-reported terminal result. New generation and proposal review retain their
-ordinary eligibility, sign-in, freshness and consent checks.
-
-A returned cancellation request is not terminal confirmation. The UI waits for
-local job status before showing cancellation reported, failure, or a generation
-that finished before cancellation was reported. A completion race never opens or
-applies the proposal automatically. An unacknowledged stop can be retried, and a
-failed saved-request removal is not described as successful.
-
-Generate and Advanced Create request keep the note identity, instructions,
-goal and guidance consent from the explicit click. If closing the dialog and
-switching notes changes the current note during eligibility or save, submission
-stops before creating a job or external-agent request. Reopen formatting for
-the intended note. Closing while an unchanged note is being saved retains its
-already approved request scope; the next request still needs fresh guide consent.
-
-These are local runner reports, not provider confirmation that remote processing
-or account usage stopped. Already processed usage cannot be recalled. No historic
-job outcome can be reconstructed from this UI change.
-
-The accepted desktop exit event explicitly requests cancellation of the owned
-local runner before Tauri exits. Process creation and ownership registration
-share the cancellation lock; cancelled work rechecks before writing the approved
-input. Incomplete pipe setup kills and reaps its owned child. This does not claim
-provider-side cancellation or coverage of forced termination/OS crashes.
-
-Native verification: 113 tests passed, with four optional model/corpus tests
-ignored. Eleven runner-focused tests include cancellation racing with process
-creation, refusing a pre-cancelled factory, cleanup after incomplete pipe setup
-and the process-local no-model fuse. Child-process cases launch only this test
-binary with the runner disabled, never Codex. The accepted-exit callback is
-compiled in the desktop suite; a live model shutdown test is not claimed.
-
-Earlier November 7 checkpoint: 285 frontend tests and type-checking passed. The
-browser-only harness passed 17 workflow checks over 16 theme/window profiles
-plus large text; cancellation passed nine checks over 18 profiles, including
-280px writing width, 390px windows and 200% text. Outcome details receive focus
-and remain visible. A ready proposal on another note cannot steal an active
-job's status or redirect cancellation. These are local stubbed account/model
-tests; no live model or personal note was used.
+For automated native tests, use a fresh generated workspace/profile and the
+process-local no-model fuse. Do not probe native generation by trying to replace
+Tauri's immutable IPC invoke property. Fixture scripts marked `live` explicitly
+click Generate and may use account allowance; they are not part of `npm test`.
+See [portable verification](portable-release.md) and
+[the resource safety controls](reference-benchmark.md).
