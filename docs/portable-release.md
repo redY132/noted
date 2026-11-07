@@ -20,3 +20,10 @@ The verifier reads the ZIP without extracting or launching its files. It rejects
 `Test-Portable-Fixtures.ps1` passed 14 synthetic archive cases: valid package, bad outer checksum, wrong source commit, changed size/digest, invalid size, missing required file, unlisted file, duplicate ZIP/manifest entries, unsafe path, multiple roots, unsupported certification and root/commit mismatch. Fixture payloads are inert text, including the three `.exe` names; none are launched.
 
 After packaging, extract a new disposable copy into a path containing spaces. Set `NOTED_WORKSPACE` and `WEBVIEW2_USER_DATA_FOLDER` to new separate temporary directories, then check first-run Help, save/reopen and the optional companion handshake without generation. Never smoke-test a release against a personal note workspace. A working WebView2 runtime is required. Only stop the exact process launched by that fixture; do not terminate a user's running app or agent to replace locked binaries.
+
+For synthetic native UI tests, also set `NOTED_DISABLE_SUBSCRIPTION_RUNNER=1`
+in the launched process and use an empty `CODEX_HOME` and isolated
+`LOCALAPPDATA`. Remove API credentials from that child environment and omit the
+agent companion unless its handshake is specifically under test. The native
+runner fuse refuses generation before note lookup or request creation; it does
+not alter saved account preferences or another running Noted instance.

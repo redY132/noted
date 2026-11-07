@@ -31,6 +31,12 @@ On the actual test laptop, install Node.js 24+, WebView2 and `@playwright/cli` 0
 .\Measure-Noted.ps1 -Minutes 5
 ```
 
+Add `-CheckMediaLifetime` for a separate forced-GC media diagnostic after the
+timed workload. It checks repeated local-image navigation, retained DOM/listener
+counts, distant image loading and GIF pause/resume. Its results are separate
+from the input timing and sampled-memory interval. Completed benchmark evidence
+is saved before this optional diagnostic, even if the diagnostic fails.
+
 Pass `-PlaywrightCLI C:\path\to\playwright-cli.js` if needed. The runner verifies the kit hashes, creates a fresh workspace and WebView profile per run, refuses occupied test ports and closes only its own test window. It never downloads prerequisites automatically. Results and logs go under `runs/`.
 
 For a development sensitivity run only:

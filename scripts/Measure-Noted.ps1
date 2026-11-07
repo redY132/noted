@@ -3,7 +3,8 @@ param(
  [ValidateRange(0,60)][int]$Minutes=5,
  [ValidateRange(1,8)][double]$CpuSlowdown=1,
  [string]$PlaywrightCLI,
- [ValidateRange(1024,65535)][int]$Port=1431
+ [ValidateRange(1024,65535)][int]$Port=1431,
+ [switch]$CheckMediaLifetime
 )
 $ErrorActionPreference='Stop'
 function Get-NotedSha256([string]$Path){
@@ -72,7 +73,17 @@ try{
  $output=[IO.File]::ReadAllText((Join-Path $run 'workloads.log'));$match=[regex]::Match($output,'### Result\s*([\s\S]*?)\r?\n### Ran Playwright code')
  if(-not $match.Success){throw 'No benchmark result was returned. Read workloads.log.'}
  $browser=$match.Groups[1].Value|ConvertFrom-Json
- $report=[pscustomobject]@{formatVersion=1;source=$manifest.source;hardware=$hardware;classification=$browser.classification;startupProxy=@{endpointReadyMs=$endpointReadyMs;automatedEditorReadyMs=$editorReadyMs;instrumented=$true};sampledMemory=$memory.ToArray();maxSampledPrivateBytes=($memory|Measure-Object sumPrivateBytes -Maximum).Maximum;maxSummedWorkingSetBytes=($memory|Measure-Object sumWorkingSetBytes -Maximum).Maximum;browser=$browser;acceptance='NOT CERTIFIED: confirm actual reference hardware and perform physical key-to-paint/cold-start acceptance separately.'}
+ $report=[pscustomobject]@{formatVersion=1;source=$manifest.source;hardware=$hardware;classification=$browser.classification;startupProxy=@{endpointReadyMs=$endpointReadyMs;automatedEditorReadyMs=$editorReadyMs;instrumented=$true};sampledMemory=$memory.ToArray();maxSampledPrivateBytes=($memory|Measure-Object sumPrivateBytes -Maximum).Maximum;maxSummedWorkingSetBytes=($memory|Measure-Object sumWorkingSetBytes -Maximum).Maximum;browser=$browser;mediaLifetimeRequested=[bool]$CheckMediaLifetime;mediaLifetime=$null;acceptance='NOT CERTIFIED: confirm actual reference hardware and perform physical key-to-paint/cold-start acceptance separately.'}
+ # Preserve completed timing/memory evidence even if an optional diagnostic fails.
+ $report|ConvertTo-Json -Depth 30|Set-Content -LiteralPath (Join-Path $run 'report.json') -Encoding utf8
+ if($CheckMediaLifetime){
+  & $node $PlaywrightCLI "-s=$session" run-code --filename (Join-Path $kitRoot 'media-lifetime-smoke.js') *> (Join-Path $run 'media-lifetime.log')
+  if($LASTEXITCODE -ne 0){throw 'The synthetic media-lifetime diagnostic failed. Read media-lifetime.log.'}
+  $mediaOutput=[IO.File]::ReadAllText((Join-Path $run 'media-lifetime.log'));$mediaMatch=[regex]::Match($mediaOutput,'### Result\s*([\s\S]*?)\r?\n### Ran Playwright code')
+  if(-not $mediaMatch.Success){throw 'No media-lifetime diagnostic result was returned.'}
+  $report.mediaLifetime=$mediaMatch.Groups[1].Value|ConvertFrom-Json
+  if(-not $report.mediaLifetime.passed){throw 'The media-lifetime diagnostic did not pass.'}
+ }
  $report|ConvertTo-Json -Depth 30|Set-Content -LiteralPath (Join-Path $run 'report.json') -Encoding utf8
  Write-Host "Report saved: $(Join-Path $run 'report.json')"
  Write-Host $report.classification

@@ -350,7 +350,13 @@ export const LocalImage = TiptapNode.create<ComponentOptions>({
       const cleanup = resizeHandle(editor, dom, getPos, () => current, extent.update);
       const cleanupMove = moveHandle(editor, dom, getPos, () => current, extent.update);
       return { dom, update(next) { if (next.type !== current.type) return false; const load = next.attrs.assetId !== current.attrs.assetId; current = next; render(next, load); extent.update(); motion.refresh(); return true; },
-        destroy() { disposed = true; observer?.disconnect(); cleanup(); cleanupMove(); extent.destroy(); motion.destroy(); playback.destroy(); }, stopEvent: event => Boolean((event.target as HTMLElement).closest?.('.component-resize,.component-move')),
+        destroy() {
+          disposed = true; observer?.disconnect(); cleanup(); cleanupMove(); extent.destroy(); motion.destroy(); playback.destroy();
+          // Clearing src after ProseMirror detached the note can register a
+          // fresh browser viewport listener. Remove the image afterward so its
+          // removal steps clear that listener and it cannot retain the note.
+          image.remove();
+        }, stopEvent: event => Boolean((event.target as HTMLElement).closest?.('.component-resize,.component-move')),
         ignoreMutation: () => true };
     };
   },

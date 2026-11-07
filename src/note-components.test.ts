@@ -139,6 +139,37 @@ test('cross-panel text selection uses a single editor and formatting preserves b
     assert.equal(editor.state.doc.textContent, 'First panelSecond panel');
   } finally { editor.destroy(); }
 });
+
+test('image assets load only near the viewport and late observer or asset work cannot revive a destroyed note', async () => {
+  const original = globalThis.IntersectionObserver;
+  const observers: { callback: IntersectionObserverCallback; options?: IntersectionObserverInit; target?: Element; disconnected: boolean }[] = [];
+  Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: class {
+    entry: typeof observers[number];
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) { this.entry = { callback, options, disconnected: false }; observers.push(this.entry); }
+    observe(target: Element) { this.entry.target = target; }
+    disconnect() { this.entry.disconnected = true; }
+  } });
+  const ids = [crypto.randomUUID(), crypto.randomUUID()], calls: string[] = [];
+  let deliver!: (url: string) => void;
+  const editor = make(ids.map((assetId, index) => ({ type: 'localImage', attrs: { id: `near-image-${index}`, assetId, alt: 'Synthetic local image' } })), id => { calls.push(id); return new Promise(resolve => { deliver = resolve; }); });
+  const images = Array.from(editor.view.dom.querySelectorAll('img'));
+  const loaders = observers.filter(observer => observer.options?.rootMargin === '256px');
+  const enter = (observer: typeof observers[number]) => observer.callback([{ target: observer.target!, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+  try {
+    assert.equal(loaders.length, 2);
+    assert.deepEqual(calls, [], 'offscreen assets are not read or decoded');
+    enter(loaders[0]);
+    assert.deepEqual(calls, [ids[0]], 'only the nearby image resolves');
+    editor.destroy();
+    assert.ok(images.every(image => image.parentElement === null), 'disposed images cannot retain the abandoned note tree');
+    enter(loaders[1]);
+    deliver('blob:http://localhost/late-synthetic-image');
+    await Promise.resolve(); await Promise.resolve();
+    assert.deepEqual(calls, [ids[0]], 'a queued observer cannot load an abandoned image');
+    assert.ok(images.every(image => !image.hasAttribute('src')), 'a late asset cannot restart image playback');
+    assert.ok(observers.every(observer => observer.disconnected), 'all image and motion observers disconnect');
+  } finally { editor.destroy(); Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: original }); }
+});
 test('unwrapping a panel selected after moving preserves content and can be undone', () => {
   const editor = make([panelFixture('My words', 'panel'), paragraph('Other words')]);
   try {

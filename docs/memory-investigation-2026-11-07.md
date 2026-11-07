@@ -48,9 +48,48 @@ surrounding note tree. The native guard also passed in that actual Windows
 webview: account status was disabled and a start command was refused before
 looking up its nonexistent note.
 
-The next controlled change removes the redundant native image lazy-loading
-flag, retaining Noted's existing explicit intersection-based asset loading.
-Repeat the detached workload before attributing the growth to that mechanism.
+Removing the native lazy-loading flag did **not** release the trees. That
+candidate is reverted. The failed experiment still completed 201 switches and
+retained about 167.5 MiB of main heap after GC; a large optional snapshot exceeded
+the capture tool's string-size limit. Subsequent captures are streamed and capped,
+and memory reports are saved before optional snapshot work.
+
+The corrected candidate fixes teardown order instead: clear playback/source state,
+then detach the image itself from the abandoned node view. A targeted lifecycle
+test failed before that change and passed afterward. All 279 frontend tests pass.
+
+The completed detached 75-second comparison after that correction made 196
+switches and retained approximately 96.9 MiB renderer private memory, 9.5 MiB main
+heap and 6,924 DOM nodes after GC. The earlier detached run made 186 switches and
+retained approximately 506.9 MiB renderer private memory, 156.4 MiB main heap and
+332,696 DOM nodes. This is the same fresh-fixture protocol with actual counts
+reported; it is not a physical-input performance comparison.
+
+A separate instrumented UI check has one warm retained media tree: DOM nodes
+were 7,654 / 7,662 / 7,673 after 4 / 8 / 12 visits, with 850 listeners at all
+three checkpoints. The regression therefore bounds both the absolute warm-tree
+allowance and growth after warmup. Zero retained objects is not claimed.
+
+The native media regression passed ten checks, including distant PNG loading,
+GIF static-poster pause and local-source resume, zero leftover workers and
+unchanged disabled sharing. Its first scroll check incorrectly targeted the
+unloaded, hidden image; it now targets the visible figure placeholder. Final
+captures also wait for the Open note closing transition. Screenshots show only
+generated fixtures. A longer full workload remains pending.
+
+Run the reusable check with `Measure-Noted.ps1 -CheckMediaLifetime` from a newly
+built matching reference kit. It is a separate forced-GC diagnostic, with an
+explicit bounded warm-up allowance, and does not certify a physical device.
+
+One native attempt was interrupted before writing a report and was excluded;
+the app was verified stopped before retry. Completed diagnostic results are
+distinguished from interrupted attempts and from optional capture-tool failures.
+
+The inference is consistent with Chromium's image-source selection/removal
+logic: source mutation can add a viewport listener, while removal clears it.
+The snapshot proves the retained path on this runtime; the implementation link
+is supporting context, not a claim that every Chromium version behaves alike.
+See [Chromium HTMLImageElement](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/core/html/html_image_element.cc).
 
 No private source database, assets or imported notes are read or changed. No
 credentials or hosted connection are created.
