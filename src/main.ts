@@ -52,6 +52,8 @@ import './document-outline.css';
 import { localCalendarDate } from './review-calendar';
 import { initializePreviousSave } from './previous-save-ui';
 import './previous-save.css';
+import { initializeHelp } from './help-ui';
+import './help.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -76,7 +78,7 @@ $('#app').innerHTML = `
   </main>
   ${connectionsMarkup}
   ${shellPopovers}
-  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div><div id="document-outline-host"></div><div id="previous-save-host"></div>
+  <div id="library-ui-host"></div><div id="presets-ui-host"></div><div id="schema-ui-host"></div><div id="interactive-ui-host"></div><div id="document-api-host"></div><div id="quick-open-host"></div><div id="note-history-host"></div><div id="document-outline-host"></div><div id="previous-save-host"></div><div id="help-host"></div>
   <dialog id="folder-dialog"><form id="folder-form"><h2>New folder</h2><label>Folder name<input id="folder-name" required maxlength="100" autocomplete="off" /></label><label>Inside<select id="folder-parent"></select></label><div class="dialog-actions"><button type="button" data-close="folder-dialog">Cancel</button><button type="submit" class="primary">Create folder</button></div></form></dialog>
   <dialog id="link-dialog"><h2>Link to a note</h2><p class="dialog-description">Links keep their destination when notes are renamed or moved.</p><label class="search-box"><input id="link-search" type="search" aria-label="Find a note to link" placeholder="Find a note…" /></label><div id="link-results" class="link-results"></div><div class="dialog-actions"><button data-close="link-dialog">Cancel</button></div></dialog>
   <dialog id="workspace-dialog"><h2>Workspace</h2><div id="workspace-backup-host"></div><div id="workspace-migration-host"></div><p id="workspace-path" class="workspace-path"></p><p class="dialog-description">Core editing and keyword search work offline. Generate proposal sends the approved saved note and instructions to OpenAI through your signed-in Codex client. Permitted agents can read explicitly shared folders or active one-note requests and may send that text to their model provider. Full-document guidance requires per-request consent. The desktop search index can be rebuilt from your note files.</p><div class="dialog-actions"><button id="rebuild-index">Rebuild search index</button><button data-close="workspace-dialog">Close</button></div></dialog>`;
@@ -153,6 +155,7 @@ previousSaveUI = initializePreviousSave($('#previous-save-host'), {
   previous: api.previousNote, flush, recover: api.recoverDraft, changed: refreshLibrary,
   open: async id => { await openNote(id); return session?.note.id === id; }, focusEditor: () => editor?.view.focus(),
 });
+initializeHelp($('#help-host'), { menu: $('#view-popover'), focusEditor: () => editor?.view.focus() });
 $('#customize-folder').onclick = () => library.open('folders', selectedFolder && selectedFolder !== 'all' ? selectedFolder : undefined);
 initializeSemanticControls({current:()=>session?.note.id??null,changed:()=>void connectionsUI.refresh(),error});
 let releaseAssets = () => {};

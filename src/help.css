@@ -1,0 +1,23 @@
+.help-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); font: .875rem/1.5 system-ui, sans-serif; overflow: auto; }
+.help-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.help-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 0 0 auto; }
+.help-dialog h2 { margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
+.help-dialog p { margin: 0; font-size: .8125rem; color: var(--ui-muted); overflow-wrap: anywhere; }
+.help-dialog button { min-height: 44px; min-width: 44px; padding: 8px; border-radius: 4px; font: inherit; }
+.help-dialog label { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.help-dialog input { width: 100%; min-height: 44px; min-width: 0; padding: 8px 10px; border: 1px solid var(--ui-muted); border-radius: 4px; color: var(--ui-text); background: var(--ui-surface); font: inherit; }
+.help-search-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; min-height: 44px; flex: 0 0 auto; }
+.help-dialog [data-help-results] { min-height: 100px; max-height: 55dvh; overflow: auto; overscroll-behavior: contain; }
+.help-dialog h3 { font: 600 1rem/1.4 system-ui, sans-serif; margin: 14px 6px 8px; }
+.help-dialog h3:first-child { margin-top: 4px; }
+.help-dialog article { padding: 10px 6px 16px; }
+.help-dialog h4 { font: 600 .875rem/1.5 system-ui, sans-serif; margin: 0 0 4px; }
+.help-dialog .help-command { display: inline-block; font: .875rem/1.5 system-ui, sans-serif; margin: 0 0 6px; max-width: 100%; overflow-wrap: anywhere; color: var(--ui-text); }
+.help-dialog kbd.help-command { padding: 2px 6px; border: 1px solid var(--ui-muted); border-radius: 3px; letter-spacing: normal; }
+.help-dialog :is(button,input,[data-help-results]):focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+@media (max-height: 650px) {
+  .help-dialog[open] { display: block; }
+  .help-dialog > :not(:last-child) { margin-bottom: 10px; }
+  .help-dialog header { position: sticky; top: 0; z-index: 1; background: var(--ui-surface); }
+  .help-dialog [data-help-results] { max-height: none; overflow: visible; }
+}

@@ -57,6 +57,8 @@ Explicitly started AI jobs have a status strip that remains available after clos
 
 **View > Note actions** always provides presets, schemas, AI formatting, Copy block link and Move note to Trash. In short writing areas, this replaces the wrapping action row to keep the document visible.
 
+**View > Help & shortcuts** searches 23 local command and workflow references, including recovery, keyboard navigation and the optional AI proposal flow. It works before creating a note and needs no account or network. See [Help and shortcuts](docs/help-and-shortcuts.md).
+
 **Appearance** offers System, Light and Dark, accent swatches and a custom color picker. Appearance and panel choices are saved on this device separately from notes, with independent **Reset appearance** and **Reset layout** actions. Explicit note colors and component styles remain authored content. Brief fluid transitions follow the system reduced-motion preference; typing does not wait for animations.
 
 `sidebar-smoke.js` checks the accepted docked layout; `daily-workflow-smoke.js`, `daily-workflow-faults.js` and `daily-workflow-visual.js` cover quick switching and AI disclosure. Run through Playwright CLI with guarded synthetic fixtures on port 1436 or a disposable `noted-sidebar-ui-*` native workspace. Tests create notes and change only fixture preferences. Do not use private imports as test data.

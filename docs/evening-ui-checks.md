@@ -118,3 +118,19 @@ Result: **PASS** under the same manual During rules. Plain comparison columns id
 | R-40 Mechanisms | PASS | Explicit local read/copy only. No model, image resolution, component execution, background scan, new MCP tool or sharing grant. Fresh exclusion inheritance is tested on synthetic private data. |
 
 Evidence: `previous-save-smoke.js`, preview/controller/native tests and ignored `output/playwright/previous-*` screenshots. Only one previous completed save is claimed; no full-history or hardware-certification claim is made.
+
+## Help and first-run reference
+
+Result: **PASS** under the same manual During rules; the package remains unavailable. Plain grouped reference rows reuse existing typography and themes. No assets, effects, motion or dock sections were added.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-03, R-05, C-3 Reflow | PASS | Native/browser Light and Dark at 1200x800, 800x560 and 390x840, plus 200% text. Short windows scroll the whole dialog, retaining Close. Screenshots inspected. |
+| R-24, R-26, R-27, C-2, C-4 States | PASS | Search, exact key chords, Clear, no results, repeated opening, no-note first run, inert close and another-modal exclusion. |
+| R-25, R-34 Contrast | PASS | Text minimum 6.029:1 Light, 7.822:1 Dark. Focus/fields pass 3:1; active targets pass 44px. |
+| R-32, R-39 Keyboard | PASS | Named native dialog/search/results, keyboard scrolling, first Escape, focus restoration and global shortcut exclusion. Selection, Undo and saved revision preserved. |
+| R-33, R-35, R-36, C-5 Verification | PASS | Direct source edits, 271 frontend tests, final Windows release, 14 native and 14 browser Help interactions, six native first-run checks. |
+| R-02, R-15, R-17 Claims | PASS | Verified command routes and context, local client versus hosted inference, subscription limits, per-request consent, explicit Apply and separately configured hosted access. |
+| R-37, R-40, C-1 Scope | PASS | Specified before implementation in DESIGN. Static reference only; no note/account read, network, generation, polling or access grant. |
+
+Final integration: native sidebar 119 checks/14 profiles, heading navigation 17 checks/six profiles, and browser/native library workflows 13 checks each. Native suite passed 108 tests with four optional cases ignored; backup/restore retained previous-save bytes and hard exclusion in a synthetic recovered copy.

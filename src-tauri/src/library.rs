@@ -543,6 +543,76 @@ mod recovery_backup_tests {
         );
         assert!(copy.restore_note(&n.id).is_err());
     }
+
+    #[test]
+    fn backup_restores_previous_save_and_keeps_its_recovered_copy_private() {
+        let t = tempfile::tempdir().unwrap();
+        let mut source = Store::open(t.path().join("source")).unwrap();
+        let folder = source
+            .create_folder("Synthetic backup folder".into(), None)
+            .unwrap();
+        let mut note = source
+            .create_note("Synthetic earlier version".into(), Some(folder.id.clone()))
+            .unwrap();
+        note.content = serde_json::json!({"type":"doc","content":[{"type":"paragraph","attrs":{"id":"synthetic-old"},"content":[{"type":"text","text":"Earlier synthetic backup words."}]}]});
+        let earlier = source.save_note(note, 1).unwrap();
+        let mut head = earlier.clone();
+        head.title = "Synthetic current version".into();
+        head.content["content"][0]["content"][0]["text"] =
+            serde_json::json!("Latest synthetic backup words.");
+        let head = source.save_note(head, 2).unwrap();
+        crate::ai_privacy::deny_batch(&source.root, [head.id.clone()], []).unwrap();
+        source
+            .set_agent_access(crate::agent::Access {
+                enabled: true,
+                allow_hosted: false,
+                folder_ids: vec![folder.id],
+            })
+            .unwrap();
+        let path = source.path("notes", &head.id).unwrap();
+        let head_bytes = fs::read(&path).unwrap();
+        let previous_bytes = fs::read(path.with_extension("json.bak")).unwrap();
+        let policy = fs::read(source.root.join("ai-private.json")).unwrap();
+        let archive = t.path().join("previous-save.noted-backup");
+        source.create_backup(&archive).unwrap();
+        let inspected = crate::backup::inspect_backup(&archive).unwrap();
+        let destination = t.path().join("restored");
+        crate::backup::restore_backup(&archive, &destination, &inspected.digest).unwrap();
+        let mut restored = Store::open(&destination).unwrap();
+        let access = restored.agent_access().unwrap();
+        assert!(!access.enabled && !access.allow_hosted && access.folder_ids.is_empty());
+        assert_eq!(
+            fs::read(
+                restored
+                    .path("notes", &head.id)
+                    .unwrap()
+                    .with_extension("json.bak")
+            )
+            .unwrap(),
+            previous_bytes
+        );
+        let previous = restored.previous_note(&head.id).unwrap().unwrap();
+        assert_eq!(previous.revision, earlier.revision);
+        assert_eq!(previous.content, earlier.content);
+        let recovered = restored.recover_draft(previous).unwrap();
+        let gate = crate::ai_privacy::Gate::load(&restored.root).unwrap();
+        assert!(!gate.allows_note(&head.id).unwrap());
+        assert!(!gate.allows_note(&recovered.id).unwrap());
+        assert_eq!(
+            fs::read(restored.path("notes", &head.id).unwrap()).unwrap(),
+            head_bytes
+        );
+        assert_eq!(fs::read(&path).unwrap(), head_bytes);
+        assert_eq!(
+            fs::read(path.with_extension("json.bak")).unwrap(),
+            previous_bytes
+        );
+        assert_eq!(
+            fs::read(source.root.join("ai-private.json")).unwrap(),
+            policy
+        );
+        assert!(source.agent_access().unwrap().enabled);
+    }
 }
 
 #[cfg(test)]
