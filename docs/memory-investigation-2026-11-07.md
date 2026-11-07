@@ -195,3 +195,24 @@ zero active, and all ten media checks passing. Post-collection renderer memory
 was 103.6 MiB and main JS heap 11.8 MiB. Its source-specific state is preserved in
 `output/resource-release-6def-smoke-state.json`. This 20-second workload is a
 packaging/functional smoke, not another endurance or reference-hardware result.
+
+## Separate dock-open resource control
+
+The matching `c15fac6` alpha and kit completed a three-minute disconnected full
+case with `-ResourceNavigationOpen`. Browse remained open at the initial/final
+checks, and the writing area was 280px wide. All 139 generated edits were saved,
+undone and saved again across 139 switches. Seventy component workers were
+created and none remained active; all ten post-sampling media checks passed.
+Sharing and the subscription runner stayed disabled. Disconnect preceded
+preparation.
+
+Peak sampled process-tree private memory was 696.9 MiB. Post-collection renderer
+memory was 120.0 MiB and main JS heap 12.5 MiB, with 10,520 DOM nodes and 494
+listeners reported by the diagnostic. Page Visibility API counters observed
+197,048ms with no browser-reported hidden time. They do not prove foreground
+focus, unobscured rendering or animation throughput.
+
+This dock-open/280px writing protocol differs from the earlier closed-dock
+controls. Layout, visible media and component activity can differ; the memory
+values are not a controlled speedup or budget certification. The local state
+and exact report are preserved in `output/resource-release-dock-3min-state.json`.

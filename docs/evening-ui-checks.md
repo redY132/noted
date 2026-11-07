@@ -270,3 +270,11 @@ changes. The regression retains one focus event; all 304 frontend tests and
 122 rendered sidebar checks across the same 14 profiles passed. The browser
 check observed no added node controls or repeated focus during an unchanged
 refresh. This is a DOM/focus observation, not a measured latency improvement.
+
+Layout-only graph updates also rewrote the unchanged live summary. The focused
+test reproduced that mutation; the text helper now changes summary/caption
+nodes only when their content differs. The generated browser check observed
+zero repeated summary writes during an unchanged layout update. All 304
+frontend tests, type checking and 123 rendered sidebar checks across 14 profiles
+passed, including actual edge updates, failure recovery, hover/focus, nested
+folders, scrolling, resizing and the accepted docked layout.

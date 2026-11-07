@@ -50,6 +50,11 @@ test('long lists keep the focused note in the bounded graph and survive an async
     document.querySelector<HTMLButtonElement>('#folder-graph-refresh')!.click(); await delay();
     assert.equal((document.activeElement as HTMLElement).dataset.folderGraphNote, notes[94].id);
     assert.equal(focusNotifications.length, 1, 'Unchanged connection refresh must not repeat keyboard focus announcements');
+    let statusWrites = 0;
+    const statusObserver = new h.dom.window.MutationObserver(records => { statusWrites += records.length; });
+    statusObserver.observe(document.querySelector('#folder-graph-summary')!, { childList: true });
+    window.dispatchEvent(new window.Event('resize')); await delay(); statusObserver.disconnect();
+    assert.equal(statusWrites, 0, 'Layout-only updates must not repeat an unchanged live summary');
     h.ui.setNotes(notes.map(n => n.id === notes[94].id ? { ...n, title: 'Renamed synthetic note' } : n), 95, notes[94].id); await delay();
     assert.equal(document.querySelector(`[data-folder-graph-note="${notes[94].id}"]`)!.getAttribute('aria-label'), 'Open Renamed synthetic note');
     h.ui.setOpen(false); assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.inert, true);

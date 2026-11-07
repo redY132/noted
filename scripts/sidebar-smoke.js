@@ -168,17 +168,21 @@ async page => {
   await graphButton.focus();
   const unchangedRefresh = await page.evaluate(async () => {
     const nodes = document.querySelector('#folder-graph-nodes'), focused = document.activeElement;
-    let additions = 0, focusEvents = 0;
+    let additions = 0, focusEvents = 0, repeatedSummaryWrites = 0;
     const observer = new MutationObserver(records => { for (const record of records) additions += record.addedNodes.length; });
+    const statusObserver = new MutationObserver(records => { repeatedSummaryWrites += records.length; });
     const onFocus = () => { focusEvents++; };
     observer.observe(nodes, { childList: true }); nodes.addEventListener('focusin', onFocus);
     try {
       document.querySelector('#folder-graph-refresh').click();
       await new Promise(resolve => setTimeout(resolve, 220));
-      return { additions, focusEvents, retained: document.activeElement === focused };
-    } finally { observer.disconnect(); nodes.removeEventListener('focusin', onFocus); }
+      statusObserver.observe(document.querySelector('#folder-graph-summary'), { childList: true });
+      window.dispatchEvent(new Event('resize')); await new Promise(resolve => setTimeout(resolve, 100));
+      return { additions, focusEvents, repeatedSummaryWrites, retained: document.activeElement === focused };
+    } finally { observer.disconnect(); statusObserver.disconnect(); nodes.removeEventListener('focusin', onFocus); }
   });
   record('unchanged connection refresh retains controls without repeated focus', unchangedRefresh.additions === 0 && unchangedRefresh.focusEvents === 0 && unchangedRefresh.retained);
+  record('layout-only updates keep the unchanged graph summary quiet', unchangedRefresh.repeatedSummaryWrites === 0);
   await page.keyboard.press('Enter');
   await page.waitForFunction(id => document.querySelector('#header-connection-handle button')?.dataset.connectSource === id, graphNoteId);
   record('graph nodes open the chosen note by keyboard without hiding navigation', await page.locator('#folder-graph').isVisible());

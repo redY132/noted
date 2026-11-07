@@ -65,6 +65,7 @@ interface NavigationOptions {
 }
 export function initializeNavigation(root: HTMLElement, options: NavigationOptions) {
   const $ = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
+  const text = (selector: string, value: string) => { const element = $(selector); if (element.textContent !== value) element.textContent = value; };
   const popup = $('#notes-panel'), graph = $('#folder-graph'), canvas = $('#folder-graph-canvas');
   let folders: Folder[] = [], selected: Collection = 'all', notes: NoteSummary[] = [], total = 0;
   let active: string | null = null, highlighted: string | null = null, shown: NoteSummary[] = [], edges: PairState[] = [];
@@ -83,7 +84,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
       el.classList.toggle('highlighted', match);
     }
     for (const el of root.querySelectorAll<HTMLElement>('[data-note]')) el.classList.toggle('graph-highlight', el.dataset.note === id);
-    $('#folder-graph-caption').textContent = notes.find(n => n.id === id)?.title || (notes.length ? 'Hover or focus a note to locate it.' : 'Create a note to start this collection.');
+    text('#folder-graph-caption', notes.find(n => n.id === id)?.title || (notes.length ? 'Hover or focus a note to locate it.' : 'Create a note to start this collection.'));
   }
   function paintGraph() {
     const width = canvas.clientWidth || 300, height = canvas.clientHeight || 300;
@@ -106,7 +107,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
     if (nodeMarkup !== renderedNodes) { $('#folder-graph-nodes').innerHTML = nodeMarkup; renderedNodes = nodeMarkup; }
     if (focused && document.activeElement === document.body) root.querySelector<HTMLButtonElement>(`[data-folder-graph-note="${focused}"]`)?.focus({ preventScroll: true });
     const count = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).length;
-    $('#folder-graph-summary').textContent = edgeError ? 'Connections could not load. Refresh to retry.' : !notes.length ? 'This collection has no notes yet.' : `${shown.length} of ${total} notes · ${count} saved ${count === 1 ? 'connection' : 'connections'}${loading ? ' · Updating' : ''}`;
+    text('#folder-graph-summary', edgeError ? 'Connections could not load. Refresh to retry.' : !notes.length ? 'This collection has no notes yet.' : `${shown.length} of ${total} notes · ${count} saved ${count === 1 ? 'connection' : 'connections'}${loading ? ' · Updating' : ''}`);
     paintHighlight();
   }
   function updateGraph(force = false) {
