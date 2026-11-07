@@ -2,12 +2,13 @@ async page => {
   if (!await page.evaluate(() => Boolean(window.__TAURI_INTERNALS__))) throw new Error('Native cached-proposal fixture required');
   const guarded = await page.evaluate(async () => {
     const expected = window.notedCachedFixture;
-    if (!expected?.workspace || !/^[0-9a-f-]{36}$/.test(expected.noteId || '') || !/^[0-9a-f-]{36}$/.test(expected.requestId || '')) return false;
+    if (!/[\\/]noted-simple-ai-[a-z0-9]+[\\/]workspace$/i.test(expected?.workspace || '') || !/^[0-9a-f-]{36}$/.test(expected.noteId || '') || !/^[0-9a-f-]{36}$/.test(expected.requestId || '')) return false;
     const normalize = value => String(value).replaceAll('\\', '/').replace(/^\/\/\?\//, '').replace(/\/+$/, '').toLowerCase();
     const [status, runner, access] = await Promise.all(['workspace_status', 'subscription_status', 'agent_access'].map(command => window.__TAURI_INTERNALS__.invoke(command)));
     return normalize(status.path) === normalize(expected.workspace) && runner.authentication === 'disabled' && !runner.available && !access.enabled && !access.allowHosted && access.folderIds.length === 0;
   });
   if (!guarded) throw new Error('Exact generated fixture, disabled runner and disabled sharing required');
+  const artifacts = await page.evaluate(() => window.notedCachedFixture.workspace.replace(/[\\/]workspace$/, '') + '/ui-evidence');
   const checks = [], record = (name, okay) => { if (!okay) throw new Error(name); checks.push(name); };
   await page.setViewportSize({ width: 1200, height: 800 }); await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForFunction(() => document.querySelector('#note-title')?.value.startsWith('Simple AI synthetic fixture'));
@@ -28,6 +29,7 @@ async page => {
     for(const el of root.querySelectorAll('strong,span,button')){if(el.closest('[hidden]'))continue;const s=getComputedStyle(el),r=el.getBoundingClientRect(),bg=background(el),c=ratio(rgb(s.color),bg);ratios.push(c);if(c<4.5)failures.push('text contrast');if(el.matches('button')&&(r.width<43.9||r.height<43.9))failures.push('target size');if(el.matches(':focus-visible')&&s.outlineStyle!=='none'&&ratio(rgb(s.outlineColor),bg)<3)failures.push('focus contrast');if(el===document.activeElement&&(r.top<bounds.top-1||r.bottom>bounds.bottom+1))failures.push('focused target clipped');}
     const main=document.querySelector('.workspace').getBoundingClientRect(),pane=document.querySelector('#note-pane').getBoundingClientRect(),paper=document.querySelector('.document-scroll').getBoundingClientRect();if(bounds.left<main.left-1||bounds.right>main.right+1||root.scrollWidth>root.clientWidth+1||pane.top<bounds.bottom-1||bounds.right>innerWidth+1)failures.push('overflow or overlap');
     if(Math.min(paper.bottom,main.bottom,innerHeight)-Math.max(paper.top,main.top)<40)failures.push('writing area clipped');
+    const title=document.querySelector('#note-title');if(title.tagName!=='TEXTAREA'||title.scrollWidth>title.clientWidth+1||title.scrollHeight>title.clientHeight+1)failures.push('title internal overflow');
     return{minimumTextContrast:Math.min(...ratios),failures};
   });
   for(const mode of ['light','dark']){
@@ -35,12 +37,12 @@ async page => {
     for(const [width,height]of [[1200,800],[800,560],[390,840]]){
       await page.setViewportSize({width,height});await page.locator('[data-activity-open]').focus();await page.keyboard.press('ArrowRight');
       const result=await measure();if(result.failures.length)throw new Error(JSON.stringify({mode,width,result}));
-      await page.screenshot({path:`output/playwright/activity-native-${mode}-${width}.png`});profiles.push({mode,width,height,...result});
+      await page.screenshot({path:`${artifacts}/activity-native-${mode}-${width}.png`});profiles.push({mode,width,height,...result});
     }
   }
   await page.setViewportSize({width:800,height:600});await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});
   await page.waitForFunction(()=>{const r=document.querySelector('[data-activity-open]').getBoundingClientRect(),b=document.querySelector('.ai-job-status').getBoundingClientRect();return r.top>=b.top-1&&r.bottom<=b.bottom+1;});
-  const largeText=await measure();if(largeText.failures.length)throw new Error(JSON.stringify({largeText}));await page.screenshot({path:'output/playwright/activity-native-text-200.png'});
+  const largeText=await measure();if(largeText.failures.length)throw new Error(JSON.stringify({largeText}));await page.screenshot({path:`${artifacts}/activity-native-text-200.png`});
   record('short writing areas retain note commands under View',await page.locator('.note-product-actions').isHidden());
   await page.locator('#view-toggle').click();if(!await page.locator('.shell-note-actions').evaluate(el=>el.open))await page.locator('.shell-note-actions summary').click();await page.locator('#shell-action-open-ai-formatting').click();
   await page.locator('.ai-formatting-dialog').waitFor({state:'visible'});await page.locator('[data-ai-preview]:not([hidden])').waitFor();await page.locator('[data-ai-close]').click();
@@ -61,6 +63,6 @@ async page => {
   record('native Undo restores original formatting', await page.locator('#editor strong').count() === 0);
   const access = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('agent_access'));
   record('synthetic sharing remains disabled', !access.enabled && !access.allowHosted && access.folderIds.length === 0);
-  await page.screenshot({ path: 'output/playwright/activity-cache-native.png' });
-  return { passed: true, native: true, syntheticOnly: true, prewrittenProposal: true, noGenerateClick: true, checks, profiles, largeText };
+  await page.screenshot({ path: `${artifacts}/activity-cache-native.png` });
+  return { passed: true, native: true, syntheticOnly: true, prewrittenProposal: true, noGenerateClick: true, artifacts, checks, profiles, largeText };
 }
