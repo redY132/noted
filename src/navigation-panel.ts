@@ -239,6 +239,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
   for (const name of ['pointerleave', 'focusout']) $('#note-list').addEventListener(name, () => highlight(focusId()));
   $('#folder-graph-nodes').addEventListener('pointerover', event => highlight((event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null));
   $('#folder-graph-nodes').addEventListener('focusin', event => highlight((event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null));
+  for (const name of ['pointerleave', 'focusout']) $('#folder-graph-nodes').addEventListener(name, () => highlight(focusId()));
   $('#folder-graph-nodes').addEventListener('click', event => {
     const id = (event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote;
     if (id) void options.open(id).then(success => { if (success) options.focusEditor(); });

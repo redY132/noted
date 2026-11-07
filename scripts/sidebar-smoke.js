@@ -159,6 +159,12 @@ async page => {
   record('writing Undo survives navigation visibility changes', await editor.innerText()===originalText && await page.locator('#folder-graph').isVisible());
   await ensureOpen(); await folder(fixture.observations).click(); await settle();
   const graphButton = page.locator('[data-folder-graph-note]').last(), graphNoteId = await graphButton.getAttribute('data-folder-graph-note');
+  await graphButton.hover(); await page.locator('#folder-graph-refresh').hover();
+  record('leaving a graph node restores the open-note highlight', await page.locator(`[data-folder-graph-note="${openedId}"]`).evaluate(el => el.classList.contains('highlighted')));
+  await graphButton.focus(); await graphButton.hover(); await page.locator('#folder-graph-refresh').hover();
+  record('pointer exit preserves a keyboard-focused graph note', await graphButton.evaluate(el => el.classList.contains('highlighted')));
+  await page.locator('#folder-graph-refresh').focus();
+  record('focus exit clears the old graph target', await page.locator(`[data-folder-graph-note="${openedId}"]`).evaluate(el => el.classList.contains('highlighted')));
   await graphButton.focus(); await page.keyboard.press('Enter');
   await page.waitForFunction(id => document.querySelector('#header-connection-handle button')?.dataset.connectSource === id, graphNoteId);
   record('graph nodes open the chosen note by keyboard without hiding navigation', await page.locator('#folder-graph').isVisible());

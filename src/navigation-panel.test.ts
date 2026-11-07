@@ -66,6 +66,27 @@ test('opening a note or returning to the editor keeps the directory and graph vi
     assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, false);
   } finally { h.close(); }
 });
+
+test('leaving the graph restores the open note while keyboard focus keeps its own highlight', async () => {
+  const h = setup();
+  try {
+    const notes = [note(100), note(101)];
+    document.querySelector('#note-list')!.innerHTML = notes.map(n => `<div class="note-card-shell"><button data-note="${n.id}">${n.title}</button></div>`).join('');
+    h.ui.setNotes(notes, 2, notes[0].id); await delay();
+    const canvas = document.querySelector('#folder-graph-nodes')!;
+    const other = document.querySelector<HTMLButtonElement>(`[data-folder-graph-note="${notes[1].id}"]`)!;
+    const highlighted = () => document.querySelector<HTMLElement>('[data-folder-graph-note].highlighted')?.dataset.folderGraphNote;
+    other.dispatchEvent(new window.Event('pointerover', { bubbles: true }));
+    assert.equal(highlighted(), notes[1].id);
+    canvas.dispatchEvent(new window.Event('pointerleave'));
+    assert.equal(highlighted(), notes[0].id, 'An old pointer target must not remain highlighted after leaving');
+    other.focus(); canvas.dispatchEvent(new window.Event('pointerleave'));
+    assert.equal(highlighted(), notes[1].id, 'Leaving with the pointer must preserve keyboard focus');
+    document.querySelector<HTMLButtonElement>('#folder-graph-refresh')!.focus();
+    assert.equal(highlighted(), notes[0].id, 'Moving focus to another control must clear the graph target');
+    assert.equal(document.querySelector('#folder-graph-caption')!.textContent, notes[0].title);
+  } finally { h.close(); }
+});
 test('late graph results cannot overwrite another collection and failed requests can retry', async () => {
   const pending: Array<{ resolve(value: PairState[]): void; reject(error: Error): void }> = [];
   const h = setup(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));

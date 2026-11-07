@@ -213,7 +213,7 @@ generated fixtures for automated testing. See [SQLite conversion and privacy](do
 
 ## Verification and release gates
 
-The latest implementation checks passed **303 frontend tests** and **113 native
+The latest implementation checks passed **304 frontend tests** and **113 native
 tests**, with four optional model/corpus tests ignored. Rendered AI workflows
 use explicit account/model stubs. Native runner ownership tests use a bounded
 inert test executable, never Codex. Earlier synthetic live-model evidence is

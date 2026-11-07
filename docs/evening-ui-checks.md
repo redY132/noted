@@ -248,3 +248,12 @@ for the superseded context. All 303 frontend tests, 51 focused controller tests,
 type checking and four rendered ordering checks passed. The selected request
 continues receiving local replies without another generation. No markup,
 palette, animation or permission change was needed.
+
+Sidebar highlight follow-up: a generated DOM test reproduced graph hover
+remaining highlighted after the pointer and keyboard focus left its nodes.
+Exit handlers now restore the open-note highlight while preserving a note that
+still has keyboard focus. All 304 frontend tests, type checking and 121 rendered
+sidebar checks across 14 viewport/theme profiles passed. The existing visual
+fixture also passed its Light/Dark contrast and hit-target checks, 200% text
+access and six custom-accent hover/focus combinations. Layout, folder sharing
+and stored documents are unchanged.
