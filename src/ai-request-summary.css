@@ -1,6 +1,23 @@
 .ai-formatting-dialog.document-tool-dialog { font: .875rem/1.5 system-ui, sans-serif; }
 .ai-formatting-dialog.document-tool-dialog h2 { font: 600 1.25rem/1.4 system-ui, sans-serif; }
 .ai-formatting-dialog.document-tool-dialog :is(button,input,select,textarea,label) { font: inherit; }
+.ai-formatting-dialog.document-tool-dialog > .tool-heading {
+  position: sticky;
+  top: -20px;
+  z-index: 2;
+  margin: -20px -20px 12px;
+  padding: 14px 20px;
+  background: var(--ui-surface);
+  border-bottom: 1px solid var(--ui-border);
+}
+.ai-formatting-dialog [data-ai-status] {
+  max-height: 38dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  scroll-margin-block: 12px;
+}
+.ai-formatting-dialog [data-ai-status]:focus { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .ai-request-summary { padding-block: 6px; }
 .ai-request-summary h3 { margin: 0 0 8px; font: 600 .9375rem/1.4 system-ui; }
 .ai-request-summary p { margin: 5px 0; font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; }

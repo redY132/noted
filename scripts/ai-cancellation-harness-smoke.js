@@ -1,7 +1,7 @@
 async page => {
   if (page.url() !== 'http://127.0.0.1:1436/experiments/ai-activity/' || await page.evaluate(() => Boolean(window.__TAURI_INTERNALS__))) throw new Error('Browser-only stubbed AI fixture required');
   await page.reload(); await page.waitForFunction(() => window.__notedActivityHarness?.ids.length === 2);
-  const checks = [], profiles = [], record = (name, okay) => { if (!okay) throw new Error(name); checks.push(name); };
+  const checks = [], profiles = [], dialogProfiles=[], record = (name, okay) => { if (!okay) throw new Error(name); checks.push(name); };
   await page.evaluate(() => { window.__notedActivityHarness.state.holdCancellation = true; });
   await page.locator('#fixture-open-ai').click(); await page.locator('[data-ai-prompt]').fill('Synthetic cancellation check');
   await page.locator('[data-subscription-send]').click(); await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent === 'Generating proposal');
@@ -40,7 +40,21 @@ async page => {
   record('cancellation details receive focus and remain visible in the dialog',await page.locator('[data-ai-status]').evaluate(status=>{const r=status.getBoundingClientRect(),dialog=status.closest('dialog').getBoundingClientRect();return document.activeElement===status&&r.top>=dialog.top&&r.bottom<=dialog.bottom;}));
   await page.screenshot({path:'output/playwright/cancellation-outcome-dialog.png'});
   await page.locator('[data-ai-close]').click();
+  for(const mode of ['light','dark']){
+    await page.locator('#fixture-theme').selectOption(mode);
+    for(const [width,height,large]of [[1200,800,false],[800,560,false],[390,840,false],[800,600,true],[390,840,true]]){
+      await page.setViewportSize({width,height});await page.evaluate(large=>{document.documentElement.style.fontSize=large?'200%':'';},large);
+      await page.locator('[data-activity-open]').click();await page.waitForFunction(()=>document.activeElement?.hasAttribute('data-ai-status'));
+      const result=await page.locator('.ai-formatting-dialog').evaluate(dialog=>{
+        const r=dialog.getBoundingClientRect(),heading=dialog.querySelector('.tool-heading').getBoundingClientRect(),close=dialog.querySelector('[data-ai-close]').getBoundingClientRect(),status=dialog.querySelector('[data-ai-status]').getBoundingClientRect();
+        return{closeVisible:close.top>=r.top&&close.bottom<=r.bottom,headingVisible:heading.top>=r.top-1&&heading.bottom<=r.bottom,statusVisible:status.top>=heading.bottom-1&&status.bottom<=r.bottom+1,target:close.width>=44&&close.height>=44,overflow:dialog.scrollWidth>dialog.clientWidth+1};
+      });
+      if(!result.closeVisible||!result.headingVisible||!result.statusVisible||!result.target||result.overflow)throw new Error(JSON.stringify({mode,width,height,large,result}));
+      await page.screenshot({path:`output/playwright/cancellation-dialog-${mode}-${width}-${large?'200':'100'}.png`});dialogProfiles.push({mode,width,height,large,...result});await page.locator('[data-ai-close]').click();
+    }
+  }
+  await page.evaluate(()=>{document.documentElement.style.fontSize='';});
   await page.locator('[data-activity-dismiss]').click();record('terminal cancellation can be dismissed',await page.locator('.ai-job-status').isHidden());
   record('no unexpected harness errors',await page.evaluate(()=>window.__notedActivityHarness.errors.length===0));
-  return{passed:true,browserOnly:true,simulatedAIAndAccount:true,noNativeIPC:true,checks,profiles};
+  return{passed:true,browserOnly:true,simulatedAIAndAccount:true,noNativeIPC:true,checks,profiles,dialogProfiles};
 }
