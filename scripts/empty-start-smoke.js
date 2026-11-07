@@ -1,7 +1,8 @@
 async page=>{
   if(!await page.evaluate(()=>Boolean(window.__TAURI_INTERNALS__)))throw new Error('Native empty fixture required');
-  const initial=await page.evaluate(async()=>({status:await window.__TAURI_INTERNALS__.invoke('workspace_status'),notes:await window.__TAURI_INTERNALS__.invoke('list_notes')}));
-  if(!initial.status.path.includes('noted-sidebar-ui-')||initial.notes.length)throw new Error('Fresh disposable workspace required');
+  const owned=await page.evaluate(async()=>{const status=await window.__TAURI_INTERNALS__.invoke('workspace_status');return status.path.includes('noted-sidebar-ui-');});
+  if(!owned)throw new Error('Disposable workspace required');
+  if(await page.evaluate(async()=>(await window.__TAURI_INTERNALS__.invoke('list_notes')).length))throw new Error('Fresh disposable workspace required');
   const checks=[],record=(name,value)=>{if(!value)throw new Error(name);checks.push(name);};
   await page.setViewportSize({width:1200,height:800});await page.emulateMedia({reducedMotion:'reduce'});await page.locator('#empty-state').waitFor({state:'visible'});
   await page.locator('#view-toggle').click();record('note-only navigation is disabled before the first note',await page.locator('#shell-go-heading').isDisabled()&&await page.locator('#shell-previous-save').isDisabled());

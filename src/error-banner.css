@@ -1,0 +1,49 @@
+.error-banner {
+  min-inline-size:0;
+  padding:.5rem .75rem;
+  display:flex;
+  flex-direction:row;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  gap:.5rem 1rem;
+  font-size:1rem;
+  line-height:1.5;
+  max-block-size:min(22rem,40dvh,40%);
+  overflow:auto;
+  overscroll-behavior:contain;
+  scroll-padding:.5rem;
+}
+#error-message {
+  display:block;
+  flex:1 1 24rem;
+  min-inline-size:0;
+  min-block-size:44px;
+  max-block-size:min(8rem,18dvh);
+  padding:.25rem;
+  overflow:auto;
+  overflow-wrap:anywhere;
+  white-space:pre-wrap;
+  overscroll-behavior:contain;
+}
+.error-banner>div {
+  display:flex;
+  flex:0 1 auto;
+  min-inline-size:0;
+  max-inline-size:100%;
+  flex-wrap:wrap;
+  gap:.375rem;
+}
+.error-banner button {
+  min-inline-size:44px;
+  min-block-size:44px;
+  max-inline-size:100%;
+  padding:.375rem .625rem;
+  font:inherit;
+  line-height:1.5;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+#error-message:focus-visible {
+  outline:2px solid var(--ui-danger);
+  outline-offset:-2px;
+}

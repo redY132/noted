@@ -134,3 +134,16 @@ Result: **PASS** under the same manual During rules; the package remains unavail
 | R-37, R-40, C-1 Scope | PASS | Specified before implementation in DESIGN. Static reference only; no note/account read, network, generation, polling or access grant. |
 
 Final integration: native sidebar 119 checks/14 profiles, heading navigation 17 checks/six profiles, and browser/native library workflows 13 checks each. Native suite passed 108 tests with four optional cases ignored; backup/restore retained previous-save bytes and hard exclusion in a synthetic recovered copy.
+
+## Save-error recovery controls
+
+Result: **PASS** under the same manual During rules. The existing inline alert and action labels remain. No new assets, effects, motion, modal or dock sections. A real rendered failure, rather than a speculative redesign, justified this correction.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-03, R-05, C-3 Reflow | PASS | Native/browser ten Light/Dark window/dock profiles plus 200% text. Long diagnostics wrap and keyboard-scroll; wrapping actions stay within the available writing area, including 280px. Writing remains reachable. |
+| R-24, R-26, R-27, C-2, C-4 States | PASS | Actual synthetic revision conflict retains the mounted draft. Retry preserves the newer saved note; Keep both creates a separate draft copy. Successful recovery clears the alert. Browser download preserves draft identity and title. Ordinary errors hide conflict recovery. |
+| R-25, R-34 Contrast/targets | PASS | Text 6.588:1 Light, 8.473:1 Dark. Focus contrast at least 3:1, active controls at least 44px. |
+| R-32, R-39 Keyboard | PASS | Named scrollable diagnostics, PageDown, sequential Tab access to every action, visible focus and automatic scroll to focused recovery controls. No automatic focus theft. |
+| R-33, R-35, R-36, C-5 Verification | PASS | Direct CSS/markup edits, browser 151/native 149 checks, frontend and Windows builds, manually inspected screenshots. Native download execution is not claimed. |
+| R-37, R-40, C-1 Scope | PASS | Measured defect and intended correction recorded in DESIGN before implementation. No new polling, note retrieval route, generation or permissions. |

@@ -35,6 +35,7 @@ import { applyLayoutPreferences, initializeShell, readLayout, shellTopbar, shell
 import './shell-ui.css';
 import './shell-motion.css';
 import './theme.css';
+import './error-banner.css';
 import { initializeNavigation, navigationMarkup } from './navigation-panel';
 import './navigation-panel.css';
 import { initializeQuickOpen } from './quick-open';
@@ -67,7 +68,7 @@ $('#app').innerHTML = `
   <main class="workspace">
     ${shellTopbar}
     <div id="ai-activity-host"></div>
-    <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message"></span><div><button id="retry-save">Retry save</button><button id="recover-draft">Recover draft / keep both</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
+    <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-message" role="region" aria-label="Error details" tabindex="0"></span><div><button id="retry-save">Retry save</button><button id="recover-draft">Recover draft / keep both</button><button id="download-draft">Download draft</button><button id="dismiss-error" aria-label="Dismiss message">×</button></div></div>
     <section id="empty-state" class="empty-state"><h2>No note open</h2><p>Create a note or choose one from the list.</p><button id="empty-new" class="primary">Create note</button></section>
     <section id="note-pane" class="note-pane" hidden>
       <div class="note-product-actions"><button id="open-presets">Note presets</button><button type="button" id="edit-schema" title="Free Placement, reusable schemas and full document guides">Schemas &amp; layout</button><button id="open-ai-formatting">Format with AI</button><button id="copy-block-link">Copy block link</button><button id="trash-current">Move note to Trash</button></div>${formattingMarkup}
@@ -186,6 +187,7 @@ function error(reason: unknown, saving = false) {
   $('#error-message').textContent = String(reason instanceof Error ? reason.message : reason);
   $('#error-banner').hidden = false;
   $('#retry-save').hidden = !session?.dirty;
+  $('#recover-draft').hidden = !session || !saveError;
   $('#download-draft').hidden = !session;
   updateSaveState();
 }
