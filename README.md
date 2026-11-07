@@ -29,6 +29,8 @@ npm run desktop:build
 
 The unbundled desktop build is written to `src-tauri/target/release/noted.exe`. Installer packaging is intentionally deferred.
 
+For a reproducible private Windows ZIP, use `scripts/Build-Portable.ps1` from a clean committed tree. It rebuilds all three binaries and verifies the archive's checksums, payload list and source identity. See [portable release verification](docs/portable-release.md).
+
 ## Browser preview
 
 ```powershell

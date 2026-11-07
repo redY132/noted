@@ -1,0 +1,18 @@
+# Portable release verification
+
+`scripts/Build-Portable.ps1` requires a clean committed source tree. It type-checks and rebuilds the frontend, then builds the GUI and both matching companions with the desktop custom protocol enabled. A second source check refuses packaging if files or HEAD changed during the build. Build failure stops publication of a package.
+
+The private Windows x64 alpha ZIP contains the three executables, curated feature/privacy/recovery documents, a README and a manifest identifying the source commit. No notes, source imports, profiles, credentials or access policy are bundled. The package remains unsigned and is not certified on inexpensive hardware.
+
+Every payload has a size and SHA-256 in the manifest. The ZIP has a separate `.sha256` file. Packaging invokes `Test-Portable.ps1` before updating `output/portable-latest.json`.
+
+```powershell
+./scripts/Build-Portable.ps1
+./scripts/Test-Portable.ps1 -Archive ./output/Noted-alpha-<stamp>-<commit>.zip
+```
+
+The verifier reads the ZIP without extracting or launching its files. It rejects checksum mismatches, unsafe/duplicate paths, multiple roots, missing/extra payloads, invalid manifests and inconsistent source commits. These integrity checks detect corruption and packaging mistakes; they do not authenticate an unsigned download.
+
+`Test-Portable-Fixtures.ps1` passed 14 synthetic archive cases: valid package, bad outer checksum, wrong source commit, changed size/digest, invalid size, missing required file, unlisted file, duplicate ZIP/manifest entries, unsafe path, multiple roots, unsupported certification and root/commit mismatch. Fixture payloads are inert text, including the three `.exe` names; none are launched.
+
+After packaging, extract a new disposable copy into a path containing spaces. Set `NOTED_WORKSPACE` and `WEBVIEW2_USER_DATA_FOLDER` to new separate temporary directories, then check first-run Help, save/reopen and the optional companion handshake without generation. Never smoke-test a release against a personal note workspace. A working WebView2 runtime is required. Only stop the exact process launched by that fixture; do not terminate a user's running app or agent to replace locked binaries.
