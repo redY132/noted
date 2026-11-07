@@ -17,7 +17,12 @@ Hashing and ZIP creation/inspection use .NET streams and explicitly loaded compr
 
 The verifier reads the ZIP without extracting or launching its files. It rejects checksum mismatches, unsafe/duplicate paths, multiple roots, missing/extra payloads, invalid manifests and inconsistent source commits. These integrity checks detect corruption and packaging mistakes; they do not authenticate an unsigned download.
 
-`Test-Portable-Fixtures.ps1` passed 14 synthetic archive cases: valid package, bad outer checksum, wrong source commit, changed size/digest, invalid size, missing required file, unlisted file, duplicate ZIP/manifest entries, unsafe path, multiple roots, unsupported certification and root/commit mismatch. Fixture payloads are inert text, including the three `.exe` names; none are launched.
+The component manifest JSON Schema is included with its authoring guide. Local
+Markdown links must resolve to listed payloads in the flat archive; source-only
+paths are described as checkout paths rather than broken archive links.
+Document reads are capped at 1 MiB and link scans have a two-second timeout.
+
+`Test-Portable-Fixtures.ps1` passed 18 synthetic archive cases: valid package and local/encoded/fragment/external links; missing or escaping local links; oversized documents; bad outer checksum, wrong source commit, changed size/digest, invalid size, missing required file, unlisted file, duplicate ZIP/manifest entries, unsafe path, multiple roots, unsupported certification and root/commit mismatch. Fixture payloads are inert text, including the three `.exe` names; none are launched.
 
 After packaging, extract a new disposable copy into a path containing spaces. Set `NOTED_WORKSPACE` and `WEBVIEW2_USER_DATA_FOLDER` to new separate temporary directories, then check first-run Help, save/reopen and the optional companion handshake without generation. Never smoke-test a release against a personal note workspace. A working WebView2 runtime is required. Only stop the exact process launched by that fixture; do not terminate a user's running app or agent to replace locked binaries.
 

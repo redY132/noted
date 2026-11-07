@@ -1,6 +1,6 @@
 # Document schemas
 
-A schema is a reusable set of deterministic presentation rules. It never rewrites words, follows a link, executes a component, changes an asset, or changes logical reading order. The **Schemas** editor includes a visual form and an editable JSON definition. The JSON Schema is [`document-schema.schema.json`](document-schema.schema.json); the matching TypeScript types and validation are in [`src/document-schema.ts`](../src/document-schema.ts).
+A schema is a reusable set of deterministic presentation rules. It never rewrites words, follows a link, executes a component, changes an asset, or changes logical reading order. The **Schemas** editor includes a visual form and an editable JSON definition. The JSON Schema is [`document-schema.schema.json`](document-schema.schema.json); the matching TypeScript types and validation are in `src/document-schema.ts` in the source checkout.
 
 Definitions have an immutable `id` and integer `version`. Saving edits publishes a new version. Existing notes remain pinned to their selected version; **Use this version** explicitly updates only the open note. A missing version keeps the note's already saved presentation and shows a recovery message.
 

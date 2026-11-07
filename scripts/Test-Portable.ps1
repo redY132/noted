@@ -46,7 +46,21 @@ try {
   if($actual -ne $file.sha256){throw 'PACKAGE_PAYLOAD_CHECKSUM_MISMATCH'}
  }
  if($entries.Count -ne $seen.Count+1){throw 'PACKAGE_UNLISTED_PAYLOAD'}
- foreach($required in @('noted.exe','noted-agent.exe','noted-private-import.exe','README.txt','ai-privacy.md','help-and-shortcuts.md','backup-restore.md','evening-session-2026-11-06.md')){if(-not $seen.ContainsKey($required)){throw 'PACKAGE_REQUIRED_PAYLOAD_MISSING'}}
+ foreach($required in @('noted.exe','noted-agent.exe','noted-private-import.exe','README.txt','ai-privacy.md','help-and-shortcuts.md','backup-restore.md','evening-session-2026-11-06.md','component-manifest.schema.json')){if(-not $seen.ContainsKey($required)){throw 'PACKAGE_REQUIRED_PAYLOAD_MISSING'}}
+ $documentLinks=[regex]::new('\]\((?<target>[^\s)]+)(?:\s+"[^"]*")?\)',[System.Text.RegularExpressions.RegexOptions]::None,[TimeSpan]::FromSeconds(2))
+ foreach($name in $entries.Keys){
+  if(-not $name.EndsWith('.md',[StringComparison]::OrdinalIgnoreCase)){continue}
+  if($entries[$name].Length -gt 1048576){throw 'PACKAGE_DOCUMENT_TOO_LARGE'}
+  $reader=[IO.StreamReader]::new($entries[$name].Open())
+  try {$document=$reader.ReadToEnd()} finally {$reader.Dispose()}
+  try { foreach($link in $documentLinks.Matches($document)){
+   $target=$link.Groups['target'].Value.Trim([char[]]'<>')
+   if($target.StartsWith('#') -or $target -match '^[a-zA-Z][a-zA-Z0-9+.-]*:'){continue}
+   $target=[Uri]::UnescapeDataString(($target -split '[?#]',2)[0]) -replace '^(?:\./)+',''
+   if($target -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'){throw 'PACKAGE_DOCUMENT_LINK_INVALID'}
+   if(-not $seen.ContainsKey($target)){throw 'PACKAGE_DOCUMENT_LINK_MISSING'}
+  }} catch [System.Text.RegularExpressions.RegexMatchTimeoutException] {throw 'PACKAGE_DOCUMENT_LINK_SCAN_TIMEOUT'}
+ }
  $guiSha256=($manifest.files | Where-Object path -eq 'noted.exe').sha256
  @{passed=$true;archive=$archivePath;sha256=$digest;sourceCommit=$manifest.sourceCommit;guiSha256=$guiSha256;files=$seen.Count;signed=$false;hardwareCertified=$false} | ConvertTo-Json -Compress
 } finally {$zip.Dispose()}

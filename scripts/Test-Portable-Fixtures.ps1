@@ -9,7 +9,7 @@ $fixtureRoot=Join-Path ([IO.Path]::GetTempPath()) ('noted-package-verify-'+[guid
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
 $sourceCommit='a'*40
 $archiveRoot='portable-20261107-000000-aaaaaaa'
-$required=@('noted.exe','noted-agent.exe','noted-private-import.exe','README.txt','ai-privacy.md','help-and-shortcuts.md','backup-restore.md','evening-session-2026-11-06.md')
+$required=@('noted.exe','noted-agent.exe','noted-private-import.exe','README.txt','ai-privacy.md','help-and-shortcuts.md','backup-restore.md','evening-session-2026-11-06.md','component-manifest.schema.json')
 function Write-Entry($zip,[string]$path,[string]$content){
  $entry=$zip.CreateEntry($path);$writer=[IO.StreamWriter]::new($entry.Open(),[Text.UTF8Encoding]::new($false))
  try {$writer.Write($content)} finally {$writer.Dispose()}
@@ -18,6 +18,12 @@ function New-Archive([string]$name,[string]$mutation){
  $payloads=@{};$files=@()
  foreach($path in $required){
   $payloads[$path]='synthetic package verification: '+$path
+  if($path -eq 'ai-privacy.md'){
+   if($mutation -eq 'valid-links'){$payloads[$path]='[Guide](./help%2Dand%2Dshortcuts.md#writing) [Web](https://example.invalid/guide) [Section](#writing)'}
+   if($mutation -eq 'missing-link'){$payloads[$path]='[Guide](missing-guide.md)'}
+   if($mutation -eq 'invalid-link'){$payloads[$path]='[Guide](%2e%2e/outside.md)'}
+   if($mutation -eq 'oversize-document'){$payloads[$path]='x'*1048577}
+  }
   $bytes=[Text.Encoding]::UTF8.GetBytes($payloads[$path]);$hasher=[Security.Cryptography.SHA256]::Create()
   try {$hash=([BitConverter]::ToString($hasher.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()} finally {$hasher.Dispose()}
   $files+=@{path=$path;bytes=$bytes.Length;sha256=$hash}
@@ -46,6 +52,10 @@ function New-Archive([string]$name,[string]$mutation){
 }
 $cases=@(
  @{name='valid';mutation='';error=$null},
+ @{name='valid-document-links';mutation='valid-links';error=$null},
+ @{name='missing-document-link';mutation='missing-link';error='PACKAGE_DOCUMENT_LINK_MISSING'},
+ @{name='invalid-document-link';mutation='invalid-link';error='PACKAGE_DOCUMENT_LINK_INVALID'},
+ @{name='oversize-document';mutation='oversize-document';error='PACKAGE_DOCUMENT_TOO_LARGE'},
  @{name='bad-sidecar';mutation='sidecar';error='PACKAGE_ARCHIVE_CHECKSUM_MISMATCH'},
  @{name='bad-source';mutation='';error='PACKAGE_SOURCE_COMMIT_MISMATCH';expected='b'*40},
  @{name='bad-size';mutation='size';error='PACKAGE_PAYLOAD_SIZE_MISMATCH'},
