@@ -61,3 +61,28 @@ To finish hardware acceptance, provide the intended lower-cost Windows laptop or
 ## Algorithm-specific improvement, November 6
 
 The [reading-order benchmark](reading-order-performance.md) records a verified linear replacement for repeated array insertion, with paired synthetic timings on this PC. It does not complete the real inexpensive-hardware gate or establish whole-app budgets.
+
+## November 6 evening resource checks
+
+Both runs used the connected Ryzen 9 8945HS / 31.29GiB PC, fresh generated notes and WebView profiles, and kits relocated into temporary paths containing spaces. Local and hosted sharing remained disabled. No model generation or private import was involved. Durations and instrumentation differ; these observations support further profiling.
+
+| Source | Long-session duration | Cycles | Median per-run input-to-frame p95 range | Maximum sampled private memory |
+| --- | ---: | ---: | ---: | ---: |
+| `f6fa609` | 15 minutes | 160 | 7.6–13.1ms | 2,109.6MiB |
+| `ad21771` | 8 minutes | 90 | 7.9–9.9ms | 1,421.9MiB |
+
+Maximum per-run p95 was 17.8ms and 11.5ms respectively. Each run verified eight visible components using one worker and zero workers after leaving the note. The first run exposed process-memory growth. A deterministic component test then reproduced and fixed a late-animation callback rearming after unmount; a stale handle also cannot remove its replacement. Nine runtime tests and the full 278 frontend tests passed.
+
+The follow-up still showed process-memory growth. Its role medians use 30–90 seconds for the initial window and the final minute for the last window:
+
+| Role | Initial private MiB | Final private MiB |
+| --- | ---: | ---: |
+| App | 12.9 | 73.9 |
+| Browser | 46.6 | 54.5 |
+| Renderer | 382.6 | 850.1 |
+| GPU | 260.6 | 309.8 |
+| Utility | 19.6 | 22.3 |
+
+The renderer accounts for most of the observed increase. A separate forced-GC diagnostic retained about 6.0/7.3/8.0MB of main JS heap after baseline/40 ordinary switches/40 component switches. This does not establish the cause of whole-process growth. Renderer/native allocations, decoded assets, caches and ordinary GC behavior need a dedicated fixture investigation. No bounded-memory or inexpensive-device acceptance is claimed.
+
+The completed-run metadata is in ignored `output/reference-initial-trial-state.json` and `output/reference-trial-state.json`; each identifies its local report. The transferable kit contains pristine generated fixtures and scripts, without trial profiles, runs or hardware reports. Its build source is `ad21771`.

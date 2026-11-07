@@ -12,7 +12,7 @@ Strict privacy boundary: no AI inspection of the Logseq source database, source 
 
 Anti-slop's package files remain unavailable. Apply its previously loaded rules during design and implementation and record the manual delivery gate; do not claim a new plugin load. Model/effort switching is used only where exposed by the environment.
 
-Status: active.
+Status: final handoff verification. The implementation checkpoint is `ad21771`; the requested cutoff remains 03:00 UTC.
 
 ## Navigation milestone
 
@@ -125,3 +125,26 @@ The regression failed before the fix with one rearmed timer. It now passes remov
 Extracted package verification also passed its own bundled verifier in Windows PowerShell, six empty-start and six first-note checks. Its exact companion initialized over local stdio and listed five tools. With sharing disabled, both local and hosted audience flags refused folder and note reads, returned no note content, and preserved canonical note/policy bytes. This is a local protocol/policy check, not a live hosted-chat connection.
 
 Final constrained-layout checks passed: native save recovery 175 checks/12 theme-and-dock profiles plus 200% text, including stacked Browse at 390px; Workspace 13 native and 13 browser checks including 390px/200% text. Screenshots were inspected. The reference builder also copies the already verified executable snapshot and checks for source changes after script copying; workloads refuse an empty input-timing result. These checks do not establish inexpensive-device acceptance or resolve the observed process-memory trend.
+
+## Final private delivery checkpoint
+
+Build source: `ad2177128e76e73204832bad867dc09a566d303d`. All three matching executables were rebuilt. The 32-payload app archive and its bundled verifier passed integrity checks; the 13-payload reference kit archive was independently checked against its manifest and the same GUI hash. Archives stay local under ignored `output/`; no release was deployed or uploaded.
+
+- App: `Noted-alpha-20261106-212751-ad21771.zip`, SHA-256 `568ca5d5d750df55bf5ea0764b5f98a511e369c4151a80d4309911ac05b69726`.
+- Reference kit: `Noted-reference-kit-20261106-213900-ad21771.zip`, SHA-256 `f0ab5534da4bbf8b424396d98f347e4ce5ee68cfb8c672e1944104f91120ea31`.
+
+The post-fix native resource run completed eight minutes/90 cycles, with median per-run input-to-frame p95 of 7.9–9.9ms and a maximum run p95 of 11.5ms. One worker served eight visible components and zero remained after leaving. Sampled private memory peaked at 1,421.9MiB; growth persisted, chiefly in the renderer. The component teardown race is fixed independently of that unresolved process-memory issue. See [resource measurements and limits](reference-benchmark.md).
+
+Additional extracted-package checks covered a close requested 25ms after a conflicting edit: the window stayed open, its draft remained editable and Keep both recovered separately. A successful close requested 36ms after an edit saved it before the autosave debounce; reopening retained the same note, note count and disabled sharing. These checks used generated data only.
+
+## Remaining gates and next actions
+
+1. Investigate renderer/process-memory growth with the same disposable corpus, comparing image/component-free cases, decoded-asset lifetime and allocations before/after GC. Review memory budgets before low-RAM acceptance.
+2. Run the kit on the intended inexpensive Windows reference device, record its configuration and agree startup/memory budgets. Physical key-to-paint and ordinary cold startup remain separate measurements.
+3. Complete hosted-chat account/transport setup and review exact folder scope before approving credential creation or enabling hosted access. The local stdio adapter and disabled-scope checks are complete; this hosted chat is not connected. No credentials or persistent grants were created in this session.
+4. Resume migration fidelity work separately under the existing privacy restrictions. The original Logseq database/assets, imported private-note state and AI exclusion were not accessed or changed here.
+5. Decide signing, installer/update and distribution details before a public release. The current artifacts remain unsigned developer alphas.
+
+Anti-slop's package remained unavailable in this session; previously loaded During rules and the [manual delivery checks](evening-ui-checks.md) were applied. No fresh plugin load or model/effort switch is claimed. The earlier two synthetic runner attempts and cancellation requests are recorded above; later verification used cached proposals, local stubs or generated fixtures without generation.
+
+The final `ad21771` archive additionally passed its own bundled verifier under Windows PowerShell, six empty-start and six first-note checks after extraction into a new path containing spaces. Its matching agent passed both local/hosted-flag stdio denial checks with no note content returned and no canonical note/policy changes. The benchmark kit excludes trial runs and profiles; all 13 payload hashes and its GUI provenance were verified. Temporary native test apps are closed during handoff.
