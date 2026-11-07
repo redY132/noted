@@ -322,3 +322,19 @@ shortcut checks, 17 Help checks/six profiles, 18 heading checks/six profiles and
 124 sidebar checks/14 profiles. Normal Ctrl N saved the previous generated draft;
 normal Enter/Escape, selection and Undo remain intact. These are synthetic event
 tests, not certification of physical IMEs or layouts.
+
+The matching `ae24f6e` package passed the native cache workflow with the long
+synthetic title: ten checks, six Light/Dark layouts and 200% text, including
+title overflow checks, comparison, Apply, Undo and saved-draft return. The runner
+was disabled, sharing stayed off and the owned app closed. Its screenshots are
+stored beside the exact generated fixture in `ui-evidence`, recorded by
+`output/packaged-long-title-ae24-state.json`; old same-named screenshots are not
+used as evidence for this run. The 390px native screenshot was inspected.
+
+Title Enter now uses the editor's explicit focus-and-scroll command. Both sizing
+paths passed 19 checks/eight profiles, including a 300-character unbroken title,
+refusal of an extra character, visible writing position and unchanged body text.
+The visibility check measures the selection caret or empty-line break. Its
+initial paragraph-box assertion produced a false failure at a 1.14px fractional
+edge while the caret was visible; that is not a latency or invisible-caret
+finding. Browser checks do not certify physical input timing.

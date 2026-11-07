@@ -99,7 +99,7 @@ let previousSaveUI: ReturnType<typeof initializePreviousSave> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
-const noteTitleUI = initializeNoteTitle($<HTMLTextAreaElement>('#note-title'), () => editor?.view.focus());
+const noteTitleUI = initializeNoteTitle($<HTMLTextAreaElement>('#note-title'), () => { editor?.commands.focus(); });
 let navigating = false;
 let readingPositionEpoch = 0;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
