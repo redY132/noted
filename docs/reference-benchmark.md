@@ -57,6 +57,13 @@ preserves completed samples if result collection or an optional check fails.
 `allRequestedChecksPassed` means the workload and requested functional checks
 completed, not that an agreed memory budget or reference device was certified.
 
+Resource results also record Page Visibility API state changes and hidden time
+over the workload and idle interval. These event-driven counters add no polling
+timer. They identify browser-reported hidden periods; they do not establish
+foreground focus, unobscured pixels, animation throughput or physical rendering.
+Earlier reports without these counters cannot be given visibility evidence
+retroactively.
+
 Every native run disables the subscription runner, strips API credentials from
 the child environment and uses empty client/config directories. The runner
 copies only checksummed generated fixture payloads, rejecting unsafe paths and

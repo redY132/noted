@@ -16,6 +16,7 @@ async page => {
     if (window.notedResourceResult) throw new Error('Use a fresh resource-test window');
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const result = window.notedResourceResult = { phase: 'waiting', stage: 'setup', case: options.case, secondsRequested: options.seconds, scheduledAt: Date.now(), startDelayMs: 10000, switches: 0, edits: 0, restoredEdits: 0, modelCallsRequested: 0 };
+    let finishVisibility = () => {};
     const wait = async (predicate, code) => { const end = Date.now() + 20000; while (!predicate()) { if (Date.now() > end) throw new Error(code); await sleep(20); } };
     const open = async name => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true }));
@@ -47,6 +48,19 @@ async page => {
       const text = 'ordinary-100-paragraphs', components = 'eight-active-components';
       const cases = { text: [text, 'long-1000-paragraphs'], images: [text, 'artistic-100-panels'], mixed: [text, 'mixed-free-media-100-panels'], components: [text, components], full: [text, components, 'long-1000-paragraphs', components, 'artistic-100-panels', components, 'mixed-free-media-100-panels', components] };
       result.phase = 'running'; result.startedAt = Date.now(); const until = Date.now() + options.seconds * 1000;
+      const visibility = result.documentVisibility = { source: 'page-visibility-api', scope: 'workload-and-idle', initiallyHidden: document.hidden, changes: 0, observedMs: 0, hiddenMs: 0 };
+      let visibilityAt = performance.now(), hidden = document.hidden;
+      const recordVisibility = () => {
+        const now = performance.now(), elapsed = now - visibilityAt;
+        visibility.observedMs += elapsed; if (hidden) visibility.hiddenMs += elapsed;
+        visibilityAt = now; hidden = document.hidden;
+      };
+      const visibilityChanged = () => { recordVisibility(); visibility.changes++; };
+      document.addEventListener('visibilitychange', visibilityChanged);
+      finishVisibility = () => {
+        recordVisibility(); document.removeEventListener('visibilitychange', visibilityChanged);
+        visibility.observedMs = Math.round(visibility.observedMs); visibility.hiddenMs = Math.round(visibility.hiddenMs); visibility.finallyHidden = document.hidden;
+      };
       while (Date.now() < until) {
         const name = cases[options.case][result.switches % cases[options.case].length]; result.stage = 'opening'; await open(name);
         if (name === components) await wait(() => document.querySelectorAll('.interactive-component-body button').length === 8, 'COMPONENT_READY_TIMEOUT');
@@ -66,7 +80,7 @@ async page => {
       const policy = await window.__TAURI_INTERNALS__.invoke('agent_access'); result.sharingDisabled = !policy.enabled && !policy.allowHosted && !policy.folderIds.length;
       result.componentWorkers = { ...workers }; result.domElements = document.querySelectorAll('*').length; result.stage = 'done';
       result.phase = result.sharingDisabled && workers.active === 0 && result.edits === result.restoredEdits ? 'complete' : 'failed';
-    })().catch(error => { result.phase = 'failed'; result.error = error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : 'RESOURCE_FAILURE'; result.componentWorkers = { ...workers }; }); }, result.startDelayMs);
+    })().catch(error => { result.phase = 'failed'; result.error = error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : 'RESOURCE_FAILURE'; result.componentWorkers = { ...workers }; }).finally(() => finishVisibility()); }, result.startDelayMs);
   }, options);
   return { started: true, syntheticOnly: true, noModelCalls: true };
 }
