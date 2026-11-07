@@ -20,4 +20,6 @@ The full frontend suite passed 252 tests. Thirteen focused calendar/UI tests cov
 
 Browser and actual Windows checks each passed 25 interactions, six theme/window profiles and 200% text. Minimum measured review text contrast was 6.029:1 Light and 7.822:1 Dark; targets, focus, field boundaries and overflow passed. Tests check the last queue action is reachable by scrolling at every profile, and large text uses one dialog scroll. Screenshots were manually reviewed. All test notes are disposable; no private Logseq data or access policy is inspected or changed.
 
+An additional actual-clock Windows check crossed midnight UTC on November 6/7 without changing the device clock or timezone. A synthetic note marked reviewed before that boundary stayed hidden after it, while an unreviewed control stayed visible and the Eastern device date remained November 6. `scripts/review-midnight-check.js` records preparation and verification separately and reports pending rather than success before the boundary.
+
 The queue remains bounded to 30 notes rather than a complete history or a spaced-repetition scheduler. A new local day may change its stable tie order. Include hidden notes still respects the selected folder/tag and the 30-note limit.

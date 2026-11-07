@@ -67,14 +67,27 @@ function presentation(attrs: Record<string, unknown> = {}): PresentationStyle {
 export function reconcileReadingOrder(previous: string[], visual: string[]): string[] {
   const present = new Set(visual), order = previous.filter(id => present.has(id));
   const known = new Set(order);
-  for (let index = 0; index < visual.length; index++) {
-    const id = visual[index]; if (known.has(id)) continue;
-    let before = index - 1;
-    while (before >= 0 && !known.has(visual[before])) before--;
-    if (before < 0) order.unshift(id); else order.splice(order.indexOf(visual[before]) + 1, 0, id);
-    known.add(id);
+  if (!order.length && present.size === visual.length) return [...visual];
+  if (known.size === present.size) return order;
+  type Link = { id: string; next: Link | null };
+  const first = new Map<string, Link>(); let head: Link | null = null, tail: Link | null = null;
+  for (const id of order) {
+    const link: Link = { id, next: null }; if (tail) tail.next = link; else head = link; tail = link;
+    // Preserve duplicate old IDs so the document validator can still reject them.
+    if (!first.has(id)) first.set(id, link);
   }
-  return order;
+  let preceding: Link | null = null;
+  for (const id of visual) {
+    const existing = first.get(id);
+    if (existing) { preceding = existing; continue; }
+    // Every earlier visual ID is already known. Insert after the immediately
+    // preceding one's first logical occurrence, exactly as the array version did.
+    const link: Link = { id, next: preceding ? preceding.next : head };
+    if (preceding) preceding.next = link; else head = link;
+    first.set(id, link); preceding = link;
+  }
+  const result: string[] = []; for (let link = head; link; link = link.next) result.push(link.id);
+  return result;
 }
 export function documentFromEditor(input: JSONContent, noteId: string, previous?: NotedDocumentV2): NotedDocumentV2 {
   const content = withStableIds(input, noteId), objects: Record<string, ContentObject> = Object.create(null), visual: string[] = [];

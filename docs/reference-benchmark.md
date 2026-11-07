@@ -54,3 +54,6 @@ The kit's short validation run on November 3 used the connected Ryzen 9/31.3 GiB
 The maximum sampled summed private memory was approximately **831.9 MiB**. Instrumented endpoint/editor readiness was approximately 2.2/5.1 seconds, including test instrumentation. These are observations on this PC, not a low-memory or normal cold-start pass. Eight components used one Worker, and leaving the note terminated it.
 
 To finish hardware acceptance, provide the intended lower-cost Windows laptop or run the kit there and return `report.json` plus its actual specification. Agree the reference configuration and resource budgets, then measure physical key-to-paint and normal cold startup using an appropriate input/display capture method. Current-host timing below 50 ms does not resolve those gates.
+## Algorithm-specific improvement, November 6
+
+The [reading-order benchmark](reading-order-performance.md) records a verified linear replacement for repeated array insertion, with paired synthetic timings on this PC. It does not complete the real inexpensive-hardware gate or establish whole-app budgets.
