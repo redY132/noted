@@ -160,3 +160,5 @@ Result: **PASS** under the same manual During rules. The existing form and separ
 | R-32, R-39 Keyboard | PASS | Named native Workspace dialog, one Close, first Escape, keyboard-accessible bottom actions and preserved note/dock state. |
 | R-33, R-35, R-36, C-5 Verification | PASS | Eight controller tests, full 277 frontend tests, production/Windows builds, 12 browser and 12 native layout checks; actual native backup/restore preserved all 117 fixture notes and 32 connections. |
 | R-37, R-40, C-1 Scope | PASS | Recorded before implementation. No archive-format, import, permissions, model or original-workspace changes. A completed native copy is not claimed cancelled by UI disposal. |
+
+Final narrow-layout follow-up: native save-error recovery passed 175 checks over 12 Light/Dark window/dock profiles plus 200% text, including the 390px stacked dock. Workspace passed 13 native and 13 browser checks, with an additional 390px/200% text case and keyboard access to bottom actions. Those final screenshots were inspected. No import, generation or personal note access occurred.

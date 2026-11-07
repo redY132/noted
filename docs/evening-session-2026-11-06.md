@@ -82,7 +82,7 @@ Implemented. Full frontend suite: 271 passed. Browser and final Windows release 
 
 Native suite: 108 passed, four optional model/corpus cases ignored. A new fixture backs up and restores a workspace containing a previous save, verifies retained backup bytes, recovers a separate copy and verifies hard AI exclusion on both notes. The source workspace and its policy remain unchanged. Help and these regressions never request generation; the earlier synthetic runner correction remains recorded above. See [Help and shortcuts](help-and-shortcuts.md).
 
-## Reproducible portable handoff
+## Verified portable handoff
 
 Make the portable builder rebuild the frontend and all three executables from a clean source commit, then check that the source stayed unchanged. Include the evening feature and verification documents. Verify the archive's own checksum and every listed payload without extraction or execution; reject missing, duplicate, unsafe or extra entries and inconsistent source metadata. Check malformed synthetic archives before generating and independently launching the final package in a disposable path containing spaces. No personal workspace or access configuration is included.
 
@@ -113,3 +113,15 @@ The archive verifier again passed all 14 corruption fixtures. Source syntax chec
 The first end-to-end kit build caught an environment compatibility failure before fixture creation: child Windows PowerShell could not resolve `Get-FileHash`. Release verification and benchmark integrity checks now stream SHA-256 through .NET directly, avoiding that module dependency. Cross-edition checks and a matching rebuilt release are required before the next kit attempt.
 
 All 14 archive fixtures subsequently passed in both PowerShell editions. Child Windows PowerShell also verified the actual 32-payload archive and GUI digest. Compression assemblies are explicitly loaded, and package creation uses .NET rather than an optional Archive module. The matching package and complete kit run are the remaining verification steps for this tooling correction.
+
+## Component teardown investigation
+
+The current-host 15-minute kit run completed 160 cycles with one active component worker and zero after leaving the note. Median per-run input-to-frame p95 was 7.6–13.1ms, maximum run p95 17.8ms. Sampled process-tree private memory nevertheless grew from a first-three-minute median of 743MiB to 1,776MiB near the end, peaking at 2,110MiB. This remains an open performance issue rather than a low-memory acceptance pass.
+
+A separate forced-GC diagnostic of 40 ordinary switches and 40 component switches retained approximately 6.0/7.3/8.0MB of JS heap. Those different measurements do not establish the cause of process-memory growth. Source review identified a concrete pending-animation teardown race: a late render can rearm a timer after unmount. Add a deterministic fake-worker regression, prevent callbacks for disposed/replaced instances, and verify the runtime separately without claiming the full memory trend resolved.
+
+The regression failed before the fix with one rearmed timer. It now passes removal of the last instance, removal while another instance remains, host destruction and a stale handle sharing a replacement's ID. Exact-instance guards prevent late approval/load/render/visibility callbacks from resuming removed components; unmount clears animation state before cleanup. All nine component-runtime tests and the full 278 frontend tests passed. Native follow-up resource verification remains pending; the complete process-memory issue is not declared resolved.
+
+Extracted package verification also passed its own bundled verifier in Windows PowerShell, six empty-start and six first-note checks. Its exact companion initialized over local stdio and listed five tools. With sharing disabled, both local and hosted audience flags refused folder and note reads, returned no note content, and preserved canonical note/policy bytes. This is a local protocol/policy check, not a live hosted-chat connection.
+
+Final constrained-layout checks passed: native save recovery 175 checks/12 theme-and-dock profiles plus 200% text, including stacked Browse at 390px; Workspace 13 native and 13 browser checks including 390px/200% text. Screenshots were inspected. The reference builder also copies the already verified executable snapshot and checks for source changes after script copying; workloads refuse an empty input-timing result. These checks do not establish inexpensive-device acceptance or resolve the observed process-memory trend.

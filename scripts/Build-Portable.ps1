@@ -10,7 +10,7 @@ Push-Location -LiteralPath $repoRoot
 try {
  $sourceCommit=(& git rev-parse HEAD).Trim()
  if($LASTEXITCODE -ne 0){throw 'Cannot identify source commit'}
- if((& git status --porcelain)){throw 'Commit and verify source before packaging a reproducible portable build'}
+ if((& git status --porcelain)){throw 'Commit and verify source before packaging a portable build'}
  # Rebuild here rather than trusting possibly stale files in target/release.
  & npm.cmd run check
  if($LASTEXITCODE -ne 0){throw 'Frontend type-check failed; no package created'}

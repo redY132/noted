@@ -35,7 +35,7 @@ async page=>{
  const profiles=[];
  for(const mode of ['light','dark']){
   await page.setViewportSize({width:1200,height:800});await page.locator('#appearance-toggle').click();await page.locator('#appearance-mode').selectOption(mode);await page.keyboard.press('Escape');
-  for(const[width,height,showBrowse]of[[1200,800,false],[800,560,false],[390,840,false],[1600,900,true],[800,560,true]]){
+  for(const[width,height,showBrowse]of[[1200,800,false],[800,560,false],[390,840,false],[1600,900,true],[800,560,true],[390,840,true]]){
    await page.setViewportSize({width,height});await browse(showBrowse);await page.evaluate(()=>{document.querySelector('#error-banner').scrollTop=0;document.querySelector('#error-message').scrollTop=0;});
    const result=await measure();if(result.failures.length)throw new Error(JSON.stringify({mode,showBrowse,...result}));await focusChecks();await page.screenshot({path:`output/playwright/error-recovery-${native?'native':'preview'}-${mode}-${width}-${showBrowse?'dock':'closed'}.png`});profiles.push({mode,showBrowse,...result});
   }

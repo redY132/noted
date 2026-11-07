@@ -163,3 +163,42 @@ test('host approves exact versions, rejects stale results, kills stuck workers a
     for (const key of globals) { const descriptor = previous.get(key); if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
   }
 });
+
+test('late animation completion cannot restart a removed or closed component', async () => {
+ const dom=new JSDOM('<body></body>',{url:'https://noted-animation.test',pretendToBeVisual:true});
+ const keys=['document','navigator','localStorage','Element','HTMLElement','HTMLInputElement','HTMLButtonElement','HTMLImageElement','Worker','setTimeout','clearTimeout'] as const;
+ const previous=new Map(keys.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ for(const key of keys.filter(key=>!['Worker','setTimeout','clearTimeout'].includes(key)))Object.defineProperty(globalThis,key,{configurable:true,value:(dom.window as unknown as Record<string,unknown>)[key]});
+ const realSet=globalThis.setTimeout,realClear=globalThis.clearTimeout,timers=new Map<ReturnType<typeof setTimeout>,()=>void>();
+ Object.defineProperty(globalThis,'setTimeout',{configurable:true,value:(callback:()=>void,delay:number,...args:unknown[])=>{if(delay===1000/30){const timer={} as ReturnType<typeof setTimeout>;timers.set(timer,()=>callback(...args as []));return timer;}return realSet(callback,delay,...args);}});
+ Object.defineProperty(globalThis,'clearTimeout',{configurable:true,value:(timer:ReturnType<typeof setTimeout>)=>{if(!timers.delete(timer))realClear(timer);}});
+ type Message={sequence:number;id:string;kind:string};
+ class Worker {
+  static current:Worker;onmessage:((event:{data:unknown})=>void)|null=null;onerror=null;held:Message[]=[];hold=false;terminated=false;
+  constructor(){Worker.current=this;}
+  postMessage(message:Message){if(message.kind==='run'&&this.hold){this.held.push(message);return;}queueMicrotask(()=>this.reply(message));}
+  reply(message:Message){if(this.terminated)return;this.onmessage?.({data:{sequence:message.sequence,id:message.id,memoryBytes:16*1024*1024,...(message.kind==='run'?{result:{view:{type:'text',text:'Animated fixture'},state:{},memoryBytes:16*1024*1024}}:{ok:true})}});}
+  terminate(){this.terminated=true;}
+ }
+ Object.defineProperty(globalThis,'Worker',{configurable:true,value:Worker});
+ const animated={...definition('({render(input,ui){return ui.text("Animated fixture");}})'),manifest:{...definition('').manifest,id:'test.animation.teardown',animationFps:30}};
+ const wait=async(predicate:()=>boolean)=>{for(let i=0;!predicate();i++){if(i>200)throw new Error('Animation fixture timed out');await new Promise(resolve=>realSet(resolve,2));}};
+ let host:ComponentRuntimeHost|undefined;
+ try{
+  await enableComponentVersion(animated);
+  for(const mode of ['remove-last','remove-with-companion','close-host']){
+   host=new ComponentRuntimeHost();const element=dom.window.document.createElement('div');dom.window.document.body.append(element);
+   const handle=host.mount({id:'animated',definition:animated,element,input,onState:()=>assert.fail('Animation cannot persist state')});await wait(()=>timers.size===1);
+   if(mode==='remove-with-companion'){const other=dom.window.document.createElement('div');dom.window.document.body.append(other);host.mount({id:'companion',definition:animated,element:other,input,onState:()=>{}});await wait(()=>timers.size===2);}
+   const worker=Worker.current;worker.hold=true;const [timer,callback]=timers.entries().next().value!;timers.delete(timer);callback();await wait(()=>worker.held.length===1);
+   if(mode==='close-host')host.destroy();else handle.destroy();
+   if(!worker.terminated){worker.hold=false;worker.reply(worker.held[0]);}
+   await new Promise(resolve=>realSet(resolve,10));
+   assert.equal(timers.size,mode==='remove-with-companion'?1:0,`${mode}: late render must not rearm the removed animation`);
+   host.destroy();host=undefined;assert.equal(timers.size,0);element.remove();
+  }
+  host=new ComponentRuntimeHost();const element=dom.window.document.createElement('div');dom.window.document.body.append(element);
+  const old=host.mount({id:'reused',definition:animated,element,input,onState:()=>{}});await wait(()=>timers.size===1);old.destroy();
+  const replacement=host.mount({id:'reused',definition:animated,element,input,onState:()=>{}});await wait(()=>timers.size===1);old.destroy();assert.equal(host.stats.instances,1,'a stale handle cannot unmount its same-ID replacement');assert.equal(host.stats.running,true);replacement.destroy();assert.equal(timers.size,0);
+ }finally{host?.destroy();timers.clear();dom.window.close();for(const key of keys){const descriptor=previous.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}
+});

@@ -91,10 +91,11 @@ export class ComponentRuntimeHost {
     }).catch(() => { /* unavailable battery APIs leave explicit visibility/typing safeguards active */ });
   }
   get stats() { return { instances: [...this.mounted.values()].filter(item => item.loaded && !item.failed).length, memoryBytes: this.memoryBytes, running: this.worker !== null, pending: this.active.size }; }
+  private isMounted(item: Mounted) { return !this.disposed && this.mounted.get(item.id) === item; }
   async refreshApprovals() {
     for (const item of this.mounted.values()) {
       const enabled = await isComponentVersionEnabled(item.definition);
-      if (!this.mounted.has(item.id) || this.disposed) return;
+      if (!this.isMounted(item)) return;
       if (!enabled) {
         item.generation++;
         if (item.timer) clearTimeout(item.timer); item.timer = null;
@@ -119,6 +120,7 @@ export class ComponentRuntimeHost {
     if (typeof IntersectionObserver !== 'undefined') {
       item.visible = false;
       item.observer = new IntersectionObserver(entries => {
+        if (!this.isMounted(item)) return;
         const visible = entries.some(entry => entry.isIntersecting);
         if (visible === item.visible) return;
         item.visible = visible;
@@ -134,6 +136,7 @@ export class ComponentRuntimeHost {
     } else void this.start(item);
     return {
       update: input => {
+        if (!this.isMounted(item)) return;
         componentJSON(input, COMPONENT_LIMITS.messageBytes);
         item.input = structuredClone(input); item.generation++;
         if (item.loaded && !item.failed && item.visible) void this.render(item);
@@ -175,29 +178,29 @@ export class ComponentRuntimeHost {
     const next = this.chain.then(perform, perform); this.chain = next.catch(() => {}); return next;
   }
   private async start(item: Mounted) {
-    if (!this.mounted.has(item.id) || item.failed || item.loaded || !item.visible) return;
-    if (!(this.previewApprovalHash ? await componentCodeHash(item.definition)===this.previewApprovalHash : await isComponentVersionEnabled(item.definition))) { if (this.mounted.has(item.id)) this.fallback(item, `${item.fallback ?? item.definition.manifest.fallback}\nThis code version is disabled. Enable it in component settings to run.`); return; }
-    if (!this.mounted.has(item.id) || item.loaded || item.failed || this.disposed) return;
+    if (!this.isMounted(item) || item.failed || item.loaded || !item.visible) return;
+    if (!(this.previewApprovalHash ? await componentCodeHash(item.definition)===this.previewApprovalHash : await isComponentVersionEnabled(item.definition))) { if (this.isMounted(item)) this.fallback(item, `${item.fallback ?? item.definition.manifest.fallback}\nThis code version is disabled. Enable it in component settings to run.`); return; }
+    if (!this.isMounted(item) || item.loaded || item.failed) return;
     if ([...this.mounted.values()].filter(value => value.loaded).length >= COMPONENT_LIMITS.instances) { this.fallback(item, `${item.fallback ?? item.definition.manifest.fallback}\nEight components are already active.`); return; }
     item.loaded = true;
     try {
       await this.request({ kind: 'load', id: item.id, definition: item.definition }, !this.worker);
-      if (!this.mounted.has(item.id)) return;
+      if (!this.isMounted(item)) return;
       await this.render(item); this.scheduleAnimation(item);
-    } catch (error) { this.failItem(item, error); }
+    } catch (error) { if (this.isMounted(item)) this.failItem(item, error); }
   }
   private async render(item: Mounted, event?: ComponentEvent) {
-    if (!item.loaded || item.failed || !this.mounted.has(item.id)) return;
+    if (!item.loaded || item.failed || !this.isMounted(item)) return;
     const generation = ++item.generation, input = structuredClone(item.input);
     try {
       const response = await this.request({ kind: 'run', id: item.id, input, ...(event ? { event } : {}) });
-      if (generation !== item.generation || !this.mounted.has(item.id) || !response.result) return;
+      if (generation !== item.generation || !this.isMounted(item) || !response.result) return;
       const result = response.result, view = validateComponentView(result.view);
       if (event && event.kind !== 'tick' && JSON.stringify(result.state) !== JSON.stringify(item.input.state)) {
         item.input.state = structuredClone(result.state); item.onState(structuredClone(result.state));
       }
       this.paint(item, view);item.onRender?.();
-    } catch (error) { if (this.mounted.has(item.id)) this.failItem(item, error); }
+    } catch (error) { if (this.isMounted(item)) this.failItem(item, error); }
   }
   private paint(item: Mounted, view: ComponentView) {
     const active = document.activeElement instanceof HTMLInputElement && item.element.contains(document.activeElement) ? document.activeElement : null;
@@ -244,14 +247,16 @@ export class ComponentRuntimeHost {
   }
   private scheduleAnimation(item: Mounted) {
     if (item.timer) clearTimeout(item.timer); item.timer = null;
-    if (!item.loaded || item.failed || !item.visible || document.hidden || this.onBattery || performance.now() < this.typingUntil || this.reduced?.matches || !item.definition.manifest.animationFps) return;
+    if (!this.isMounted(item) || !item.loaded || item.failed || !item.visible || document.hidden || this.onBattery || performance.now() < this.typingUntil || this.reduced?.matches || !item.definition.manifest.animationFps) return;
     item.timer = setTimeout(() => { item.timer = null; void this.render(item, { id: 'tick', kind: 'tick' }).finally(() => this.scheduleAnimation(item)); }, 1000 / item.definition.manifest.animationFps);
   }
   private refreshAnimations() { for (const item of this.mounted.values()) this.scheduleAnimation(item); }
   private unmount(item: Mounted) {
-    item.generation++; item.observer?.disconnect(); if (item.timer) clearTimeout(item.timer); this.mounted.delete(item.id);
+    if (this.mounted.get(item.id) !== item) return;
+    const wasLoaded = item.loaded;
+    item.generation++; item.loaded = false; item.visible = false; item.observer?.disconnect(); if (item.timer) clearTimeout(item.timer); item.timer = null; this.mounted.delete(item.id);
     if (this.mounted.size === 0) { this.worker?.terminate(); this.worker = null; this.memoryBytes = 0; this.workerEpoch++; for (const pending of this.active.values()) { clearTimeout(pending.timer); pending.reject(new Error('Component host closed.')); } this.active.clear(); }
-    else if (item.loaded && this.worker) void this.request({ kind: 'remove', id: item.id }).catch(() => {});
+    else if (wasLoaded && this.worker) void this.request({ kind: 'remove', id: item.id }).catch(() => {});
   }
   destroy() {
     if (this.disposed) return;

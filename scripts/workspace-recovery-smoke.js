@@ -33,7 +33,10 @@ async page=>{
  }
  await page.setViewportSize({width:800,height:600});await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});await open();await page.locator('#export-connections').focus();const largeText=await measure();if(largeText.failures.length)throw new Error(JSON.stringify({largeText}));
  record('workspace explanations and form text scale with large text',await page.evaluate(()=>{const minimum=parseFloat(getComputedStyle(document.documentElement).fontSize)*.8;return [...document.querySelectorAll('#workspace-dialog .dialog-description,#workspace-dialog .migration-tools p')].every(el=>parseFloat(getComputedStyle(el).fontSize)>=minimum);}));
- await page.screenshot({path:`output/playwright/workspace-${native?'native':'preview'}-text-200.png`});await close();await page.evaluate(()=>{document.documentElement.style.fontSize='';});
+ await page.screenshot({path:`output/playwright/workspace-${native?'native':'preview'}-text-200.png`});
+ await page.setViewportSize({width:390,height:840});await page.locator('#rebuild-index').focus();await page.keyboard.press('Shift+Tab');const largeNarrow=await measure();if(largeNarrow.failures.length)throw new Error(JSON.stringify({largeNarrow}));
+ record('large-text bottom actions remain reachable in a narrow window',await page.locator('#export-connections').evaluate(el=>{const r=el.getBoundingClientRect(),d=document.querySelector('#workspace-dialog').getBoundingClientRect(),h=document.querySelector('.workspace-header').getBoundingClientRect();return el===document.activeElement&&r.top>=h.bottom-1&&r.bottom<=d.bottom+1;}));
+ await page.screenshot({path:`output/playwright/workspace-${native?'native':'preview'}-narrow-text-200.png`});await close();await page.evaluate(()=>{document.documentElement.style.fontSize='';});
  record('workspace controls leave saved note and dock state unchanged',await revision()===before&&await page.locator('[data-panel-toggle=navigation]').getAttribute('aria-expanded')===dock&&await page.locator('#header-connection-handle button').getAttribute('data-connect-source')===id);record('no uncaught UI errors',errors.length===0);
- return {passed:true,native,syntheticOnly:true,noGenerationRequested:true,noImportOrBackupRequested:true,checks,profiles,largeText,errors};
+ return {passed:true,native,syntheticOnly:true,noGenerationRequested:true,noImportOrBackupRequested:true,checks,profiles,largeText,largeNarrow,errors};
 }

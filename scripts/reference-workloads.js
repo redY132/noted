@@ -25,6 +25,7 @@ async page=>{
   });
   await page.keyboard.type('Measured local typing keeps the document responsive. ',{delay:20});await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#save-state').textContent.includes('Saved'));
   const raw=await page.evaluate(()=>{const m=window.measurement;m.stop();if(document.visibilityState!=='visible')throw new Error('The benchmark window was hidden during measurement.');return {samples:m.samples,intervals:m.intervals,longTasks:m.tasks,eventTiming:m.events,visibility:document.visibilityState};});
+  if(!raw.samples.length)throw new Error('No input-to-frame observations were captured. This workload has no timing result.');
   const writingArea=await page.locator('.document-scroll').evaluate(el=>({width:el.clientWidth,height:el.clientHeight,navigationVisible:document.querySelector('[data-panel-toggle=navigation]').getAttribute('aria-expanded')==='true'}));
   results.push({workload:label,repeat,writingArea,inputToNextFrameMs:summarize(raw.samples),frameIntervalsMs:summarize(raw.intervals),...raw});
  }
