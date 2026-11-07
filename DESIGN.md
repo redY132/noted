@@ -83,6 +83,15 @@ explicit retry under Advanced. Reopening cancellation details first checks the
 current note's AI exclusion, then uses the already owned status. No generation,
 new access, note transmission or automatic proposal application is added.
 
+## AI approval identity
+
+Tie Generate and Advanced Create request to the note, goal, instructions and
+guidance consent present at the explicit click. If closing the dialog and
+navigating changes the open note during eligibility or save, stop before
+creating a job or agent request and ask the user to reopen the intended note's
+AI dialog. Do not redirect approval to the new note. Keep native eligibility,
+revision/freshness checks and per-request guidance consent in force.
+
 # Workspace recovery refinement
 
 Preserve the existing local Create → Inspect → Restore as a new workspace flow and separate-copy opening. Prevent late default paths from replacing a chosen path, disable operations during initial setup, release the form for manual paths if defaults fail, and invalidate inspection after every restore attempt. Ignore UI continuations after disposal without claiming to cancel a native copy already underway. Make the named Workspace dialog's Close stay reachable while scrolling; use existing plain controls, text-relative sizes, 44px targets, visible focus and 3:1 field boundaries. Check asynchronous failure/disposal with fake APIs, then actual Create/Inspect/Restore in guarded native fixtures and responsive themes/200% text. No changes to archive format, source workspaces, imported data, permissions or AI. ENERGY 1, RHYTHM 2, MOTION 2; no new assets or decorative sections.

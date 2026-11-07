@@ -96,6 +96,13 @@ that finished before cancellation was reported. A completion race never opens or
 applies the proposal automatically. An unacknowledged stop can be retried, and a
 failed saved-request removal is not described as successful.
 
+Generate and Advanced Create request keep the note identity, instructions,
+goal and guidance consent from the explicit click. If closing the dialog and
+switching notes changes the current note during eligibility or save, submission
+stops before creating a job or external-agent request. Reopen formatting for
+the intended note. Closing while an unchanged note is being saved retains its
+already approved request scope; the next request still needs fresh guide consent.
+
 These are local runner reports, not provider confirmation that remote processing
 or account usage stopped. Already processed usage cannot be recalled. No historic
 job outcome can be reconstructed from this UI change.

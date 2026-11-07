@@ -200,3 +200,20 @@ cancellation checks over the same 18 strip and ten dialog profiles, with both
 auxiliary APIs deliberately unavailable after generation starts. Confirmed
 removal updates only its cached request; failed removal and unrelated requests
 remain recoverable under Advanced. No additional generation was requested.
+
+Approval-identity follow-up: delayed eligibility and save tests reproduced a
+request following navigation to a different note, and guidance consent being
+borrowed from later dialog state. The fix captures the approved identity,
+instructions, goal and guidance context before asynchronous work and refuses
+note changes before submission. All 39 focused controller/activity tests pass,
+including both request routes and fresh per-use guide consent. A browser-only
+held-eligibility check passed four checks: neither route creates a job or
+external request after note drift, and reopening permits a new explicit
+approval. Native privacy and revision checks remain in force.
+
+Final integration for the approval-identity change: all 291 frontend tests and
+type checking passed. The fresh-profile browser workflow passed 17 checks/16
+layout profiles plus large text, including comparison, Reject, Apply, saved
+Undo, background activity and stale-proposal rejection. Undo now compares the
+original rendered formatting rather than assuming a reused fixture began with
+no bold marks. All account/model methods remain explicit local stubs.

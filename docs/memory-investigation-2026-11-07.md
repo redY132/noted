@@ -152,3 +152,27 @@ See [Chromium HTMLImageElement](https://raw.githubusercontent.com/chromium/chrom
 
 No private source database, assets or imported notes are read or changed. No
 credentials or hosted connection are created.
+
+## Matching packaged disconnected run
+
+The `7038805` private alpha and its matching checksummed kit completed an
+eight-minute disconnected full-corpus run. The driver verified that disconnect
+preceded preparation. All 375 generated edits were saved, undone and saved
+again over 375 note switches. It created 188 component workers and ended with
+zero active workers; all ten subsequent media checks passed. Local/hosted
+sharing stayed disabled and the subscription runner was disabled throughout.
+
+Renderer minute medians were 258.2 / 253.0 / 253.7 / 264.4 / 254.7 / 256.0 /
+273.8 / 274.4 MiB. After the sampling interval and diagnostic GC, renderer
+private memory was 123.8 MiB, main JS heap 10.3 MiB and DOM counters 7,044 nodes /
+829 listeners. Peak sampled process-tree private memory was 859.6 MiB. The
+post-collection sample is separate from the measured interval, and forced GC
+does not represent ordinary user behavior.
+
+This run included ordinary background development work on the connected Ryzen
+9/31.29 GiB PC. The earlier attached timing run used another interaction and
+input-growth protocol, so these figures are not a controlled before/after
+latency comparison. Longer endurance, actual inexpensive hardware and agreed
+whole-app resource budgets remain separate gates. The ignored
+`output/resource-release-8min-state.json` records the local report and exact
+kit/source provenance; the transferable kit contains no run profiles or reports.

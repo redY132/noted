@@ -40,6 +40,17 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  function sync(){syncActivity();requestScope.update({title:o.note()?.title||'Untitled',goal:component()?'component':goal()?'schema':'format',schema:o.schema?.(),includeGuide:$<HTMLInputElement>('[data-ai-include-guide]').checked,allowed:aiAllowed,native:o.native,busy,running});$<HTMLButtonElement>('[data-subscription-send]').disabled=!o.native||!aiAllowed||!account||busy||running||!prompt()||(goal()&&(!schemaReady||!o.schema?.()))||(component()&&(!schemaReady||!o.componentProposal));$('[data-subscription-stop]').hidden=!running;$<HTMLButtonElement>('[data-subscription-stop]').disabled=busy||cancelRequested;$('[data-ai-preview]').hidden=!reply&&!componentReply;$<HTMLButtonElement>('[data-ai-preview]').disabled=busy||running;$<HTMLTextAreaElement>('[data-ai-prompt]').disabled=running||busy;$<HTMLSelectElement>('[data-ai-goal]').disabled=running||busy;$<HTMLInputElement>('[data-ai-include-guide]').disabled=running||busy;for(const el of host.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('details button,details select'))el.disabled=!o.native||busy||running;$<HTMLButtonElement>('[data-ai-request]').disabled=!o.native||!aiAllowed||busy||running||component();$('[data-ai-request-status]').textContent=selected?`${selected.status[0].toUpperCase()+selected.status.slice(1)} · ${selected.prompt.slice(0,160)}${selected.schema?' · '+selected.schema.name+' v'+selected.schema.version+(selected.hasGuidance?' · full guidance included':' · rules only'):''}${eligible(selected)?' · Expires '+new Date(selected.expiresAt).toLocaleString():''}`:'No request selected.';}
  async function run(action:()=>Promise<void>){if(busy)return;busy=true;sync();try{await action();}catch(e){status(e instanceof Error?e.message:String(e));o.error(e);}finally{busy=false;sync();}}
  async function eligibility(){aiAllowed=false;const n=o.note();if(!n)throw new Error('Open a saved note first.');aiAllowed=api.noteAIAllowed?await api.noteAIAllowed(n.id):true;sync();return aiAllowed;}
+ function approval(){
+  const note=o.note();if(!note)throw new Error('Open a saved note first.');
+  const text=prompt();if(!text)throw new Error('Describe the change first.');
+  return{noteId:note.id,prompt:text,goal:(component()?'component':goal()?'schema':'format') as AIGoal,context:context()};
+ }
+ async function savedForAI(noteId:string){
+  const unchanged=()=>{if(o.note()?.id!==noteId){aiAllowed=false;throw new Error('The open note changed before the AI request was submitted. Reopen AI formatting for the note you want to use.');}};
+  const allowed=await eligibility();unchanged();
+  if(!allowed)throw new Error('This note is excluded from all AI access. You can edit it locally.');
+  await o.flush();unchanged();return o.note()!;
+ }
  async function accountStatus(){if(!o.native){account=false;$('[data-subscription-status]').textContent='AI formatting is available in the desktop app.';return;}const s=await api.subscriptionStatus();account=s.authentication==='chatgpt';$('[data-subscription-status]').textContent=s.message;}
  async function requests(preferred=selected?.id,exact=false){if(!o.native){entries=[];selected=null;return;}const n=o.note();if(!n)throw new Error('Open a saved note first.');const ticket=epoch;const list=await api.formattingRequests(n.id);if(ticket!==epoch||o.note()?.id!==n.id)return;if(list.some(r=>typeof r.status!=='string')){account=false;entries=[];selected=null;reply=null;componentReply=null;throw new Error('This window is running an older Noted backend. Save your work, close Noted, and open the updated desktop build.');}entries=list;selected=entries.find(r=>r.id===preferred)??(exact?null:entries.find(r=>eligible(r)&&matchesGoal(r)))??null;const select=$<HTMLSelectElement>('[data-ai-existing]');select.replaceChildren();const empty=host.ownerDocument.createElement('option');empty.value='';empty.textContent='No request selected';select.append(empty);for(const r of entries){const option=host.ownerDocument.createElement('option');option.value=r.id;option.textContent=`${r.status} · ${r.prompt.slice(0,80)}`;select.append(option);}select.value=selected?.id??'';sync();}
  function clearActivity(id:string){if(activity?.requestId===id){activity=null;syncActivity();}}
@@ -137,12 +148,10 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  dialog.addEventListener('close',()=>{if(dialog.open)return;dialog.inert=true;epoch++;clearTimeout(timer);autoReview=false;$<HTMLInputElement>('[data-ai-include-guide]').checked=false;poll();});$('[data-ai-close]').onclick=closeDialog;
  $('[data-subscription-send]').onclick=()=>void run(async()=>{
   epoch++;clearTimeout(timer);terminalMessage=null;cancelRequested=false;cancelRequestRemoved=false;lastCancellation=null;if(!o.native)throw new Error('Use the desktop app.');
-  if(!await eligibility())throw new Error('This note is excluded from all AI access. You can edit it locally.');
-  if(!prompt())throw new Error('Describe the change first.');await o.flush();const n=o.note();if(!n)throw new Error('Open a saved note first.');
+  const approved=approval();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;const n=await savedForAI(approved.noteId);
   autoReview=true;reply=null;componentReply=null;status('Starting generation for this saved note.');
-  const approved=context();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;
-  activity={noteId:n.id,title:n.title||'Untitled',goal:component()?'component':goal()?'schema':'format',requestId:null,phase:'starting',message:'Preparing the explicitly approved saved note.'};pollErrors=0;pollPaused=false;syncActivity();
-  try{const j=await api.startSubscription(n,prompt(),approved);jobId=j.phase==='running'?j.id:null;await job(j);poll();}
+  activity={noteId:n.id,title:n.title||'Untitled',goal:approved.goal,requestId:null,phase:'starting',message:'Preparing the explicitly approved saved note.'};pollErrors=0;pollPaused=false;syncActivity();
+  try{const j=await api.startSubscription(n,approved.prompt,approved.context);jobId=j.phase==='running'?j.id:null;await job(j);poll();}
   catch(e){if(activity)activity={...activity,phase:'failed',message:e instanceof Error?e.message:String(e)};throw e;}
  });
  $('[data-subscription-stop]').onclick=()=>void run(async()=>{
@@ -160,7 +169,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   terminalMessage=cancellationMessage();status(terminalMessage);poll();
  });
  $('[data-ai-preview]').onclick=()=>void run(showReview);
- $('[data-ai-request]').onclick=()=>void run(async()=>{if(!await eligibility())throw new Error('This note is excluded from all AI access.');terminalMessage=null;await o.flush();const n=o.note();if(!n)throw new Error('Open a saved note first.');if(!prompt())throw new Error('Describe the change first.');const approved=context();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;const r=await api.createFormattingRequest(n.id,prompt(),approved);autoReview=true;await requests(r.id);await check();status('Request saved for the external agent. Ask it to check Noted formatting requests.');});
+ $('[data-ai-request]').onclick=()=>void run(async()=>{const approved=approval();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;const n=await savedForAI(approved.noteId);terminalMessage=null;const r=await api.createFormattingRequest(n.id,approved.prompt,approved.context);autoReview=true;await requests(r.id);await check();status('Request saved for the external agent. Ask it to check Noted formatting requests.');});
  $('[data-ai-existing]').onchange=()=>void run(async()=>{terminalMessage=null;selected=entries.find(r=>r.id===$<HTMLSelectElement>('[data-ai-existing]').value)??null;reply=null;componentReply=null;autoReview=false;if(selected)$<HTMLTextAreaElement>('[data-ai-prompt]').value=selected.prompt;await check();});
  $('[data-ai-check]').onclick=()=>void run(async()=>{await requests();await check();});
  $('[data-ai-cancel]').onclick=()=>void run(async()=>{terminalMessage=null;if(selected){await api.cancelFormattingRequest(selected.id);clearActivity(selected.id);}selected=null;reply=null;componentReply=null;autoReview=false;await requests('');selected=null;$<HTMLSelectElement>('[data-ai-existing]').value='';status('Request removed. Your note is unchanged.');});

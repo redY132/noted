@@ -30,11 +30,12 @@ async page => {
   await page.locator('#fixture-other').click(); await page.waitForFunction(id => window.__notedActivityHarness.current() === id, ids[1]);
   record('return-to-proposal saves the other draft first', (await page.locator('#editor .tiptap').innerText()).includes('Synthetic draft before proposal navigation.'));
   await page.locator('#fixture-other').click(); await page.waitForFunction(id => window.__notedActivityHarness.current() === id, ids[0]);
+  const beforeFormatting=await page.locator('#editor .tiptap').innerHTML();
   await start('completed'); await comparison(); await page.locator('[data-operations-apply]').click();
   await page.waitForFunction(() => document.querySelector('#editor strong') && !document.querySelector('[data-ai-outcome]').hidden);
   record('Apply clears activity and retains Undo', await page.locator('.ai-job-status').isHidden());
   await page.locator('[data-ai-undo]').click(); await page.waitForFunction(() => document.querySelector('[data-ai-outcome-text]').textContent.includes('undone'));
-  record('Undo restores original formatting', await page.locator('#editor strong').count() === 0);
+  record('Undo restores original formatting', await page.locator('#editor .tiptap').innerHTML() === beforeFormatting);
   await start(); await running(); await page.locator('[data-ai-close]').click(); await page.locator('[data-activity-open]').click(); await page.locator('[data-subscription-stop]').click();
   await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent === 'Cancellation reported'); record('Cancel removes only its owned simulated request and waits for local status', await page.evaluate(() => window.__notedActivityHarness.state.cancels === 1 && !window.__notedActivityHarness.state.row));
   await page.locator('[data-ai-close]').click(); await page.locator('[data-activity-dismiss]').click(); await start(); await running(); await page.evaluate(() => { window.__notedActivityHarness.state.failStatus = true; }); await page.locator('[data-ai-close]').click();

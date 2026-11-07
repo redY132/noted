@@ -8,8 +8,9 @@ function setup(){
  let rows:{id:string;noteId:string;prompt:string;expiresAt:string;status:string;kind?:'component'}[]=[],review:ProposalReview|null=null,release:((j:unknown)=>void)|undefined;
  const calls:string[]=[],errors:unknown[]=[],contexts:unknown[]=[],requestReads:string[]=[];
  let aiAllowed=true,jobResponse:any=null,jobFailure=false,cancelFailure=false,removeFailure=false,requestsFailure=false,accountFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
+ let eligibilityGate:Promise<void>|null=null,flushGate:Promise<void>|null=null;
  const api={
-  async noteAIAllowed(){return aiAllowed;},
+  async noteAIAllowed(){if(eligibilityGate)await eligibilityGate;return aiAllowed;},
   async schemaGuidanceCapabilities(){return{formattingProtocol:4,perRequestGuidanceConsent:true,componentSuggestions:true};},
   async subscriptionStatus(){calls.push('account');if(accountFailure)throw new Error('Synthetic account discovery failure');return{available:true,authentication:'chatgpt',message:'Signed in'};},
   async formattingRequests(id:string){requestReads.push(id);if(requestsFailure)throw new Error('Synthetic saved-request read failure');return rows.filter(r=>r.noteId===id);},
@@ -23,7 +24,7 @@ function setup(){
  };
  const ui=initializeAIFormatting(host,{
   api,native:true,schema:()=>({formatVersion:2,id:'guide',version:1,name:'Guide',rules:{body:{}},guide:{title:'Synthetic guide',document:{version:2,objects:{},readingOrder:[],layout:{id:'root',kind:'free',children:[]},styles:{}}}}),
-  note:()=>note,editor:()=>null,async openNote(id){calls.push('open:'+id);if(!openFailure)note={...note,id,title:'Synthetic job note'};},async flush(){calls.push('flush');if(invalidateOnReviewFlush)rows=rows.map(row=>({...row,status:'outdated'}));},error:e=>errors.push(e),
+  note:()=>note,editor:()=>null,async openNote(id){calls.push('open:'+id);if(!openFailure)note={...note,id,title:'Synthetic job note'};},async flush(){calls.push('flush');if(flushGate)await flushGate;if(invalidateOnReviewFlush)rows=rows.map(row=>({...row,status:'outdated'}));},error:e=>errors.push(e),
   async componentProposal(_value,settings){calls.push('component-review');review=settings;},async proposal(_ops,settings){calls.push('review');review=settings;},
  });
  return{
@@ -31,6 +32,8 @@ function setup(){
   $:<T extends HTMLElement>(s:string)=>host.querySelector<T>(s)!,setRows:(r:typeof rows)=>rows=r,getReview:()=>review,
   setNote(id:string){note={...note,id,title:'Synthetic other note'};},setOpenFailure(value:boolean){openFailure=value;},setJobFailure(value:boolean){jobFailure=value;},invalidateReviewFlush(){invalidateOnReviewFlush=true;},statusReads:()=>statusReads,
   setJobPhase(phase:string){jobResponse={...jobResponse,phase};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},setRequestsFailure(value:boolean){requestsFailure=value;},setAccountFailure(value:boolean){accountFailure=value;},
+  holdEligibility(){let release!:()=>void;eligibilityGate=new Promise<void>(resolve=>release=resolve);return()=>{eligibilityGate=null;release();};},
+  holdFlush(){let release!:()=>void;flushGate=new Promise<void>(resolve=>release=resolve);return()=>{flushGate=null;release();};},
   completeBackground(kind?:'component'){rows=[{kind,id:'running',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];jobResponse={id:'job',requestId:'running',noteId:'fixture',phase:'completed',message:'Proposal received'};},
   running(){rows=[{id:'running',noteId:note.id,prompt:'Make bold',expiresAt:'2099-01-01',status:'waiting'}];jobResponse={id:'job',requestId:'running',noteId:note.id,phase:'running',message:'Generating'};release!(jobResponse);},
   finish(kind?:'component'){rows=[{kind,id:'ready',noteId:startedNoteId,prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];release!({id:'job',requestId:'ready',noteId:startedNoteId,phase:'completed',message:'Cached proposal ready'});},
@@ -62,6 +65,29 @@ test('private notes visibly disable both AI generation routes without checking s
 test('the visible scope follows fresh guide consent without creating any request',async()=>{const f=setup();try{await f.ui.open(true);assert.match(f.$('[data-request-contents]').textContent!,/not included/);const guide=f.$<HTMLInputElement>('[data-ai-include-guide]');guide.checked=true;guide.dispatchEvent(new f.dom.window.Event('change'));assert.match(f.$('[data-request-contents]').textContent!,/full document guide \(Synthetic guide\)/);assert.equal(f.calls.includes('send'),false);assert.equal(f.calls.includes('external'),false);f.$('[data-ai-close]').click();await f.ui.open(true);assert.equal(guide.checked,false);assert.match(f.$('[data-request-contents]').textContent!,/not included/);}finally{f.close();}});
 
 const microtasks=()=>new Promise(resolve=>setImmediate(resolve));
+test('AI approval cannot follow navigation during eligibility or save for either request route',async()=>{
+ for(const route of ['[data-subscription-send]','[data-ai-request]'])for(const stage of ['eligibility','save']){
+  const f=setup();try{
+   await f.ui.open();const prompt=f.$<HTMLTextAreaElement>('[data-ai-prompt]');prompt.value='Only the approved synthetic note';prompt.dispatchEvent(new f.dom.window.Event('input'));
+   const release=stage==='eligibility'?f.holdEligibility():f.holdFlush();f.$(route).click();await microtasks();
+   f.$('[data-ai-close]').click();f.setNote('different-unapproved-note');release();await microtasks();await microtasks();
+   assert.equal(f.calls.includes('send'),false,`${route}/${stage} must not send the newly opened note`);
+   assert.equal(f.calls.includes('external'),false,`${route}/${stage} must not grant an external request for the newly opened note`);
+   assert.ok(f.errors.some(error=>String(error).includes('open note changed')));
+  }finally{f.close();}
+ }
+});
+
+test('an approved guidance snapshot survives closing during save without borrowing later dialog state',async()=>{
+ const f=setup();try{
+  await f.ui.open(true);f.$<HTMLInputElement>('[data-ai-include-guide]').checked=true;
+  const release=f.holdFlush();f.$('[data-subscription-send]').click();await microtasks();f.$('[data-ai-close]').click();
+  assert.equal(f.$<HTMLInputElement>('[data-ai-include-guide]').checked,false);release();await microtasks();await microtasks();
+  assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal((f.contexts[0] as any).includeGuidance,true);assert.equal((f.contexts[0] as any).schema.guide.title,'Synthetic guide');
+  f.finish();await microtasks();
+ }finally{f.close();}
+});
+
 test('explicit schema adherence does not reuse an owned ordinary-formatting proposal',async()=>{
  const f=setup();try{
   await f.ui.open();const p=f.$<HTMLTextAreaElement>('[data-ai-prompt]');p.value='Make bold';p.dispatchEvent(new f.dom.window.Event('input'));f.$('[data-subscription-send]').click();await microtasks();f.finish();await microtasks();
