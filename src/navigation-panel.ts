@@ -71,6 +71,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
   let open = true, expanded = new Set<string>(), ticket = 0, frame = 0, edgeTimer: ReturnType<typeof setTimeout> | undefined;
   let edgeKey = '', edgeError = false, loading = false;
   let positionsKey = '', positions: { x: number; y: number }[] = [];
+  let renderedNodes = '', renderedEdges = '';
   function focusId() {
     const el = document.activeElement as HTMLElement | null;
     return el?.closest<HTMLElement>('[data-note],[data-folder-graph-note]')?.dataset.note ?? el?.closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null;
@@ -95,12 +96,14 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
     const byId = new Map(shown.map((n, i) => [n.id, positions[i]]));
     const svg = canvas.querySelector('svg')!;
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.innerHTML = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).map(e => {
+    const edgeMarkup = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).map(e => {
       const a = byId.get(e.a)!, b = byId.get(e.b)!;
       return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
     }).join('');
+    if (edgeMarkup !== renderedEdges) { svg.innerHTML = edgeMarkup; renderedEdges = edgeMarkup; }
     const focused = focusId();
-    $('#folder-graph-nodes').innerHTML = shown.map((n, i) => `<button type="button" class="folder-graph-node" data-folder-graph-note="${escape(n.id)}" data-note-target="${escape(n.id)}" style="left:${positions[i].x}px;top:${positions[i].y}px" aria-label="Open ${escape(n.title || 'Untitled')}" title="${escape(n.title || 'Untitled')}"><span aria-hidden="true"></span></button>`).join('');
+    const nodeMarkup = shown.map((n, i) => `<button type="button" class="folder-graph-node" data-folder-graph-note="${escape(n.id)}" data-note-target="${escape(n.id)}" style="left:${positions[i].x}px;top:${positions[i].y}px" aria-label="Open ${escape(n.title || 'Untitled')}" title="${escape(n.title || 'Untitled')}"><span aria-hidden="true"></span></button>`).join('');
+    if (nodeMarkup !== renderedNodes) { $('#folder-graph-nodes').innerHTML = nodeMarkup; renderedNodes = nodeMarkup; }
     if (focused && document.activeElement === document.body) root.querySelector<HTMLButtonElement>(`[data-folder-graph-note="${focused}"]`)?.focus({ preventScroll: true });
     const count = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).length;
     $('#folder-graph-summary').textContent = edgeError ? 'Connections could not load. Refresh to retry.' : !notes.length ? 'This collection has no notes yet.' : `${shown.length} of ${total} notes · ${count} saved ${count === 1 ? 'connection' : 'connections'}${loading ? ' · Updating' : ''}`;

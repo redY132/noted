@@ -262,3 +262,11 @@ Help now explains Load proposal as a local retry and distinguishes pending
 cancellation from a reported outcome. Its generated-note browser fixture passed
 16 workflow checks and six layout/theme/text-size profiles. Help does not invoke
 account discovery, generation or access settings.
+
+An unchanged connection refresh also recreated graph controls and emitted four
+focus events for one focused note. Cached node/edge markup now avoids those
+DOM replacements while still updating real title, position and connection
+changes. The regression retains one focus event; all 304 frontend tests and
+122 rendered sidebar checks across the same 14 profiles passed. The browser
+check observed no added node controls or repeated focus during an unchanged
+refresh. This is a DOM/focus observation, not a measured latency improvement.

@@ -165,7 +165,21 @@ async page => {
   record('pointer exit preserves a keyboard-focused graph note', await graphButton.evaluate(el => el.classList.contains('highlighted')));
   await page.locator('#folder-graph-refresh').focus();
   record('focus exit clears the old graph target', await page.locator(`[data-folder-graph-note="${openedId}"]`).evaluate(el => el.classList.contains('highlighted')));
-  await graphButton.focus(); await page.keyboard.press('Enter');
+  await graphButton.focus();
+  const unchangedRefresh = await page.evaluate(async () => {
+    const nodes = document.querySelector('#folder-graph-nodes'), focused = document.activeElement;
+    let additions = 0, focusEvents = 0;
+    const observer = new MutationObserver(records => { for (const record of records) additions += record.addedNodes.length; });
+    const onFocus = () => { focusEvents++; };
+    observer.observe(nodes, { childList: true }); nodes.addEventListener('focusin', onFocus);
+    try {
+      document.querySelector('#folder-graph-refresh').click();
+      await new Promise(resolve => setTimeout(resolve, 220));
+      return { additions, focusEvents, retained: document.activeElement === focused };
+    } finally { observer.disconnect(); nodes.removeEventListener('focusin', onFocus); }
+  });
+  record('unchanged connection refresh retains controls without repeated focus', unchangedRefresh.additions === 0 && unchangedRefresh.focusEvents === 0 && unchangedRefresh.retained);
+  await page.keyboard.press('Enter');
   await page.waitForFunction(id => document.querySelector('#header-connection-handle button')?.dataset.connectSource === id, graphNoteId);
   record('graph nodes open the chosen note by keyboard without hiding navigation', await page.locator('#folder-graph').isVisible());
   await ensureOpen(); await folder(fixture.observations).click(); await settle();

@@ -187,3 +187,11 @@ roughly 79-81 MiB from minute six onward. Peak sampled private memory across the
 process tree was 954.9 MiB. These are observations of this generated resource
 protocol, not continuous visibility/animation-throughput or hardware-budget
 certification. `output/resource-release-15min-state.json` preserves provenance.
+
+The matching `6def8e9` package also completed its short disconnected smoke while
+the desktop connection was interrupted. After reconnection, the saved report
+confirmed 15 switches and saved/restored edit pairs, eight created workers with
+zero active, and all ten media checks passing. Post-collection renderer memory
+was 103.6 MiB and main JS heap 11.8 MiB. Its source-specific state is preserved in
+`output/resource-release-6def-smoke-state.json`. This 20-second workload is a
+packaging/functional smoke, not another endurance or reference-hardware result.

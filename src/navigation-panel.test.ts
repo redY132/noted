@@ -44,9 +44,14 @@ test('long lists keep the focused note in the bounded graph and survive an async
     document.querySelector<HTMLButtonElement>(`[data-note="${notes[94].id}"]`)!.focus();
     await delay(); assert.ok(document.querySelector(`[data-folder-graph-note="${notes[94].id}"].highlighted`));
     assert.ok(calls.every(ids => ids.length <= 60));
+    const focusNotifications: string[] = [];
+    document.querySelector('#folder-graph-nodes')!.addEventListener('focusin', () => focusNotifications.push('focus'));
     const node = document.querySelector<HTMLButtonElement>(`[data-folder-graph-note="${notes[94].id}"]`)!; node.focus();
     document.querySelector<HTMLButtonElement>('#folder-graph-refresh')!.click(); await delay();
     assert.equal((document.activeElement as HTMLElement).dataset.folderGraphNote, notes[94].id);
+    assert.equal(focusNotifications.length, 1, 'Unchanged connection refresh must not repeat keyboard focus announcements');
+    h.ui.setNotes(notes.map(n => n.id === notes[94].id ? { ...n, title: 'Renamed synthetic note' } : n), 95, notes[94].id); await delay();
+    assert.equal(document.querySelector(`[data-folder-graph-note="${notes[94].id}"]`)!.getAttribute('aria-label'), 'Open Renamed synthetic note');
     h.ui.setOpen(false); assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.inert, true);
   } finally { h.close(); }
 });
