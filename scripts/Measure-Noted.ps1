@@ -31,9 +31,22 @@ $app=$null;$worker=$null;$memory=[Collections.Generic.List[object]]::new()
 function Read-TreeMemory([int]$RootId){
  $all=@(Get-CimInstance Win32_Process);$ids=[Collections.Generic.HashSet[int]]::new();[void]$ids.Add($RootId)
  do{$added=$false;foreach($process in $all){if($ids.Contains([int]$process.ParentProcessId)-and $ids.Add([int]$process.ProcessId)){$added=$true}}}while($added)
- $private=0L;$working=0L;$count=0
- foreach($processId in $ids){$item=Get-Process -Id $processId -ErrorAction SilentlyContinue;if($item){$private+=$item.PrivateMemorySize64;$working+=$item.WorkingSet64;$count++}}
- [pscustomobject]@{elapsedMs=$clock.ElapsedMilliseconds;processes=$count;sumPrivateBytes=$private;sumWorkingSetBytes=$working}
+ $private=0L;$working=0L;$count=0;$roles=@{};$metadata=@{}
+ foreach($entry in $all){$metadata[[int]$entry.ProcessId]=$entry}
+ foreach($processId in $ids){
+  $item=Get-Process -Id $processId -ErrorAction SilentlyContinue
+  if($item){
+   $role=if($processId -eq $RootId){'app'}else{'browser'}
+   if($processId -ne $RootId -and [string]$metadata[$processId].CommandLine -match '(?:^|\s)--type="?([a-z-]+)'){
+    $role=if($Matches[1] -in @('renderer','gpu-process','utility','crashpad-handler')){$Matches[1]}else{'other'}
+   }
+   if(-not $roles.ContainsKey($role)){$roles[$role]=@{processes=0;privateBytes=0L;workingSetBytes=0L}}
+   $roles[$role].processes++;$roles[$role].privateBytes+=$item.PrivateMemorySize64;$roles[$role].workingSetBytes+=$item.WorkingSet64
+   $private+=$item.PrivateMemorySize64;$working+=$item.WorkingSet64;$count++
+  }
+ }
+ # Only allowlisted role labels and byte counts are recorded, never command lines or paths.
+ [pscustomobject]@{elapsedMs=$clock.ElapsedMilliseconds;processes=$count;sumPrivateBytes=$private;sumWorkingSetBytes=$working;byRole=$roles}
 }
 try{
  $cpu=Get-CimInstance Win32_Processor|Select-Object -First 1;$system=Get-CimInstance Win32_ComputerSystem;$os=Get-CimInstance Win32_OperatingSystem
