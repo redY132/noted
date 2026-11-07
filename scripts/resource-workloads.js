@@ -26,6 +26,15 @@ async page => {
       await wait(row, 'SEARCH_TIMEOUT'); row().click();
       await wait(() => document.querySelector('#note-title')?.value === name && !document.querySelector('.quick-open-dialog')?.open, 'OPEN_NOTE_TIMEOUT');
     };
+    const componentState = () => {
+      const viewport = document.querySelector('.document-scroll').getBoundingClientRect(), buttons = [...document.querySelectorAll('.interactive-component-body button')].filter(button => button.textContent?.trim() === '+');
+      return { instances: document.querySelectorAll('.interactive-component-body').length, renderedButtons: buttons.length, visibleButtons: buttons.filter(button => { const r = button.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > viewport.left && r.left < viewport.right && r.bottom > viewport.top && r.top < viewport.bottom; }).length };
+    };
+    const components = result.componentVisibility = { readiness: options.navigationOpen ? 'visible-subset' : 'eight-visible', observations: 0, minimumVisibleButtons: null, maximumVisibleButtons: 0, maximumRenderedButtons: 0 };
+    const readyComponents = async () => {
+      await wait(() => { const state = componentState(); components.last = state; return state.instances === 8 && (options.navigationOpen ? state.visibleButtons > 0 : state.visibleButtons === 8); }, 'COMPONENT_READY_TIMEOUT');
+      const state = componentState(); components.observations++; components.minimumVisibleButtons = Math.min(components.minimumVisibleButtons ?? state.visibleButtons, state.visibleButtons); components.maximumVisibleButtons = Math.max(components.maximumVisibleButtons, state.visibleButtons); components.maximumRenderedButtons = Math.max(components.maximumRenderedButtons, state.renderedButtons);
+    };
     const workers = { created: 0, active: 0 }, OriginalWorker = window.Worker;
     window.Worker = class extends OriginalWorker {
       constructor(url, settings) { super(url, settings); this.counted = String(url).includes('component-runtime-worker'); this.stopped = false; if (this.counted) { workers.created++; workers.active++; } }
@@ -37,16 +46,18 @@ async page => {
     setTimeout(() => { void (async () => {
       result.phase = 'preparing'; result.preparationStartedAt = Date.now();
       if (['full', 'components'].includes(options.case)) {
+        result.stage = 'enabling-components';
         await open('eight-active-components'); document.querySelector('#view-toggle').click();
         const toggle = document.querySelector('[data-panel-choice=components]'); if (!toggle.checked) toggle.click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         document.querySelector('#interactive-library').click(); await wait(() => document.querySelector('#component-library-dialog')?.open, 'COMPONENT_DIALOG_TIMEOUT');
         const picker = document.querySelector('[data-component-picker]'); picker.value = 'noted.benchmark@1'; picker.dispatchEvent(new Event('change', { bubbles: true })); document.querySelector('[data-component-enable]').click();
         await wait(() => document.querySelector('[data-component-status]')?.textContent.includes('enabled'), 'COMPONENT_ENABLE_TIMEOUT');
-        document.querySelector('#component-library-dialog [data-tool-close]').click(); await wait(() => document.querySelectorAll('.interactive-component-body button').length === 8, 'COMPONENT_READY_TIMEOUT');
+        document.querySelector('#component-library-dialog [data-tool-close]').click();
         document.querySelector('#view-toggle').click(); if (toggle.checked) toggle.click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        result.stage = 'waiting-for-visible-components'; await readyComponents();
       }
-      const text = 'ordinary-100-paragraphs', components = 'eight-active-components';
-      const cases = { text: [text, 'long-1000-paragraphs'], images: [text, 'artistic-100-panels'], mixed: [text, 'mixed-free-media-100-panels'], components: [text, components], full: [text, components, 'long-1000-paragraphs', components, 'artistic-100-panels', components, 'mixed-free-media-100-panels', components] };
+      const text = 'ordinary-100-paragraphs', componentNote = 'eight-active-components';
+      const cases = { text: [text, 'long-1000-paragraphs'], images: [text, 'artistic-100-panels'], mixed: [text, 'mixed-free-media-100-panels'], components: [text, componentNote], full: [text, componentNote, 'long-1000-paragraphs', componentNote, 'artistic-100-panels', componentNote, 'mixed-free-media-100-panels', componentNote] };
       result.phase = 'running'; result.startedAt = Date.now(); const until = Date.now() + options.seconds * 1000;
       result.navigation = { requestedOpen: options.navigationOpen, initiallyOpen: browse.getAttribute('aria-expanded') === 'true', initialWritingWidth: Math.round(document.querySelector('.document-scroll').getBoundingClientRect().width) };
       const visibility = result.documentVisibility = { source: 'page-visibility-api', scope: 'workload-and-idle', initiallyHidden: document.hidden, changes: 0, observedMs: 0, hiddenMs: 0 };
@@ -64,7 +75,7 @@ async page => {
       };
       while (Date.now() < until) {
         const name = cases[options.case][result.switches % cases[options.case].length]; result.stage = 'opening'; await open(name);
-        if (name === components) await wait(() => document.querySelectorAll('.interactive-component-body button').length === 8, 'COMPONENT_READY_TIMEOUT');
+        if (name === componentNote) await readyComponents();
         if (options.case === 'full') {
           result.stage = 'saving'; const revision = () => Number(document.querySelector('#revision-label').textContent.match(/\d+/)?.[0]); const previous = revision();
           const paragraph = document.querySelector('#editor p'), before = paragraph.textContent, editor = document.querySelector('#editor .tiptap');

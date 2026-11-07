@@ -71,6 +71,15 @@ the directory and saved-connections graph during repeated note navigation.
 Keep its results separate from the default closed-dock controls; the narrower
 writing area and graph work make them different protocols.
 
+The component note stores eight instances. With Browse closed, resource
+readiness requires eight geometrically visible benchmark controls. With Browse
+open, it requires the visible subset and records its minimum/maximum counts;
+offscreen components retain their normal visibility gating. Component tools
+close before that check. This differs from older kits that waited for eight
+rendered controls even in the narrow dock-open viewport. UI layout checks are
+available separately in `scripts/component-grid-smoke.js` for an exact generated,
+runner-disabled native fixture. Neither count certifies animation throughput.
+
 Every native run disables the subscription runner, strips API credentials from
 the child environment and uses empty client/config directories. The runner
 copies only checksummed generated fixture payloads, rejecting unsafe paths and

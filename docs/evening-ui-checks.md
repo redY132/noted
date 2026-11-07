@@ -338,3 +338,19 @@ The visibility check measures the selection caret or empty-line break. Its
 initial paragraph-box assertion produced a false failure at a 1.14px fractional
 edge while the caret was visible; that is not a latency or invisible-caret
 finding. Browser checks do not certify physical input timing.
+
+A native generated grid diagnostic exposed approximately 3.4px widget bodies in
+the narrow writing area and default text contrast of 1.21:1 against the widget's
+own dark surface. The scoped CSS prototype preserved four authored columns,
+used the existing 160px component-width floor, kept overflow inside the writing
+area and gave controls a 44px hit area. Inner bodies measured 126px. Default
+text contrast then measured 13.69:1 Light and 12.61:1 Dark; explicit definition
+colors are still author-controlled.
+
+The prototype passed the reusable `component-grid-smoke.js`: 24 checks across
+eight viewport/theme profiles, scrolling to the last genuine control, unchanged
+note revision/fingerprint, zero workers after disabling/leaving and one shared
+worker after enabling. This used injected candidate CSS against a generated
+fixture, not a newly built production executable. Matching-build and corrected
+resource runs remain separate verification steps. Toggle labels receive the
+minimum hit area without enlarging their native checkbox glyph.

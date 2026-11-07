@@ -26,6 +26,9 @@
 .note-panel-content { position: relative; min-width: 0; }
 .note-panel[data-layout-kind="row"] > .note-panel-content { display:flex; flex-direction:row; flex-wrap:wrap; gap:var(--layout-gap,12px); align-items:flex-start; }
 .note-panel[data-layout-kind="grid"] > .note-panel-content { display:grid; grid-template-columns:repeat(var(--grid-columns,2),minmax(0,1fr)); gap:var(--layout-gap,12px); align-items:start; }
+/* Keep authored widget columns readable; the writing area scrolls wide grids. */
+.note-panel[data-layout-kind="grid"]:has(> .note-panel-content > .interactive-component) { min-width:min-content; }
+.note-panel[data-layout-kind="grid"] > .note-panel-content:has(> .interactive-component) { grid-template-columns:repeat(var(--grid-columns,2),minmax(160px,1fr)); }
 .note-panel[data-layout-kind="column"] > .note-panel-content { display:flex; flex-direction:column; gap:var(--layout-gap,12px); }
 .note-panel-content > .note-component { min-width:0; max-width:100%; }
 .note-panel-content > [data-placement="free"] { max-width:none; }
@@ -45,9 +48,11 @@
 .local-image img:not([src]) { display: none; }
 .image-status { display: block; padding: 20px; background: #f4f6ee; font-size: 12px; color: #666; }
 .image-status[hidden] { display: none; }
-.interactive-component { padding:16px; border:1px solid var(--ui-border); background:var(--ui-surface); border-radius:8px; min-height:64px; }
+.interactive-component { padding:16px; border:1px solid var(--ui-border); background:var(--ui-surface); color:var(--ui-text); border-radius:8px; min-height:64px; }
 .interactive-component-body small { display:block; margin-top:8px; color:var(--ui-muted); }
 .interactive-component-body button,.interactive-component-body input { font:inherit; color:var(--ui-text); background:var(--ui-subtle); border:1px solid var(--ui-border); border-radius:5px; padding:6px 10px; }
+.interactive-component-body button,.interactive-component-body input[data-component-path] { min-width:44px; min-height:44px; }
+.interactive-component-body label[data-component-path] { display:flex; align-items:center; gap:8px; min-width:44px; min-height:44px; }
 .interactive-component-body button { cursor:pointer; }
 .component-fallback { color:var(--ui-muted); font:13px/1.5 system-ui,sans-serif; }
 .document-tool-dialog { width:min(700px,calc(100vw - 32px)); max-height:calc(100dvh - 50px); overflow:auto; padding:20px; color:var(--ui-text); background:var(--ui-surface); font:13px/1.5 system-ui,sans-serif; border:1px solid var(--ui-border); }

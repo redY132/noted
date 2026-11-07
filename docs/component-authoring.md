@@ -6,6 +6,14 @@ The wire contract is in [component-manifest.schema.json](component-manifest.sche
 
 ## Authoring contract
 
+Note grids containing interactive components retain their declared column count
+and use the existing 160px component-width minimum per cell. The writing area
+scrolls wider grids instead of compressing their controls. Default widget text
+uses the widget surface's theme foreground; explicit colors still belong to the
+definition. Buttons, text inputs and toggle labels have a 44px minimum hit area.
+Complex custom layouts still need inspection at the intended available widths;
+this is not a complete automatic widget-viewport contract.
+
 Source is a JavaScript expression producing `{render(input, ui), reduce(input, event)}`. `render` returns a declarative toolkit tree. `reduce` optionally returns `{state, transient}`. Inputs are JSON copies and deeply frozen. `properties` and persistent/transient state have declared scalar fields with validated types, optional bounds and defaults. A user event can persist state; an animation tick cannot. Persistent state passes through an editor transaction and shares ordinary Undo. Transient state resets when an instance is unloaded.
 
 ```javascript

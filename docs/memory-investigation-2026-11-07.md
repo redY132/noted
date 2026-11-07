@@ -216,3 +216,27 @@ This dock-open/280px writing protocol differs from the earlier closed-dock
 controls. Layout, visible media and component activity can differ; the memory
 values are not a controlled speedup or budget certification. The local state
 and exact report are preserved in `output/resource-release-dock-3min-state.json`.
+
+## Incomplete eight-minute setup and corrected readiness
+
+The `a65121b` dock-open attempt did not enter the timed workload. Its saved
+report records `COMPONENT_READY_TIMEOUT`, zero switches and zero edit/restore
+pairs. The host sampled the window, but this is not an eight-minute navigation
+or memory acceptance result; subsequent media checks were skipped. The owned
+app closed. State is retained in
+`output/resource-release-a651-dock8min-incomplete-state.json`.
+
+A separate attached diagnostic reused only that generated fixture. Its fixed
+four-column grid compressed widget bodies to about 3.4px in the narrow writing
+area. The candidate CSS retained four columns, used a 160px cell minimum and
+kept horizontal overflow in the writing area. Inner bodies measured 126px and
+controls at least 44px. Fresh code enablement left four controls visible there;
+disabling removed the worker and re-enabling used one shared worker. The
+prototype also passed 24 layout/theme/data/cleanup checks across eight profiles.
+It is not a measured resource run.
+
+The updated driver closes component tools before readiness and records genuine
+benchmark-control visibility. Its default closed-dock mode requires eight
+visible controls; dock-open mode exercises the visible subset of eight stored
+instances. New results must be identified as this protocol. Offscreen gating
+remains active. A corrected fresh run is required before claiming completion.
