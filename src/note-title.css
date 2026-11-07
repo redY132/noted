@@ -1,0 +1,9 @@
+.note-title {
+  display: block;
+  field-sizing: content;
+  min-height: 1.3em;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.note-title:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }

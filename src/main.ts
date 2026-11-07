@@ -35,6 +35,8 @@ import { applyLayoutPreferences, initializeShell, readLayout, shellTopbar, shell
 import './shell-ui.css';
 import './shell-motion.css';
 import './theme.css';
+import { initializeNoteTitle } from './note-title';
+import './note-title.css';
 import './error-banner.css';
 import './workspace-backup.css';
 import { initializeNavigation, navigationMarkup } from './navigation-panel';
@@ -74,7 +76,7 @@ $('#app').innerHTML = `
     <section id="note-pane" class="note-pane" hidden>
       <div class="note-product-actions"><button id="open-presets">Note presets</button><button type="button" id="edit-schema" title="Free Placement, reusable schemas and full document guides">Schemas &amp; layout</button><button id="open-ai-formatting">Format with AI</button><button id="copy-block-link">Copy block link</button><button id="trash-current">Move note to Trash</button></div>${formattingMarkup}
       ${componentMarkup.replace('<div class="component-toolbar"','<div id="layout-tools" class="component-toolbar"')}
-      <div class="document-scroll"><article class="document" data-schema="default"><div id="note-kicker" class="document-kicker"><span id="note-date"></span></div><input id="note-title" class="note-title" aria-label="Note title" placeholder="Untitled" maxlength="300" /><div id="note-details" class="note-properties">${schemaControl}<label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div></article></div>
+      <div class="document-scroll"><article class="document" data-schema="default"><div id="note-kicker" class="document-kicker"><span id="note-date"></span></div><textarea id="note-title" class="note-title" aria-label="Note title" aria-describedby="note-title-hint" placeholder="Untitled" maxlength="300" rows="1"></textarea><span id="note-title-hint" hidden>Press Enter to move into the note body.</span><div id="note-details" class="note-properties">${schemaControl}<label><span>Folder</span><select id="note-folder" aria-label="Move note to folder"></select></label><label class="tag-field"><span>Tags</span><input id="note-tags" aria-label="Note tags, separated by commas" placeholder="Add tags, separated by commas" /></label></div><div id="editor"></div></article></div>
       <footer id="note-footer" class="editor-footer"><span id="word-count">0 words</span><span id="revision-label"></span></footer>
     </section>
   </main>
@@ -97,6 +99,7 @@ let previousSaveUI: ReturnType<typeof initializePreviousSave> | null = null;
 let selectedFolder: string | null | 'all' = 'all';
 let session: NoteSession | null = null;
 let editor: Editor | null = null;
+const noteTitleUI = initializeNoteTitle($<HTMLTextAreaElement>('#note-title'), () => editor?.view.focus());
 let navigating = false;
 let readingPositionEpoch = 0;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -309,7 +312,7 @@ function refreshMetadata() {
   if (!session) return;
   const note = session.note;
   noteHistory.update(note); historyUI?.sync();
-  $<HTMLInputElement>('#note-title').value = note.title;
+  noteTitleUI.set(note.title);
   $<HTMLInputElement>('#note-tags').value = note.tags.join(', ');
   $<HTMLSelectElement>('#note-folder').value = note.folderId ?? '';
   $<HTMLSelectElement>('#schema').value = note.presentation.schemaId;
@@ -397,7 +400,7 @@ async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
   finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); outlineUI?.sync(); previousSaveUI?.sync(); }
 }
 async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
-async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLInputElement>('#note-title').focus(); $<HTMLInputElement>('#note-title').select(); }
+async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLTextAreaElement>('#note-title').focus(); $<HTMLTextAreaElement>('#note-title').select(); }
 async function dailyNote() {
   const now = new Date(), date = localCalendarDate(now)!;
   // Reconciliation can still be discovering an externally imported daily note.
@@ -461,7 +464,7 @@ $('#daily-note').onclick = () => { void dailyNote().catch(error); };
 $('#all-notes').onclick = () => { selectedFolder = 'all'; navigationUI?.choose('all'); renderFolders(); void renderList(); };
 $('#note-list').onclick = event => { if ((event.target as HTMLElement).closest('#show-more')) { void renderList(false); return; } const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-note]'); if (button) void openNote(button.dataset.note!).then(() => { if (session?.note.id === button.dataset.note) navigationUI?.noteOpened(); }); };
 $('#search').oninput = () => { clearTimeout(searchTimer); searchGeneration++; searchTimer = setTimeout(() => { void renderList(); }, 180); };
-$('#note-title').oninput = () => { const title = $<HTMLInputElement>('#note-title').value; edit(n => { n.title = title; }); if(session){noteHistory.update(session.note);historyUI?.sync();} const handle=$<HTMLButtonElement>('#header-connection-handle [data-connect-source]'); handle.dataset.sourceTitle=title || 'Untitled'; handle.setAttribute('aria-label','Connections for '+(title || 'Untitled')); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
+$('#note-title').oninput = () => { const title = $<HTMLTextAreaElement>('#note-title').value; edit(n => { n.title = title; }); if(session){noteHistory.update(session.note);historyUI?.sync();} const handle=$<HTMLButtonElement>('#header-connection-handle [data-connect-source]'); handle.dataset.sourceTitle=title || 'Untitled'; handle.setAttribute('aria-label','Connections for '+(title || 'Untitled')); $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${title || 'Untitled'}`; };
 $('#note-tags').oninput = () => { const tags = [...new Set($<HTMLInputElement>('#note-tags').value.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))]; edit(n => { n.tags = tags; }); };
 $('#note-folder').onchange = () => { edit(n => { n.folderId = $<HTMLSelectElement>('#note-folder').value || null; }); if(session){noteHistory.update(session.note);historyUI?.sync();} $('#breadcrumb').textContent = `${folderPath(session!.note.folderId)}  /  ${session!.note.title || 'Untitled'}`; };
 $('#schema').onchange = () => { const schemaId = $<HTMLSelectElement>('#schema').value as SchemaId; edit(n => { n.presentation.schemaId = schemaId; }); $('.document').dataset.schema = schemaId; editingUI.sync(); };

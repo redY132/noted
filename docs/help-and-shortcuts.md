@@ -1,8 +1,13 @@
 # Help and shortcuts
 
-Choose **View > Help & shortcuts** to search 23 command and workflow references. Search titles, command routes, keys or words such as `schema`, `previous save` and `subscription`. Exact key chords take priority; `Ctrl+P` and `Ctrl P` find the same command. Clear search restores every entry.
+Choose **View > Help & shortcuts** to search the local command and workflow reference. Search titles, command routes, keys or words such as `schema`, `previous save` and `subscription`. Exact key chords take priority; `Ctrl+P` and `Ctrl P` find the same command. Clear search restores every entry.
 
 The reference covers navigation, writing, recovery, appearance and optional AI proposals. Key labels follow the platform. Windows uses Alt Left/Right for note history; Mac users are directed to View so word-navigation keys are not overridden. Slash opens library search only outside editable text. Escape then Tab leaves editor indentation behavior for app controls.
+
+Titles wrap within the writing area and retain the existing 300-character
+metadata field. Enter moves into the body; composing input is not interrupted.
+Pasted line breaks become spaces. The local help also explains Load proposal
+and pending cancellation, without starting generation or account discovery.
 
 Help is static and local. It works before the first note exists and needs no account, workspace scan or network. Opening, searching and closing it do not edit notes, change selection, clear Undo, generate proposals or grant access. Its search field, Clear search, Close and scrollable results are keyboard accessible. Escape closes it once and returns focus to View.
 

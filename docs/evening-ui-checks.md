@@ -289,3 +289,20 @@ the verified GUI was copied; no companion or model client was launched. The
 owned fixture app closed afterward. This is local cache evidence, not a live
 generation test. `output/packaged-cached-proposal-state.json` records the source
 and local log; generated native screenshots remain under `output/playwright/`.
+
+Long-title follow-up: narrow native screenshots exposed the document heading's
+single-line clipping. The title now wraps in an auto-sizing textarea while
+retaining the same 300-character metadata value. Enter continues into the body;
+an accessible hint and local help explain it. Pasted line breaks become spaces,
+composition is preserved until commit, and loading metadata does not create an
+edit or reset an unchanged selection. Older WebViews use one bounded sizing
+observer instead of relying on CSS field sizing.
+
+All 309 frontend tests and type checking passed. The title fixture passed 15
+checks across eight Light/Dark/window/text-size profiles with native CSS sizing,
+and again with forced fallback sizing. It checks save/reopen, wrapping, shrinking,
+Control Enter, body visibility after Enter and pasted line breaks. Fallback
+sizing also passed all 123 sidebar checks across 14 profiles; Help passed 16
+checks/six profiles with selection and Undo intact. Both narrow title screenshots
+were manually inspected. No document-format, access or model-call change is
+needed for this field update.
