@@ -42,5 +42,6 @@ try {
  }
  if($entries.Count -ne $seen.Count+1){throw 'PACKAGE_UNLISTED_PAYLOAD'}
  foreach($required in @('noted.exe','noted-agent.exe','noted-private-import.exe','README.txt','ai-privacy.md','help-and-shortcuts.md','backup-restore.md','evening-session-2026-11-06.md')){if(-not $seen.ContainsKey($required)){throw 'PACKAGE_REQUIRED_PAYLOAD_MISSING'}}
- @{passed=$true;archive=$archivePath;sha256=$digest;sourceCommit=$manifest.sourceCommit;files=$seen.Count;signed=$false;hardwareCertified=$false} | ConvertTo-Json -Compress
+ $guiSha256=($manifest.files | Where-Object path -eq 'noted.exe').sha256
+ @{passed=$true;archive=$archivePath;sha256=$digest;sourceCommit=$manifest.sourceCommit;guiSha256=$guiSha256;files=$seen.Count;signed=$false;hardwareCertified=$false} | ConvertTo-Json -Compress
 } finally {$zip.Dispose()}

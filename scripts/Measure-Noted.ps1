@@ -41,7 +41,7 @@ try{
  while(-not $endpoint){if($app.HasExited){throw 'Noted exited before the test started. Read app-error.log.'};if($clock.Elapsed.TotalSeconds -gt 60){throw 'The test WebView endpoint did not become ready.'};try{$endpoint=Invoke-RestMethod -Uri "http://127.0.0.1:$Port/json/version" -TimeoutSec 1}catch{Start-Sleep -Milliseconds 100}}
  $endpointReadyMs=$clock.ElapsedMilliseconds
  & $node $PlaywrightCLI "-s=$session" attach "--cdp=http://127.0.0.1:$Port" *> (Join-Path $run 'attach.log');if($LASTEXITCODE -ne 0){throw 'Playwright attachment failed. Read attach.log.'}
- $options=@{minutes=$Minutes;cpuSlowdown=$CpuSlowdown}|ConvertTo-Json -Compress
+ $options=@{minutes=$Minutes;cpuSlowdown=$CpuSlowdown;fixtureWorkspace=$workspace}|ConvertTo-Json -Compress
  $optionScript=Join-Path $run 'set-options.js';[IO.File]::WriteAllText($optionScript,"async page=>{await page.waitForFunction(()=>document.querySelector('#header-connection-handle button'));await page.evaluate(options=>window.notedBenchmarkOptions=options,$options);return true;}")
  & $node $PlaywrightCLI "-s=$session" run-code --filename $optionScript *> (Join-Path $run 'ready.log');if($LASTEXITCODE -ne 0){throw 'The editor did not become ready. Read ready.log.'}
  $editorReadyMs=$clock.ElapsedMilliseconds

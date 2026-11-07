@@ -6,6 +6,8 @@ The private Windows x64 alpha ZIP contains the three executables, curated featur
 
 Every payload has a size and SHA-256 in the manifest. The ZIP has a separate `.sha256` file. Packaging invokes `Test-Portable.ps1` before updating `output/portable-latest.json`.
 
+The verifier is also bundled for use after extraction. Its result includes the verified GUI hash so the reference-test kit can prove it copied that same executable, rather than a stale build output.
+
 ```powershell
 ./scripts/Build-Portable.ps1
 ./scripts/Test-Portable.ps1 -Archive ./output/Noted-alpha-<stamp>-<commit>.zip

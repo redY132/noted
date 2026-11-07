@@ -11,11 +11,13 @@ A CPU-throttled browser or a VM on this PC does not establish behavior on a diff
 Build a kit after the release build:
 
 ```powershell
-npm run desktop:build
+./scripts/Build-Portable.ps1
 node --experimental-strip-types scripts/build-reference-kit.mjs
 ```
 
 The generated `output/reference-kit-…` folder contains `Noted.exe`, checksummed disposable fixtures, a benchmark component definition, `Measure-Noted.ps1`, the workload script and instructions. It excludes personal notes, model weights, caches, credentials and device approvals. Its manifest records the source commit, whether source changes were present and SHA-256 hashes of the actual executable/fixture/scripts.
+
+Kit creation requires a clean committed source tree and a verified portable release for that exact commit. The executable must match the release's measured SHA-256. The runner passes its freshly created workspace to the workload script; a native status check requires that exact path and disabled local/hosted sharing before navigation or editing begins. Workloads use Open note rather than depending on sidebar visibility. The kit still does not certify a machine or model physical input latency.
 
 On the actual test laptop, install Node.js 24+, WebView2 and `@playwright/cli` 0.1.22. Once those prerequisites are installed, the kit does not need network access. Run:
 
@@ -35,7 +37,7 @@ For a development sensitivity run only:
 
 The runner records CPU, RAM, OS and battery status; process-launch-to-debug-endpoint and automated-editor-ready proxies; sampled process-tree private memory/working sets; writing/frame scheduling samples; browser Event Timing entries when available; four document workloads; eight visible animated components; optional longer-session cycling; and Worker teardown after leaving the component note.
 
-Each writing workload runs three times before longer-session cycling. Components begin disabled and are enabled explicitly only in the disposable profile. The runner verifies one Worker for eight visible instances and zero after leaving the note. The corpus contains 100 paragraphs, 1,000 paragraphs, 100 text panels, mixed free media and eight interactive components.
+Each writing workload runs three times before longer-session cycling. Current kits use the full writing area for those cases, plus a separate three-run ordinary-note case with Browse open; every result records the actual writing width and navigation state. This differs from earlier kits and is not a controlled before/after performance comparison. Components begin disabled and are enabled explicitly only in the disposable profile. The runner verifies one Worker for eight visible instances and zero after leaving the note. The corpus contains 100 paragraphs, 1,000 paragraphs, 100 text panels, mixed free media and eight interactive components. Local and hosted sharing must remain disabled throughout.
 
 `beforeinput`-to-animation-frame is a scheduling proxy, not physical keyboard-to-paint. Browser Event Timing is quantized and excludes physical input delivery. Startup includes remote-debugging/automation overhead. Private-memory sampling is not a guaranteed peak; summed working sets double-count shared pages. The report always says **NOT CERTIFIED** until the actual hardware and physical input/cold-start acceptance have been reviewed.
 
