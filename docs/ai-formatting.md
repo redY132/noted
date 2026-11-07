@@ -118,7 +118,7 @@ sending note data. In development, `npm run agent:dev:build` rebuilds the matchi
 companion without modifying notes or sign-in. Packaged builds keep it beside
 `noted.exe`. Model requests remain fallible and may need a deliberate retry.
 
-The latest implementation checkpoint passed 309 frontend tests and 113 native
+The latest implementation checkpoint passed 310 frontend tests and 113 native
 tests, with four optional model/corpus tests ignored. Browser workflow tests
 under `experiments/ai-activity/` explicitly stub every account/model method and
 refuse native execution or an unrelated existing browser store. Native process

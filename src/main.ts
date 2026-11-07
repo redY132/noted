@@ -515,12 +515,13 @@ $('#rebuild-index').onclick = async () => {
   finally { button.disabled = false; }
 };
 document.addEventListener('keydown', event => {
-  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'p' && !event.isComposing) {
+  if (event.isComposing) return;
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'p') {
     event.preventDefault();
-    if (!document.querySelector('dialog[open]') || $('#quick-open-host dialog').hasAttribute('open')) { if (!navigating) quickOpenUI?.show(); }
+    if (!event.repeat && (!document.querySelector('dialog[open]') || $('#quick-open-host dialog').hasAttribute('open'))) { if (!navigating) quickOpenUI?.show(); }
   }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void flush().catch(() => {}); }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); if (!document.querySelector('dialog[open]')) void newNote(); }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') { event.preventDefault(); if (!event.repeat) void flush().catch(() => {}); }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'n') { event.preventDefault(); if (!event.repeat && !document.querySelector('dialog[open]')) void newNote(); }
   if (event.key === '/' && !(event.target as HTMLElement).closest('input,textarea,[contenteditable],dialog')) { event.preventDefault(); shell.setPanel('navigation',true); navigationUI?.showNotes(); $('#search').focus(); }
 });
 window.addEventListener('beforeunload', event => { if (session?.dirty || session?.saving) { event.preventDefault(); event.returnValue = ''; } });

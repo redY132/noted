@@ -28,7 +28,10 @@ test('empty matches offer recovery and typed markup remains search text',()=>{
   }finally{h.close();}
 });
 test('one Escape closes a populated search, makes the dialog inert and restores the opener',()=>{
-  const h=setup();try{h.$('#view-toggle').focus();h.ui.show();h.search('schema');h.$('[data-help-search]').dispatchEvent(new h.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  const h=setup();try{h.$('#view-toggle').focus();h.ui.show();h.search('schema');
+    const composing=new h.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,isComposing:true});h.$('[data-help-search]').dispatchEvent(composing);
+    assert.equal(composing.defaultPrevented,false);assert.equal(h.$<HTMLDialogElement>('dialog').open,true);assert.equal(h.$('[data-help-search]'),h.dom.window.document.activeElement);
+    h.$('[data-help-search]').dispatchEvent(new h.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     assert.equal(h.$<HTMLDialogElement>('dialog').open,false);assert.equal(h.$<HTMLDialogElement>('dialog').inert,true);assert.equal(h.dom.window.document.activeElement,h.$('#view-toggle'));
     h.ui.show();assert.equal(h.$<HTMLInputElement>('[data-help-search]').value,'');assert.equal(h.$<HTMLDialogElement>('dialog').inert,false);
   }finally{h.close();}

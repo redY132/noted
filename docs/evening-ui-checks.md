@@ -306,3 +306,19 @@ sizing also passed all 123 sidebar checks across 14 profiles; Help passed 16
 checks/six profiles with selection and Undo intact. Both narrow title screenshots
 were manually inspected. No document-format, access or model-call change is
 needed for this field update.
+
+The `8069991` package passed the native cached-proposal flow with ten checks,
+six layouts and 200% text after the title change, with the runner disabled and
+the owned app closed. That fixture still used a short title; it is not evidence
+of a native long-title profile. Browser long-title evidence above is separate.
+
+Composition follow-up: a rendered test reproduced Ctrl N navigating away while
+the event was marked composing. A focused shell test reproduced Focus toggling,
+and three UI tests reproduced composing Escape dismissing Help, heading search
+and Browse. Shortcuts now respect composition and exact modifiers. Recognized
+held-key repeats are consumed without repeating the action or falling through
+to browser shortcuts. All 310 frontend tests and type checking passed, plus 17
+shortcut checks, 17 Help checks/six profiles, 18 heading checks/six profiles and
+124 sidebar checks/14 profiles. Normal Ctrl N saved the previous generated draft;
+normal Enter/Escape, selection and Undo remain intact. These are synthetic event
+tests, not certification of physical IMEs or layouts.

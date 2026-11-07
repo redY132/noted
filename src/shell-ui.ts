@@ -47,7 +47,14 @@ export function initializeShell(options:{appearance:Appearance;getEditor:()=>{vi
   $('#reset-layout').onclick=()=>{panels={...defaultPanels};focus=false;persist();apply();};
   $('#shell-new-note').onclick=()=>{close('#view-popover');options.newNote();};$('#shell-workspace').onclick=()=>{close('#view-popover');options.workspace();};
   if(options.quickOpen){const button=document.createElement('button');button.type='button';button.id='shell-quick-open';button.innerHTML='Open note <kbd>Ctrl P</kbd>';button.onclick=()=>{close('#view-popover');options.quickOpen?.();};$('#view-popover').insertBefore(button,$('#shell-new-note'));}
-  document.addEventListener('keydown',e=>{if(e.key==='F8'&&!document.querySelector('dialog[open]')){e.preventDefault();close('#view-popover');close('#appearance-popover');focus=!focus;apply();options.getEditor()?.view.focus();}if(e.key==='Escape'){for(const id of ['#view-popover','#appearance-popover'])if(!$(id).hidden){e.preventDefault();close(id);$(id==='#view-popover'?'#view-toggle':'#appearance-toggle').focus();}}});
+  document.addEventListener('keydown',e=>{
+    if(e.isComposing)return;
+    if(e.key==='F8'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!document.querySelector('dialog[open]')){
+      e.preventDefault();
+      if(!e.repeat){close('#view-popover');close('#appearance-popover');focus=!focus;apply();options.getEditor()?.view.focus();}
+    }
+    if(e.key==='Escape'){for(const id of ['#view-popover','#appearance-popover'])if(!$(id).hidden){e.preventDefault();close(id);$(id==='#view-popover'?'#view-toggle':'#appearance-toggle').focus();}}
+  });
   options.appearance.subscribe(state=>{$<HTMLSelectElement>('#appearance-mode').value=state.mode;$<HTMLInputElement>('#appearance-accent').value=state.accent;for(const b of document.querySelectorAll<HTMLButtonElement>('[data-accent]'))b.setAttribute('aria-pressed',String(b.dataset.accent===state.accent));});
   const updateAppearance=()=>{const state=options.appearance.get();$<HTMLSelectElement>('#appearance-mode').value=state.mode;$<HTMLInputElement>('#appearance-accent').value=state.accent;for(const b of document.querySelectorAll<HTMLButtonElement>('[data-accent]'))b.setAttribute('aria-pressed',String(b.dataset.accent===state.accent));};updateAppearance();
   $<HTMLSelectElement>('#appearance-mode').onchange=e=>options.appearance.setMode((e.target as HTMLSelectElement).value as 'system'|'light'|'dark');

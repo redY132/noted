@@ -31,6 +31,10 @@ async page => {
   record('outline follows logical order instead of visual object order', (await page.locator('[data-outline-index="0"] strong').innerText()) === 'Logical first heading');
   record('heading results are exposed as a named region',await page.getByRole('region',{name:'Headings in this note',exact:true}).isVisible());
   record('large outlines initially render 40 rows', await page.locator('[data-outline-index]').count() === 40);
+  await page.locator('[data-outline-search]').fill('section 120');
+  const composingEscape=await page.locator('[data-outline-search]').evaluate(field=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,isComposing:true});field.dispatchEvent(event);return event.defaultPrevented;});
+  record('composing Escape keeps heading search open and focused',!composingEscape&&await page.locator('.document-outline-dialog').isVisible()&&await page.locator('[data-outline-search]').evaluate(el=>el===document.activeElement));
+  await page.locator('[data-outline-search]').fill('');
   await page.locator('[data-outline-more]').click(); record('paging focuses the first new heading', await page.locator('[data-outline-index="40"]').evaluate(el => el === document.activeElement));
   await page.locator('[data-outline-more]').click(); await page.locator('[data-outline-more]').click(); record('last page includes every heading and hides More', await page.locator('[data-outline-index]').count() === 130 && await page.locator('[data-outline-more]').isHidden());
   await page.locator('[data-outline-search]').fill('searchable-tail'); record('search includes the full long title while displaying a bounded label', await page.locator('[data-outline-index]').count() === 1 && (await page.locator('[data-outline-index] strong').innerText()).length <= 241);

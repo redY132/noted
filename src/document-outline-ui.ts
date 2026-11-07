@@ -55,8 +55,9 @@ export function initializeDocumentOutline(host: HTMLElement, o: Options) {
   $('[data-outline-more]').onclick = () => { const firstNew = shown; shown += 40; render(firstNew); };
   $('[data-outline-search]').oninput = () => { matches = matchingHeadings(headings, $<HTMLInputElement>('[data-outline-search]').value); shown = 40; render(); };
   dialog.addEventListener('keydown', e => {
+    if (e.isComposing) return;
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
-    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const el = e.target as HTMLElement, input = el.matches('[data-outline-search]'), row = el.closest<HTMLElement>('[data-outline-index]');
     if (!input && !row) return;
     const index = row ? Number(row.dataset.outlineIndex) : -1, count = Math.min(shown, matches.length);

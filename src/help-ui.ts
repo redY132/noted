@@ -29,7 +29,7 @@ export function initializeHelp(host: HTMLElement, o: { menu: HTMLElement; focusE
   }
   menu.onclick=()=>{o.menu.hidden=true;o.menu.inert=true;const toggle=doc.querySelector<HTMLElement>('#view-toggle');toggle?.setAttribute('aria-expanded','false');toggle?.focus();show(toggle);};
   $('[data-help-close]').onclick=close;$('[data-help-clear]').onclick=()=>{$<HTMLInputElement>('[data-help-search]').value='';render();$('[data-help-search]').focus();};$('[data-help-search]').oninput=render;
-  dialog.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}});dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+  dialog.addEventListener('keydown',e=>{if(e.key==='Escape'&&!e.isComposing){e.preventDefault();close();}});dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
   dialog.addEventListener('close',()=>{if(dialog.open||destroyed)return;dialog.inert=true;if(opener?.isConnected&&!opener.closest('[hidden],[inert]'))opener.focus();else o.focusEditor();});
   return{show,destroy(){destroyed=true;menu.remove();host.replaceChildren();}};
 }

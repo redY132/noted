@@ -35,6 +35,17 @@ test('focus mode restores the normal layout and does not overwrite persisted pan
 test('restricted storage falls back to default layout without preventing startup',()=>{
  assert.deepEqual(readLayout({getItem(){throw Error('Blocked');}}),{navigation:true,notes:true,formatting:false,components:false,details:false,footer:false});
 });
+
+test('Focus shortcut leaves composition, modifier chords and held-key repeats alone',()=>{
+ const h=setup();try{
+  for(const flags of [{isComposing:true},{repeat:true},{ctrlKey:true},{metaKey:true},{altKey:true},{shiftKey:true}]){
+   const event=new window.KeyboardEvent('keydown',{key:'F8',bubbles:true,cancelable:true,...flags});document.dispatchEvent(event);
+   assert.equal(h.ui.isFocus(),false);assert.equal(event.defaultPrevented,Boolean(flags.repeat));
+  }
+  document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'F8',bubbles:true}));assert.equal(h.ui.isFocus(),true);
+  document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'F8',bubbles:true,repeat:true}));assert.equal(h.ui.isFocus(),true);
+ }finally{h.appearance.destroy();h.dom.window.close();}
+});
 test('theme reset and layout reset are independent; malformed stored layouts fall back safely',()=>{
  const h=setup();h.appearance.setMode('dark');h.appearance.setAccent('#ffffff');h.ui.setPanel('notes',false);
  document.querySelector<HTMLElement>('#reset-layout')!.click();assert.equal(h.ui.isOpen('notes'),true);assert.equal(h.appearance.get().mode,'dark');

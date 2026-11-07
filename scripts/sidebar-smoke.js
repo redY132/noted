@@ -139,7 +139,10 @@ async page => {
   record('focus mode hides navigation', await browse.getAttribute('aria-expanded') === 'false');
   await page.keyboard.press('F8');
   record('leaving focus mode restores navigation', await browse.getAttribute('aria-expanded') === 'true');
-  await page.locator('#search').focus(); await page.keyboard.press('Escape');
+  await page.locator('#search').focus();
+  const composingEscape=await page.locator('#search').evaluate(field=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,isComposing:true});field.dispatchEvent(event);return event.defaultPrevented;});
+  record('composing Escape leaves Browse and its search focused', !composingEscape && await browse.getAttribute('aria-expanded') === 'true' && await page.locator('#search').evaluate(el=>el===document.activeElement));
+  await page.keyboard.press('Escape');
   record('Escape closes navigation and restores its button focus', await browse.evaluate(el => el === document.activeElement) && await browse.getAttribute('aria-expanded') === 'false');
   await page.keyboard.press('/'); await settle();
   record('search shortcut reopens and focuses the popup', await page.locator('#search').evaluate(el => el === document.activeElement));

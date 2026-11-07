@@ -39,6 +39,8 @@ test('Escape closes on the first press and restores the opener, scroll and selec
   const h = setup(4); try {
     h.change(h.editor.state.tr.setSelection(TextSelection.create(h.editor.state.doc, 2, 6))); const selection = h.editor.state.selection.toJSON(); h.$('#scroll').scrollTop = 140; h.$('#view-toggle').focus(); h.ui.show();
     h.$<HTMLInputElement>('[data-outline-search]').value = 'nonempty search'; h.$('#scroll').scrollTop = 0;
+    const composing = new h.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: true });
+    h.$('[data-outline-search]').dispatchEvent(composing); assert.equal(composing.defaultPrevented, false); assert.equal(h.$<HTMLDialogElement>('.document-outline-dialog').open, true);
     h.$('[data-outline-search]').dispatchEvent(new h.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     assert.equal(h.$<HTMLDialogElement>('.document-outline-dialog').open, false); assert.equal(h.dom.window.document.activeElement, h.$('#view-toggle')); assert.equal(h.$('#scroll').scrollTop, 140); assert.deepEqual(h.editor.state.selection.toJSON(), selection);
   } finally { h.close(); }

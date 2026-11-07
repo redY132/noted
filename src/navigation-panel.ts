@@ -249,7 +249,7 @@ export function initializeNavigation(root: HTMLElement, options: NavigationOptio
     if (id) void options.open(id).then(success => { if (success) options.focusEditor(); });
   });
   root.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
+    if (event.key === 'Escape' && !event.isComposing && !document.querySelector('dialog[open]')) {
       event.preventDefault(); options.close(); document.querySelector<HTMLElement>('[data-panel-toggle=navigation]')?.focus();
     }
   });

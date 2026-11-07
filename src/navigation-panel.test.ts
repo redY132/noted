@@ -32,6 +32,9 @@ test('hierarchy expands at the selected branch and has a keyboard path back to i
     document.activeElement!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     assert.equal((document.activeElement as HTMLElement).dataset.folder, id(2));
     assert.deepEqual(folderAncestors(folders, id(3)), [id(1), id(2), id(3)]);
+    const search = document.querySelector<HTMLInputElement>('#search')!; search.focus();
+    const composing = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: true }); search.dispatchEvent(composing);
+    assert.equal(composing.defaultPrevented, false); assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden, false); assert.equal(document.activeElement, search);
   } finally { h.close(); }
 });
 test('long lists keep the focused note in the bounded graph and survive an async edge refresh', async () => {
