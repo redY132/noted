@@ -29,7 +29,7 @@ async page => {
     for (let cycle = 0; cycle < 12; cycle++) {
       await open(cycle % 2 ? 'mixed-free-media-100-panels' : 'artistic-100-panels');
       const image = page.locator('.local-image img').first();
-      await image.evaluate(image => image.scrollIntoView({ block: 'center', inline: 'center' }));
+      await page.locator('.local-image').first().evaluate(figure => figure.scrollIntoView({ block: 'center', inline: 'center' }));
       await page.waitForFunction(() => { const image = document.querySelector('.local-image img'); return image?.naturalWidth > 0 && image?.getAttribute('src')?.startsWith('blob:'); });
       await open('ordinary-100-paragraphs');
       if (cycle === 3 || cycle === 7 || cycle === 11) samples.push(await stats(`after ${cycle + 1} media visits`));

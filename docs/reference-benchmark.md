@@ -39,6 +39,29 @@ is saved before this optional diagnostic, even if the diagnostic fails.
 
 Pass `-PlaywrightCLI C:\path\to\playwright-cli.js` if needed. The runner verifies the kit hashes, creates a fresh workspace and WebView profile per run, refuses occupied test ports and closes only its own test window. It never downloads prerequisites automatically. Results and logs go under `runs/`.
 
+For resource ownership without an attached automation session during the
+workload:
+
+```powershell
+.\Measure-Noted.ps1 -ResourceOnly -ResourceCase full -ResourceSeconds 180 -CheckMediaLifetime
+```
+
+The full case cycles the generated corpus and saves, undoes and saves each edit.
+Other cases are `text`, `images`, `mixed` and `components`. The driver disconnects
+before the in-page loop, samples process roles through the requested workload
+and idle period, then reads fixed counters and performs diagnostic GC. Optional
+media checks happen afterward. `-ResourceDebuggerAttached` keeps automation
+attached for an explicit comparison; it requires resource mode.
+Resource mode does not accept CPU slowdown or report input latency. Its report
+preserves completed samples if result collection or an optional check fails.
+`allRequestedChecksPassed` means the workload and requested functional checks
+completed, not that an agreed memory budget or reference device was certified.
+
+Every native run disables the subscription runner, strips API credentials from
+the child environment and uses empty client/config directories. The runner
+copies only checksummed generated fixture payloads, rejecting unsafe paths and
+links; it does not copy extra files from a fixture directory.
+
 For a development sensitivity run only:
 
 ```powershell

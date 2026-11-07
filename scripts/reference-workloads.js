@@ -15,6 +15,12 @@ async page=>{
  async function open(name){await page.keyboard.press('Control+p');await page.locator('#quick-open-search').fill(name);await page.locator('[data-quick-note]').filter({hasText:name}).click();await page.waitForFunction(name=>document.querySelector('#note-title')?.value===name,name);}
  async function measure(name,repeat,label=name){
   await open(name);const paragraph=page.locator('#editor p').first();await paragraph.evaluate(element=>element.scrollIntoView({block:'center'}));await paragraph.click({force:true});await page.keyboard.press('Home');
+  const beforeText=await paragraph.textContent();let visibleComponents=null;
+  if(name==='eight-active-components'){
+   await page.waitForFunction(()=>document.querySelectorAll('.interactive-component-body button').length===8);
+   visibleComponents=await page.locator('.interactive-component-body').evaluateAll(elements=>{const area=document.querySelector('.document-scroll').getBoundingClientRect();return elements.filter(element=>{const r=element.getBoundingClientRect();return r.width>0&&r.height>0&&r.bottom>area.top&&r.top<area.bottom&&r.right>area.left&&r.left<area.right;}).length;});
+   if(visibleComponents!==8)throw new Error('The eight-component workload must keep all eight instances in the writing viewport.');
+  }
   await page.evaluate(()=>{
    const samples=[],intervals=[],tasks=[],events=[];let active=true,last=performance.now();
    const input=event=>{if(!event.target.closest('#editor'))return;const start=performance.now();requestAnimationFrame(()=>{if(active)samples.push(performance.now()-start);});};document.addEventListener('beforeinput',input,true);
@@ -27,7 +33,11 @@ async page=>{
   const raw=await page.evaluate(()=>{const m=window.measurement;m.stop();if(document.visibilityState!=='visible')throw new Error('The benchmark window was hidden during measurement.');return {samples:m.samples,intervals:m.intervals,longTasks:m.tasks,eventTiming:m.events,visibility:document.visibilityState};});
   if(!raw.samples.length)throw new Error('No input-to-frame observations were captured. This workload has no timing result.');
   const writingArea=await page.locator('.document-scroll').evaluate(el=>({width:el.clientWidth,height:el.clientHeight,navigationVisible:document.querySelector('[data-panel-toggle=navigation]').getAttribute('aria-expanded')==='true'}));
-  results.push({workload:label,repeat,writingArea,inputToNextFrameMs:summarize(raw.samples),frameIntervalsMs:summarize(raw.intervals),...raw});
+  // Cleanup is outside the input/frame sample. Keep content size and component
+  // visibility constant instead of growing the first paragraph on every cycle.
+  await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');
+  await page.waitForFunction(expected=>document.querySelector('#editor p')?.textContent===expected&&document.querySelector('#save-state').textContent.includes('Saved'),beforeText);
+  results.push({workload:label,repeat,writingArea,visibleComponents,fixtureInputRestored:true,inputToNextFrameMs:summarize(raw.samples),frameIntervalsMs:summarize(raw.intervals),...raw});
  }
  const workloads=['ordinary-100-paragraphs','long-1000-paragraphs','artistic-100-panels','mixed-free-media-100-panels'];
  for(let repeat=0;repeat<3;repeat++)for(const name of workloads)await measure(name,repeat);

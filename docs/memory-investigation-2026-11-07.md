@@ -75,11 +75,70 @@ GIF static-poster pause and local-source resume, zero leftover workers and
 unchanged disabled sharing. Its first scroll check incorrectly targeted the
 unloaded, hidden image; it now targets the visible figure placeholder. Final
 captures also wait for the Open note closing transition. Screenshots show only
-generated fixtures. A longer full workload remains pending.
+generated fixtures.
 
 Run the reusable check with `Measure-Noted.ps1 -CheckMediaLifetime` from a newly
 built matching reference kit. It is a separate forced-GC diagnostic, with an
 explicit bounded warm-up allowance, and does not certify a physical device.
+
+## Full workload follow-up
+
+The matching `d568c81` package/kit completed the eight-minute writing, media and
+component workload: 88 long-session cycles and 194 timed runs. The subscription
+runner was disabled, eight visible components used one worker, and no component
+worker remained after returning to ordinary text. Sampled total private memory
+peaked around 1,201.0 MiB. Renderer minute medians still rose from about 302.9 MiB
+to 569.9 MiB. The large image-tree retention is fixed; overall process-memory
+stability remains **unresolved**.
+
+The optional media diagnostic then failed on another unloaded-image scroll
+target, this time in its initial warm-up loop after timed typing had pushed the
+first image below the viewport. That loop now scrolls the figure placeholder as
+well. Completed workload evidence was preserved before the diagnostic; this is
+not an overall passing run. A later native full-corpus control completed all ten
+corrected media checks; a newly packaged matching-kit run remains separate.
+
+The controls below separate component churn, stable edits and instrumentation.
+These observations are from the connected development PC only, with
+ordinary background development work; no inexpensive-device or controlled
+before/after latency acceptance is claimed.
+
+The three-minute component-only pair completed 524 switches / 263 created
+workers detached and 512 switches / 257 workers attached. Both ended with zero
+active workers. After idle time and diagnostic GC, renderer private memory was
+about 90.0 / 122.2 MiB and main heap about 8.7 / 8.0 MiB respectively. Worker
+churn alone did not reproduce the large retained-memory rise.
+
+The three-minute full-corpus control alternated text, long text, images, mixed
+media and eight components. Each generated edit was saved, undone and saved
+again, keeping the document size and component visibility stable. With the
+debugger disconnected it completed 129 switches and 129 edit/restore pairs;
+65 workers were created and none remained. Renderer minute medians were about
+226.8 / 278.3 / 276.5 MiB, and renderer private memory after idle/diagnostic GC
+was 111.7 MiB. Main JS heap was about 8.8 MiB; sampled total private memory
+peaked around 934.2 MiB. This is a resource-ownership control, not a physical
+input or controlled hardware acceptance measurement.
+
+The attached counterpart completed 132 switches and edit/restore pairs,
+created 67 workers and ended with zero. After two GCs renderer private memory
+was 310.5 MiB; a repeated attached idle/GC control was 310.1 MiB. In that same
+process, disconnecting and then collecting garbage through a raw CDP client
+that never enabled the Debugger domain reduced it to 105.9 MiB (about 8.1 MiB
+main JS heap). Disconnect alone, before GC, was 310.5 MiB. This demonstrates
+roughly 205 MiB of automation-associated retention in this control. It does
+not identify a particular inspector cache or establish whole-app budgets.
+
+The timing workload now also undoes and saves its generated input after each
+timed sample, and verifies that all eight components are visible. Earlier
+timings that repeatedly grew the first paragraph use a different protocol and
+are not a controlled comparison. A failed accumulating-input control is
+excluded. Completed native media checks confirm the corrected figure targets.
+
+`Measure-Noted.ps1 -ResourceOnly` separates sampled resource ownership from
+input timing: a generated in-page loop runs with the automation session
+disconnected. Result collection and forced GC happen after sampling. The
+optional `-ResourceDebuggerAttached` switch is a diagnostic comparison only;
+neither mode certifies hardware or physical input latency.
 
 One native attempt was interrupted before writing a report and was excluded;
 the app was verified stopped before retry. Completed diagnostic results are
