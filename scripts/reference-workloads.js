@@ -3,8 +3,8 @@ async page=>{
  if(typeof options.fixtureWorkspace!=='string'||!await page.evaluate(async expected=>{
   if(!window.__TAURI_INTERNALS__)return false;
   const normalize=value=>{let text=String(value).replaceAll('\\','/');if(text.startsWith('//?/'))text=text.slice(4);return text.replace(/\/+$/,'').toLowerCase();};
-  const status=await window.__TAURI_INTERNALS__.invoke('workspace_status'),policy=await window.__TAURI_INTERNALS__.invoke('agent_access');
-  return normalize(status.path)===normalize(expected)&&!policy.enabled&&!policy.allowHosted&&!policy.folderIds.length;
+  const status=await window.__TAURI_INTERNALS__.invoke('workspace_status'),policy=await window.__TAURI_INTERNALS__.invoke('agent_access'),runner=await window.__TAURI_INTERNALS__.invoke('subscription_status');
+  return normalize(status.path)===normalize(expected)&&!policy.enabled&&!policy.allowHosted&&!policy.folderIds.length&&!runner.available&&runner.authentication==='disabled';
  },options.fixtureWorkspace))throw new Error('The exact disposable benchmark workspace with disabled sharing is required.');
  const cdp=await page.context().newCDPSession(page);await cdp.send('Emulation.setCPUThrottlingRate',{rate:slowdown});
  await page.setViewportSize({width:1280,height:900});
@@ -43,6 +43,6 @@ async page=>{
  await cdp.send('Emulation.setCPUThrottlingRate',{rate:1});await cdp.detach();
  const sharingDisabled=await page.evaluate(async()=>{const policy=await window.__TAURI_INTERNALS__.invoke('agent_access');return !policy.enabled&&!policy.allowHosted&&!policy.folderIds.length;});if(!sharingDisabled)throw new Error('Benchmark sharing policy changed unexpectedly.');
  const result={formatVersion:1,timestamp:new Date().toISOString(),classification:slowdown===1?'actual-host benchmark, reference eligibility requires hardware review':'CPU-throttled development sensitivity test; not reference hardware',cpuSlowdown:slowdown,minutesRequested:options.minutes??5,longSessionCycles:cycle,results,components:{visibleInstances:8,activeWorkers,disabledBeforeEnable:true,workersAfterLeavingComponents},viewport:await page.evaluate(()=>({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,userAgent:navigator.userAgent})),limitations:['beforeinput-to-animation-frame is a scheduling proxy, not physical key-to-paint.','Event Timing entries are quantized browser-event-to-presentation observations, exclude physical input latency and may omit fast events.','Cold-start timestamps include remote-debugging instrumentation.','Sampled private memory is not a guaranteed peak; summed working sets double-count shared pages.','CPU slowdown does not emulate another CPU, less RAM, slower storage or a different GPU.']};
- Object.assign(result,{exactFixtureWorkspaceVerified:true,localAndHostedSharingDisabled:true});
+ Object.assign(result,{exactFixtureWorkspaceVerified:true,localAndHostedSharingDisabled:true,subscriptionRunnerDisabled:true});
  await page.evaluate(result=>window.notedBenchmarkResults=result,result);return result;
 }

@@ -25,7 +25,7 @@ $runs=Join-Path $kitRoot 'runs';New-Item -ItemType Directory -Path $runs -Force|
 $run=Join-Path $runs ((Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8));New-Item -ItemType Directory -Path $run|Out-Null
 $workspace=Join-Path $run 'workspace';Copy-Item -LiteralPath (Join-Path $kitRoot 'fixtures') -Destination $workspace -Recurse
 $webViewProfile=Join-Path $run 'webview-profile'
-$oldEnvironment=@{};foreach($name in 'NOTED_WORKSPACE','WEBVIEW2_USER_DATA_FOLDER','WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'){$oldEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
+$oldEnvironment=@{};foreach($name in 'NOTED_WORKSPACE','WEBVIEW2_USER_DATA_FOLDER','WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS','NOTED_DISABLE_SUBSCRIPTION_RUNNER','CODEX_HOME','LOCALAPPDATA','OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','OPENAI_BASE_URL','OPENAI_API_BASE'){$oldEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 $session='noted-bench-'+[guid]::NewGuid().ToString('N').Substring(0,10)
 $app=$null;$worker=$null;$memory=[Collections.Generic.List[object]]::new()
 function Read-TreeMemory([int]$RootId){
@@ -52,6 +52,9 @@ try{
  $cpu=Get-CimInstance Win32_Processor|Select-Object -First 1;$system=Get-CimInstance Win32_ComputerSystem;$os=Get-CimInstance Win32_OperatingSystem
  $hardware=[pscustomobject]@{cpu=$cpu.Name;cores=$cpu.NumberOfCores;logicalProcessors=$cpu.NumberOfLogicalProcessors;ramBytes=$system.TotalPhysicalMemory;os=$os.Caption;version=$os.Version;powerStatus=(Get-CimInstance Win32_Battery|Select-Object BatteryStatus,EstimatedChargeRemaining);physicalReferenceVerified=$false}
  $env:NOTED_WORKSPACE=$workspace;$env:WEBVIEW2_USER_DATA_FOLDER=$webViewProfile;$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=$Port --remote-debugging-address=127.0.0.1"
+ $env:NOTED_DISABLE_SUBSCRIPTION_RUNNER='1';$env:CODEX_HOME=Join-Path $run 'empty-codex-home';$env:LOCALAPPDATA=Join-Path $run 'isolated-localappdata'
+ New-Item -ItemType Directory -Path $env:CODEX_HOME,$env:LOCALAPPDATA|Out-Null
+ foreach($key in 'OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','OPENAI_BASE_URL','OPENAI_API_BASE'){[Environment]::SetEnvironmentVariable($key,$null,'Process')}
  $clock=[Diagnostics.Stopwatch]::StartNew()
  $app=Start-Process -FilePath (Join-Path $kitRoot 'Noted.exe') -WorkingDirectory $run -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $run 'app.log') -RedirectStandardError (Join-Path $run 'app-error.log')
  $endpoint=$null

@@ -19,6 +19,12 @@ The generated `output/reference-kit-…` folder contains `Noted.exe`, checksumme
 
 Kit creation requires a clean committed source tree and a verified portable release for that exact commit. The executable must match the release's measured SHA-256. The runner passes its freshly created workspace to the workload script; a native status check requires that exact path and disabled local/hosted sharing before navigation or editing begins. Workloads use Open note rather than depending on sidebar visibility. The kit still does not certify a machine or model physical input latency.
 
+Synthetic runs explicitly disable the subscription runner, isolate Codex home
+and local application data, and remove API credentials from the child process.
+This prevents a mistaken UI test from reaching the signed-in model client.
+See the [November 7 investigation](memory-investigation-2026-11-07.md) for the
+process-local safety fuse and controlled attached/detached resource checks.
+
 On the actual test laptop, install Node.js 24+, WebView2 and `@playwright/cli` 0.1.22. Once those prerequisites are installed, the kit does not need network access. Run:
 
 ```powershell

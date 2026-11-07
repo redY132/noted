@@ -857,6 +857,7 @@ mod desktop {
         include_guidance: Option<bool>,
         kind: Option<String>,
     ) -> Result<crate::subscription::JobInfo, String> {
+        crate::subscription::ensure_runner_enabled()?;
         let schema = crate::schema_ai::context(schema, include_guidance.unwrap_or(false))?;
         let (note,request,root)=work(state.clone(),move|s|{let n=s.load_note(&id)?;if n.revision!=revision||n.revision_token!=token{return Err("The note changed before consent was submitted. Review and send the current saved note.".into());}crate::subscription::validate_snapshot(&n)?;let request=s.create_ai_request(&id,prompt,schema,kind)?;Ok((n,request,s.root.clone()))}).await?;
         let bridge = std::env::current_exe()

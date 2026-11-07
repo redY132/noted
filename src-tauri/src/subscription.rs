@@ -21,6 +21,16 @@ use std::{
     time::{Duration, Instant},
 };
 type Result<T> = std::result::Result<T, String>;
+const RUNNER_DISABLED: &str = "Subscription runner is disabled for this isolated process. No note was sent.";
+/// A process-local fuse for disposable native UI tests. Any presence disables
+/// runner discovery, authentication probes and generation; it grants no access.
+pub fn ensure_runner_enabled() -> Result<()> {
+    if std::env::var_os("NOTED_DISABLE_SUBSCRIPTION_RUNNER").is_some() {
+        Err(RUNNER_DISABLED.into())
+    } else {
+        Ok(())
+    }
+}
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -118,6 +128,9 @@ fn auth_output(exe: &Path) -> Result<AccountStatus> {
     Ok(AccountStatus{available:true,authentication:if signed{"chatgpt"}else{"sign-in-required"}.into(),message:if signed{"Signed in with ChatGPT. Uses this account's Codex access and limits; no API key is used."}else{"Open Codex and sign in with ChatGPT. API-key authentication is not accepted by this feature."}.into()})
 }
 pub fn account_status() -> AccountStatus {
+    if ensure_runner_enabled().is_err() {
+        return AccountStatus { available: false, authentication: "disabled".into(), message: RUNNER_DISABLED.into() };
+    }
     match locate().and_then(|p|auth_output(&p)){Ok(s)=>s,Err(_)=>AccountStatus{available:false,authentication:"unavailable".into(),message:"Install/open the official Codex desktop client and sign in with ChatGPT, then refresh.".into()}}
 }
 fn toml(v: &Value) -> String {
@@ -169,6 +182,7 @@ impl Service {
         exe: PathBuf,
         bridge: PathBuf,
     ) -> Result<JobInfo> {
+        ensure_runner_enabled()?;
         crate::ai_privacy::ensure_note(&root, &note.id)?;
         crate::ai_privacy::guidance(&root, request.schema.as_ref())?;
         validate_snapshot(&note)?;
@@ -328,6 +342,7 @@ fn client_failure(output: &[u8]) -> Option<String> {
     summary
 }
 pub fn prepare_cli() -> Result<PathBuf> {
+    ensure_runner_enabled()?;
     let exe = locate()?;
     if auth_output(&exe)?.authentication != "chatgpt" {
         return Err("Sign in to Codex using ChatGPT first. This feature never falls back to API-key billing".into());
@@ -342,6 +357,7 @@ fn generate(
     exe: &Path,
     bridge: &Path,
 ) -> Result<()> {
+    ensure_runner_enabled()?;
     let temp = tempfile::tempdir().map_err(err)?;
     let workspace = temp.path().join("workspace");
     for name in ["notes", "folders", "agent-requests"] {
@@ -411,6 +427,7 @@ fn generate(
     }
     crate::ai_privacy::ensure_note(root, &n.id)?;
     crate::ai_privacy::guidance(root, r.schema.as_ref())?;
+    ensure_runner_enabled()?;
     let mut child = c
         .spawn()
         .map_err(|_| "Cannot start the signed-in Codex client")?;
@@ -513,6 +530,34 @@ fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn synthetic_process_guard_prevents_all_runner_entry_points() {
+        if std::env::var_os("NOTED_RUNNER_GUARD_TEST_CHILD").is_none() {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "subscription::tests::synthetic_process_guard_prevents_all_runner_entry_points", "--nocapture"])
+                .env("NOTED_RUNNER_GUARD_TEST_CHILD", "1")
+                .env("NOTED_DISABLE_SUBSCRIPTION_RUNNER", "")
+                .output().unwrap();
+            assert!(output.status.success(), "{} {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+            return;
+        }
+        assert_eq!(ensure_runner_enabled().unwrap_err(), RUNNER_DISABLED);
+        let status = account_status();
+        assert!(!status.available);
+        assert_eq!(status.authentication, "disabled");
+        assert_eq!(prepare_cli().unwrap_err(), RUNNER_DISABLED);
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = crate::store::Store::open(temp.path()).unwrap();
+        let note = store.create_note("Synthetic runner guard".into(), None).unwrap();
+        let request = store.create_explicit_subscription_request(&note.id, "Make bold".into()).unwrap();
+        let missing = temp.path().join("MUST_NOT_RUN.exe");
+        let service = Service::default();
+        assert_eq!(service.start(note.clone(), request.clone(), temp.path().into(), missing.clone(), missing.clone()).unwrap_err(), RUNNER_DISABLED);
+        assert!(service.current.lock().unwrap().is_none());
+        let job = Job { info: Mutex::new(JobInfo { id: "test".into(), note_id: note.id.clone(), request_id: request.id.clone(), phase: "running".into(), message: String::new() }), cancelled: AtomicBool::new(false), process: Mutex::new(None) };
+        assert_eq!(generate(&job, &note, &request, temp.path(), &missing, &missing).unwrap_err(), RUNNER_DISABLED);
+        assert!(job.process.lock().unwrap().is_none());
+    }
     #[test]
     fn client_failure_reports_only_a_bounded_structured_summary() {
         let tool = json!({"type":"item.completed","item":{"type":"mcp_tool_call","text":"DO_NOT_DISPLAY_TOOL_CONTENT"}});
