@@ -36,12 +36,12 @@ async page => {
   await page.locator('[data-ai-undo]').click(); await page.waitForFunction(() => document.querySelector('[data-ai-outcome-text]').textContent.includes('undone'));
   record('Undo restores original formatting', await page.locator('#editor strong').count() === 0);
   await start(); await running(); await page.locator('[data-ai-close]').click(); await page.locator('[data-activity-open]').click(); await page.locator('[data-subscription-stop]').click();
-  await page.waitForFunction(() => document.querySelector('.ai-job-status').hidden); record('Cancel removes only its owned simulated job and request', await page.evaluate(() => window.__notedActivityHarness.state.cancels === 1 && !window.__notedActivityHarness.state.row));
-  await page.locator('[data-ai-close]').click(); await start(); await running(); await page.evaluate(() => { window.__notedActivityHarness.state.failStatus = true; }); await page.locator('[data-ai-close]').click();
+  await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent === 'Cancellation reported'); record('Cancel removes only its owned simulated request and waits for local status', await page.evaluate(() => window.__notedActivityHarness.state.cancels === 1 && !window.__notedActivityHarness.state.row));
+  await page.locator('[data-ai-close]').click(); await page.locator('[data-activity-dismiss]').click(); await start(); await running(); await page.evaluate(() => { window.__notedActivityHarness.state.failStatus = true; }); await page.locator('[data-ai-close]').click();
   await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent.includes('unavailable')); record('failed status is visible without claiming completion', true);
   await page.evaluate(() => { window.__notedActivityHarness.state.failStatus = false; }); await page.locator('[data-activity-open]').click(); await running();
   record('explicit reopening retries status without starting another job', await page.evaluate(() => window.__notedActivityHarness.state.starts === 4));
-  await page.locator('[data-subscription-stop]').click(); await page.waitForFunction(() => document.querySelector('.ai-job-status').hidden); await page.locator('[data-ai-close]').click();
+  await page.locator('[data-subscription-stop]').click(); await page.waitForFunction(() => document.querySelector('[data-activity-state]').textContent === 'Cancellation reported'); await page.locator('[data-ai-close]').click(); await page.locator('[data-activity-dismiss]').click();
   await page.locator('#note-title').fill('Synthetic activity with a deliberately long title that wraps safely in the narrow writing area without covering the document or its controls');
   await start(); await running(); await page.locator('[data-ai-close]').click();
   const measure = async () => page.locator('.ai-job-status').evaluate(root => {

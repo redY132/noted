@@ -4,7 +4,7 @@ export type AIActivity = {
   title: string;
   goal: AIGoal;
   requestId: string | null;
-  phase: 'starting' | 'running' | 'ready' | 'failed' | 'unknown';
+  phase: 'starting' | 'running' | 'cancelling' | 'cancelled' | 'ready' | 'failed' | 'unknown';
   message: string;
 };
 /** Render metadata about explicitly requested work. This component never calls a model. */
@@ -18,13 +18,13 @@ export function initializeAIActivity(host: HTMLElement, o: { resume(): Promise<v
     if (destroyed) return;
     root.hidden = !state;
     if (!state) return;
-    text('[data-activity-state]', ({ starting: 'Preparing proposal', running: 'Generating proposal', ready: 'Proposal ready', failed: 'Generation needs attention', unknown: 'Generation status unavailable' })[state.phase]);
+    text('[data-activity-state]', ({ starting: 'Preparing proposal', running: 'Generating proposal', cancelling: 'Cancellation requested', cancelled: 'Cancellation reported', ready: 'Proposal ready', failed: 'Generation needs attention', unknown: 'Generation status unavailable' })[state.phase]);
     text('[data-activity-note]', state.title || 'Untitled');
     const noteTitle = $('[data-activity-note]'); if (noteTitle.title !== (state.title || 'Untitled')) noteTitle.title = state.title || 'Untitled';
     text('[data-activity-message]', state.message);
-    text('[data-activity-open]', state.phase === 'ready' ? 'Review proposal' : state.phase === 'failed' ? 'Open AI formatting' : 'Open generation');
+    text('[data-activity-open]', state.phase === 'ready' ? 'Review proposal' : state.phase === 'cancelling' ? 'Check cancellation' : state.phase === 'cancelled' ? 'View cancellation' : state.phase === 'failed' ? 'Open AI formatting' : 'Open generation');
     $<HTMLButtonElement>('[data-activity-open]').disabled = busy || opening;
-    $('[data-activity-dismiss]').hidden = ['starting', 'running', 'unknown'].includes(state.phase);
+    $('[data-activity-dismiss]').hidden = ['starting', 'running', 'cancelling', 'unknown'].includes(state.phase);
     $<HTMLButtonElement>('[data-activity-dismiss]').disabled = busy || opening;
   }
   $('[data-activity-open]').onclick = () => {
@@ -32,7 +32,7 @@ export function initializeAIActivity(host: HTMLElement, o: { resume(): Promise<v
     opening = true; render();
     void o.resume().catch(reason => { if (state) state.message = reason instanceof Error ? reason.message : String(reason); o.error(reason); }).finally(() => { opening = false; render(); });
   };
-  $('[data-activity-dismiss]').onclick = () => { if (state && ['ready', 'failed'].includes(state.phase) && !busy && !opening) o.dismiss(); };
+  $('[data-activity-dismiss]').onclick = () => { if (state && ['ready', 'failed', 'cancelled'].includes(state.phase) && !busy && !opening) o.dismiss(); };
   function revealFocused() {
     const focused = host.ownerDocument.activeElement;
     if (destroyed || root.hidden || !focused || !root.contains(focused)) return;

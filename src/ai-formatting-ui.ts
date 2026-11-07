@@ -12,6 +12,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  host.innerHTML=`<dialog class="document-tool-dialog ai-formatting-dialog" data-library="ai" aria-label="AI formatting"><div class="tool-heading"><h2>Format with AI</h2><button data-ai-close>Close</button></div><label>Goal<select data-ai-goal><option value="format">Formatting and layout</option><option value="schema">Adhere to selected schema</option><option value="component">Create interactive component</option></select></label><section data-ai-schema hidden><p data-ai-schema-status></p><ul data-ai-schema-issues></ul><label data-ai-guide-consent hidden><input type="checkbox" data-ai-include-guide> <span data-ai-guide-label></span></label><p>The document guide is an example for presentation, not an inferred set of strict rules. Original wording and reading order are preserved.</p></section><label>Describe the change<textarea data-ai-prompt maxlength="4000" rows="4" placeholder="For example: indent paragraphs and arrange them in four clear panels."></textarea></label><p class="ai-consent">Generate sends this saved note and your instructions to OpenAI through your ChatGPT-signed-in Codex client. Uses your account's Codex limits. For schema adherence, the selected formal rules are also sent. A full guidance document is sent only when you check its per-request consent box above. Image bytes are not sent. You review every proposal before applying it. Component suggestions generate separate sandboxed code; they never run automatically and insert disabled.</p><p data-subscription-status></p><div class="tool-actions"><button class="primary" data-subscription-send>Generate proposal</button><button data-subscription-stop hidden>Cancel generation</button><button data-ai-preview hidden>Review proposal</button></div><p data-ai-status role="status" aria-live="polite">Describe a change, then generate a proposal.</p><details data-ai-advanced><summary>Advanced: external agents and saved requests</summary><p>Create request saves a one-note request for an agent allowed in Agent access. That agent can read this saved note for up to 24 hours, even outside shared folders. Ask the connected agent to check Noted; creating a request does not start a model job. Hosted agents require a separately approved connection.</p><label>Saved requests<select data-ai-existing></select></label><p data-ai-request-status></p><div class="tool-actions"><button data-ai-request>Create request for external agent</button><button data-ai-check>Refresh request</button><button data-ai-cancel>Remove selected request</button><button data-subscription-refresh>Refresh sign-in</button></div></details></dialog><div data-ai-outcome class="ai-outcome" role="status" hidden><span data-ai-outcome-text></span><button data-ai-undo>Undo</button><button data-ai-dismiss aria-label="Dismiss formatting result">×</button></div>`;
  const $=<T extends HTMLElement>(s:string)=>host.querySelector<T>(s)!;const dialog=$<HTMLDialogElement>('dialog'),api=o.api;
  const requestScope=initializeAIRequestSummary($('.ai-consent'));
+ $('[data-ai-status]').tabIndex=-1;
  dialog.inert=true;
  let activity:AIActivity|null=null,destroyed=false,pollErrors=0,pollPaused=false;
  const activityHost=o.activityHost??host.appendChild(host.ownerDocument.createElement('div'));
@@ -21,6 +22,9 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  const requestGoal=(r:RequestEntry):AIGoal=>r.kind==='component'?'component':r.schema?'schema':'format';
  let entries:RequestEntry[]=[],selected:RequestEntry|null=null,reply:{summary:string;operations:DocumentOperation[]}|null=null,jobId:string|null=null,runningRequestId:string|null=null,running=false,busy=false,account=false,autoReview=false,reviewing=false,epoch=0,timer:ReturnType<typeof setTimeout>|undefined,terminalMessage:string|null=null,applied:{editor:Editor;doc:Editor['state']['doc']}|null=null;
  let componentReply:import('./component-suggestions').ComponentSuggestion|null=null;let schemaReady=false,aiAllowed=true;
+ let cancelRequested=false,cancelRequestRemoved=false;
+ let lastCancellation:{requestId:string;noteId:string;message:string}|null=null;
+ const cancellationMessage=(label=true)=>`${label?'Cancellation requested. ':''}Waiting for local runner status. ${cancelRequestRemoved?'Saved request removed. ':''}Already processed usage cannot be recalled.`;
  const component=()=>$<HTMLSelectElement>('[data-ai-goal]').value==='component';
  const goal=()=>$<HTMLSelectElement>('[data-ai-goal]').value==='schema';
  function schemaState(){const schema=o.schema?.();$('[data-ai-schema]').hidden=!goal();$('[data-ai-guide-consent]').hidden=!schema?.guide;
@@ -33,7 +37,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  const eligible=(r:RequestEntry|null)=>r&&['waiting','ready'].includes(r.status);
  const matchesGoal=(r:RequestEntry)=>component()?r.kind==='component':r.kind?false:goal()?!!r.schema&&r.schema.id===o.schema?.()?.id&&r.schema.version===o.schema?.()?.version:!r.schema;
  function status(message:string){const label=$('[data-ai-status]');if(label.textContent!==message)label.textContent=message;}
- function sync(){syncActivity();requestScope.update({title:o.note()?.title||'Untitled',goal:component()?'component':goal()?'schema':'format',schema:o.schema?.(),includeGuide:$<HTMLInputElement>('[data-ai-include-guide]').checked,allowed:aiAllowed,native:o.native,busy,running});$<HTMLButtonElement>('[data-subscription-send]').disabled=!o.native||!aiAllowed||!account||busy||running||!prompt()||(goal()&&(!schemaReady||!o.schema?.()))||(component()&&(!schemaReady||!o.componentProposal));$('[data-subscription-stop]').hidden=!running;$<HTMLButtonElement>('[data-subscription-stop]').disabled=busy;$('[data-ai-preview]').hidden=!reply&&!componentReply;$<HTMLButtonElement>('[data-ai-preview]').disabled=busy||running;$<HTMLTextAreaElement>('[data-ai-prompt]').disabled=running||busy;$<HTMLSelectElement>('[data-ai-goal]').disabled=running||busy;$<HTMLInputElement>('[data-ai-include-guide]').disabled=running||busy;for(const el of host.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('details button,details select'))el.disabled=!o.native||busy||running;$<HTMLButtonElement>('[data-ai-request]').disabled=!o.native||!aiAllowed||busy||running||component();$('[data-ai-request-status]').textContent=selected?`${selected.status[0].toUpperCase()+selected.status.slice(1)} · ${selected.prompt.slice(0,160)}${selected.schema?' · '+selected.schema.name+' v'+selected.schema.version+(selected.hasGuidance?' · full guidance included':' · rules only'):''}${eligible(selected)?' · Expires '+new Date(selected.expiresAt).toLocaleString():''}`:'No request selected.';}
+ function sync(){syncActivity();requestScope.update({title:o.note()?.title||'Untitled',goal:component()?'component':goal()?'schema':'format',schema:o.schema?.(),includeGuide:$<HTMLInputElement>('[data-ai-include-guide]').checked,allowed:aiAllowed,native:o.native,busy,running});$<HTMLButtonElement>('[data-subscription-send]').disabled=!o.native||!aiAllowed||!account||busy||running||!prompt()||(goal()&&(!schemaReady||!o.schema?.()))||(component()&&(!schemaReady||!o.componentProposal));$('[data-subscription-stop]').hidden=!running;$<HTMLButtonElement>('[data-subscription-stop]').disabled=busy||cancelRequested;$('[data-ai-preview]').hidden=!reply&&!componentReply;$<HTMLButtonElement>('[data-ai-preview]').disabled=busy||running;$<HTMLTextAreaElement>('[data-ai-prompt]').disabled=running||busy;$<HTMLSelectElement>('[data-ai-goal]').disabled=running||busy;$<HTMLInputElement>('[data-ai-include-guide]').disabled=running||busy;for(const el of host.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('details button,details select'))el.disabled=!o.native||busy||running;$<HTMLButtonElement>('[data-ai-request]').disabled=!o.native||!aiAllowed||busy||running||component();$('[data-ai-request-status]').textContent=selected?`${selected.status[0].toUpperCase()+selected.status.slice(1)} · ${selected.prompt.slice(0,160)}${selected.schema?' · '+selected.schema.name+' v'+selected.schema.version+(selected.hasGuidance?' · full guidance included':' · rules only'):''}${eligible(selected)?' · Expires '+new Date(selected.expiresAt).toLocaleString():''}`:'No request selected.';}
  async function run(action:()=>Promise<void>){if(busy)return;busy=true;sync();try{await action();}catch(e){status(e instanceof Error?e.message:String(e));o.error(e);}finally{busy=false;sync();}}
  async function eligibility(){aiAllowed=false;const n=o.note();if(!n)throw new Error('Open a saved note first.');aiAllowed=api.noteAIAllowed?await api.noteAIAllowed(n.id):true;sync();return aiAllowed;}
  async function accountStatus(){if(!o.native){account=false;$('[data-subscription-status]').textContent='AI formatting is available in the desktop app.';return;}const s=await api.subscriptionStatus();account=s.authentication==='chatgpt';$('[data-subscription-status]').textContent=s.message;}
@@ -72,6 +76,8 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   }finally{reviewing=false;}
  }
  async function check(){
+  if(cancelRequested){reply=null;componentReply=null;autoReview=false;status(cancellationMessage());sync();return;}
+  if(running){reply=null;componentReply=null;status(activity&&activity.noteId!==o.note()?.id?`Generating a proposal for "${activity.title}". Use its status strip to return to that note. Nothing applies automatically.`:'Generating your proposal. You can cancel; nothing applies automatically.');sync();return;}
   if(!selected){reply=null;componentReply=null;sync();return;}
   if(!eligible(selected)){
    reply=null;componentReply=null;autoReview=false;
@@ -89,6 +95,16 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   sync();
  }
  async function job(j:Awaited<ReturnType<API['subscriptionJob']>>,refreshDialog=dialog.open&&aiAllowed){
+  if(cancelRequested){
+   running=j.phase==='running';runningRequestId=running?j.requestId:null;autoReview=false;
+   if(running){if(activity)activity={...activity,phase:'cancelling',message:cancellationMessage(false)};if(refreshDialog)status(cancellationMessage());sync();return;}
+   jobId=null;cancelRequested=false;reply=null;componentReply=null;selected=null;
+   const result=j.phase==='cancelled'?'Cancellation reported by the local runner.':j.phase==='completed'?'Generation finished before cancellation was reported.':'Generation ended after cancellation was requested.';
+   terminalMessage=`${result} ${cancelRequestRemoved?'Saved request removed. ':'The saved request may remain under Advanced. '}No proposal was applied. Already processed usage cannot be recalled.`;
+   lastCancellation={requestId:j.requestId,noteId:j.noteId,message:terminalMessage};
+   if(activity)activity={...activity,phase:j.phase==='cancelled'?'cancelled':'failed',message:terminalMessage};
+   if(refreshDialog){await requests('',true);selected=null;status(terminalMessage);}sync();return;
+  }
   running=j.phase==='running';runningRequestId=running?j.requestId:null;
   if(activity?.noteId===j.noteId)activity={...activity,requestId:j.requestId,phase:running?'running':j.phase==='completed'?'ready':'failed',message:running?'You can keep writing. Nothing applies automatically.':j.phase==='completed'?'Open this note to check and review the proposal. Nothing has been applied.':j.message};
   if(refreshDialog){
@@ -120,7 +136,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeDialog();});
  dialog.addEventListener('close',()=>{if(dialog.open)return;dialog.inert=true;epoch++;clearTimeout(timer);autoReview=false;$<HTMLInputElement>('[data-ai-include-guide]').checked=false;poll();});$('[data-ai-close]').onclick=closeDialog;
  $('[data-subscription-send]').onclick=()=>void run(async()=>{
-  epoch++;clearTimeout(timer);terminalMessage=null;if(!o.native)throw new Error('Use the desktop app.');
+  epoch++;clearTimeout(timer);terminalMessage=null;cancelRequested=false;cancelRequestRemoved=false;lastCancellation=null;if(!o.native)throw new Error('Use the desktop app.');
   if(!await eligibility())throw new Error('This note is excluded from all AI access. You can edit it locally.');
   if(!prompt())throw new Error('Describe the change first.');await o.flush();const n=o.note();if(!n)throw new Error('Open a saved note first.');
   autoReview=true;reply=null;componentReply=null;status('Starting generation for this saved note.');
@@ -130,11 +146,14 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   catch(e){if(activity)activity={...activity,phase:'failed',message:e instanceof Error?e.message:String(e)};throw e;}
  });
  $('[data-subscription-stop]').onclick=()=>void run(async()=>{
-  const id=runningRequestId;if(jobId)await api.cancelSubscription(jobId);
-  jobId=null;running=false;runningRequestId=null;clearTimeout(timer);pollPaused=false;
-  if(activity)activity={...activity,phase:'failed',message:'Cancellation requested. Remove the saved request under Advanced if it remains listed.'};
-  if(id)await api.cancelFormattingRequest(id);activity=null;autoReview=false;reply=null;componentReply=null;selected=null;
-  await requests('');selected=null;$<HTMLSelectElement>('[data-ai-existing]').value='';terminalMessage='Generation cancelled and its request removed. Already processed usage cannot be recalled.';status(terminalMessage);
+  if(!jobId||cancelRequested)return;
+  const id=runningRequestId;autoReview=false;cancelRequested=true;cancelRequestRemoved=false;pollPaused=false;pollErrors=0;
+  try{await api.cancelSubscription(jobId);}catch(error){cancelRequested=false;if(activity)activity={...activity,phase:'unknown',message:'Cancellation could not be confirmed. Status checking continues; you can retry Cancel.'};poll();throw error;}
+  reply=null;componentReply=null;selected=null;
+  if(id)try{await api.cancelFormattingRequest(id);cancelRequestRemoved=true;}catch(error){o.error(error);}
+  if(activity)activity={...activity,phase:'cancelling',message:cancellationMessage(false)};
+  if(dialog.open&&aiAllowed)await requests('',true);
+  terminalMessage=cancellationMessage();status(terminalMessage);poll();
  });
  $('[data-ai-preview]').onclick=()=>void run(showReview);
  $('[data-ai-request]').onclick=()=>void run(async()=>{if(!await eligibility())throw new Error('This note is excluded from all AI access.');terminalMessage=null;await o.flush();const n=o.note();if(!n)throw new Error('Open a saved note first.');if(!prompt())throw new Error('Describe the change first.');const approved=context();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;const r=await api.createFormattingRequest(n.id,prompt(),approved);autoReview=true;await requests(r.id);await check();status('Request saved for the external agent. Ask it to check Noted formatting requests.');});
@@ -147,7 +166,8 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  $('[data-ai-dismiss]').onclick=()=>{$('[data-ai-outcome]').hidden=true;};$('[data-ai-undo]').onclick=()=>void run(async()=>{const p=applied;if(!p||o.editor()!==p.editor||p.editor.state.doc!==p.doc){throw new Error('The note changed after formatting. Use the editor Undo controls to step back through later edits.');}if(!p.editor.commands.undo())throw new Error('Nothing to undo.');await o.flush();$('[data-ai-outcome-text]').textContent='Formatting undone. ';$<HTMLButtonElement>('[data-ai-undo]').disabled=true;applied=null;});
  async function openDialog(mode:AIGoal,preferred?:string,reviewWhenReady=false){
   if(destroyed||dialog.open||host.ownerDocument.querySelector('dialog[open]'))return;
-  autoReview=reviewWhenReady;
+  let showCancellationStatus=false;
+  autoReview=reviewWhenReady&&!cancelRequested;
   $<HTMLSelectElement>('[data-ai-goal]').value=mode;$<HTMLInputElement>('[data-ai-include-guide]').checked=false;schemaState();dialog.inert=false;dialog.showModal();
   status(running?'Checking running generation.':'Describe a change, then generate a proposal.');
   await run(async()=>{
@@ -155,8 +175,11 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    await accountStatus();await schemaCapabilities();
    if(mode==='schema'&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';
    const n=o.note();if(!n)throw new Error('Open a note first.');
+   const cancelled=lastCancellation&&lastCancellation.noteId===n.id&&lastCancellation.requestId===activity?.requestId&&['cancelled','failed'].includes(activity.phase)?lastCancellation:null;
    if(selected?.noteId!==n.id||selected&&!matchesGoal(selected)){selected=null;reply=null;componentReply=null;terminalMessage=null;}
-   await requests(preferred,Boolean(preferred));
+   await requests(cancelled?'':preferred,Boolean(preferred)||Boolean(cancelled));
+   if(cancelled){selected=null;reply=null;componentReply=null;autoReview=false;status(cancelled.message);showCancellationStatus=true;return;}
+   if(cancelRequested){reply=null;componentReply=null;selected=null;status(cancellationMessage());showCancellationStatus=true;return;}
    if(preferred&&!selected){
     const message=running?'The saved request is unavailable. Check or cancel the running generation before creating another proposal.':'This saved request is no longer available. Describe the current change to create a new proposal.';
     if(activity?.requestId===preferred)activity={...activity,phase:running?'unknown':'failed',message};status(message);reply=null;componentReply=null;autoReview=false;return;
@@ -164,7 +187,8 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    if(selected&&(preferred||!prompt()))$<HTMLTextAreaElement>('[data-ai-prompt]').value=selected.prompt;
    await check();
   });
-  if(dialog.open&&!running)$<HTMLTextAreaElement>('[data-ai-prompt]').focus();poll();
+  if(dialog.open&&showCancellationStatus){$('[data-ai-status]').focus({preventScroll:true});$('[data-ai-status]').scrollIntoView?.({block:'nearest'});}
+  else if(dialog.open&&!running)$<HTMLTextAreaElement>('[data-ai-prompt]').focus();poll();
  }
  async function resumeActivity(){
   const current=activity;if(!current||destroyed||host.ownerDocument.querySelector('dialog[open]'))return;
@@ -174,7 +198,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
    if(o.note()?.id!==current.noteId)throw new Error('Could not open the proposal note. Your current draft is kept open.');
   }
   pollErrors=0;pollPaused=false;
-  await openDialog(current.goal,current.requestId??undefined,current.phase!=='failed');
+  await openDialog(current.goal,current.phase==='cancelled'?undefined:current.requestId??undefined,!['failed','cancelled'].includes(current.phase));
  }
  sync();return {
   open:async(adherence=false)=>{

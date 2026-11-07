@@ -14,10 +14,10 @@ test('activity renders only explicit metadata, phase labels and safe text', () =
   const h = setup();
   try {
     h.ui.update(null); assert.equal(h.$('section').hidden, true);
-    for (const phase of ['starting', 'running', 'unknown', 'ready', 'failed'] as const) {
+    for (const phase of ['starting', 'running', 'cancelling', 'cancelled', 'unknown', 'ready', 'failed'] as const) {
       h.ui.update({ ...activity, phase }); assert.equal(h.$('section').hidden, false); assert.equal(h.host.querySelector('script'), null);
       assert.equal(h.$('[data-activity-note]').textContent, activity.title);
-      assert.equal(h.$('[data-activity-dismiss]').hidden, !['ready', 'failed'].includes(phase));
+      assert.equal(h.$('[data-activity-dismiss]').hidden, !['ready', 'failed', 'cancelled'].includes(phase));
       if (phase === 'ready') assert.equal(h.$('[data-activity-open]').textContent, 'Review proposal');
     }
   } finally { h.close(); }

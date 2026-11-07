@@ -75,3 +75,28 @@ The explicit **Create interactive component** goal now produces an inert definit
 ### Private-note exclusion
 
 Private imports cannot be sent through either the one-note Generate flow or the external request queue, regardless of optional folder grants. The dialog explains that AI is excluded and disables generation. Captured schemas retain source-note provenance; private sources and legacy untraceable full guides are refused in private workspaces. See [AI exclusion](ai-privacy.md). Matching native protocol is now 5.
+
+### Cancellation status
+
+Cancel requests a stop and removes only the job's own saved request. Generation
+remains disabled while local job status is still running. You can close the
+dialog and keep writing; the status strip retains the pending cancellation.
+Reopening still works after the saved request was removed.
+
+A returned cancellation request is not terminal confirmation. The UI waits for
+local job status before showing cancellation reported, failure, or a generation
+that finished before cancellation was reported. A completion race never opens or
+applies the proposal automatically. An unacknowledged stop can be retried, and a
+failed saved-request removal is not described as successful.
+
+These are local runner reports, not provider confirmation that remote processing
+or account usage stopped. Already processed usage cannot be recalled. No historic
+job outcome can be reconstructed from this UI change.
+
+November 7 verification: 285 frontend tests and type-checking passed. The
+browser-only harness passed 17 workflow checks over 16 theme/window profiles
+plus large text; cancellation passed nine checks over 18 profiles, including
+280px writing width, 390px windows and 200% text. Outcome details receive focus
+and remain visible. A ready proposal on another note cannot steal an active
+job's status or redirect cancellation. These are local stubbed account/model
+tests; no live model or personal note was used.

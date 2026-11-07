@@ -7,7 +7,7 @@ function setup(){
  let note={id:'fixture',title:'Synthetic job note',revision:1,revisionToken:'saved'} as Note;
  let rows:{id:string;noteId:string;prompt:string;expiresAt:string;status:string;kind?:'component'}[]=[],review:ProposalReview|null=null,release:((j:unknown)=>void)|undefined;
  const calls:string[]=[],errors:unknown[]=[],contexts:unknown[]=[],requestReads:string[]=[];
- let aiAllowed=true,jobResponse:any=null,jobFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
+ let aiAllowed=true,jobResponse:any=null,jobFailure=false,cancelFailure=false,removeFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
  const api={
   async noteAIAllowed(){return aiAllowed;},
   async schemaGuidanceCapabilities(){return{formattingProtocol:4,perRequestGuidanceConsent:true,componentSuggestions:true};},
@@ -15,10 +15,10 @@ function setup(){
   async formattingRequests(id:string){requestReads.push(id);return rows.filter(r=>r.noteId===id);},
   async startSubscription(_n:Note,_p:string,context?:unknown){startedNoteId=_n.id;contexts.push(context);calls.push('send');return await new Promise<any>(r=>release=r);},
   async subscriptionJob(){statusReads++;if(jobFailure||!jobResponse)throw new Error('Synthetic local status failure');return jobResponse;},
-  async cancelSubscription(){calls.push('cancel-job');},
+  async cancelSubscription(){calls.push('cancel-job');if(cancelFailure)throw new Error('Synthetic cancellation was not acknowledged');},
   async componentReply(){return {summary:'Counter',definition:counterComponent,properties:{label:'Fixture'}};},
   async formattingReply(){return rows.some(r=>r.status==='ready')?{summary:'Clearer layout',operations:[]}:null;},
-  async cancelFormattingRequest(id:string){calls.push('remove:'+id);rows=rows.filter(r=>r.id!==id);},
+  async cancelFormattingRequest(id:string){calls.push('remove:'+id);if(removeFailure)throw new Error('Synthetic request removal failed');rows=rows.filter(r=>r.id!==id);},
   async createFormattingRequest(){calls.push('external');return{id:'external',noteId:note.id,expiresAt:'2099-01-01'};},
  };
  const ui=initializeAIFormatting(host,{
@@ -30,6 +30,7 @@ function setup(){
   dom,host,ui,calls,contexts,errors,requestReads,setAIAllowed:(value:boolean)=>aiAllowed=value,
   $:<T extends HTMLElement>(s:string)=>host.querySelector<T>(s)!,setRows:(r:typeof rows)=>rows=r,getReview:()=>review,
   setNote(id:string){note={...note,id,title:'Synthetic other note'};},setOpenFailure(value:boolean){openFailure=value;},setJobFailure(value:boolean){jobFailure=value;},invalidateReviewFlush(){invalidateOnReviewFlush=true;},statusReads:()=>statusReads,
+  setJobPhase(phase:string){jobResponse={...jobResponse,phase};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},
   completeBackground(kind?:'component'){rows=[{kind,id:'running',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];jobResponse={id:'job',requestId:'running',noteId:'fixture',phase:'completed',message:'Proposal received'};},
   running(){rows=[{id:'running',noteId:note.id,prompt:'Make bold',expiresAt:'2099-01-01',status:'waiting'}];jobResponse={id:'job',requestId:'running',noteId:note.id,phase:'running',message:'Generating'};release!(jobResponse);},
   finish(kind?:'component'){rows=[{kind,id:'ready',noteId:startedNoteId,prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];release!({id:'job',requestId:'ready',noteId:startedNoteId,phase:'completed',message:'Cached proposal ready'});},
@@ -40,7 +41,13 @@ test('opening and typing never transmits; Generate saves first, suppresses dupli
 test('expired and outdated requests are labelled and never treated as ready proposals',async()=>{const s=setup();try{s.setRows([{id:'expired',noteId:'fixture',prompt:'Old',expiresAt:'2000-01-01',status:'expired'},{id:'outdated',noteId:'fixture',prompt:'Other',expiresAt:'2099-01-01',status:'outdated'}]);await s.ui.open();assert.match(s.$('[data-ai-existing]').textContent!,/expired/);assert.match(s.$('[data-ai-existing]').textContent!,/outdated/);s.$<HTMLSelectElement>('[data-ai-existing]').value='outdated';s.$('[data-ai-existing]').dispatchEvent(new s.dom.window.Event('change'));await settle();assert.match(s.$('[data-ai-status]').textContent!,/Outdated/);assert.equal(s.$('[data-ai-preview]').hidden,true);assert.equal(s.calls.includes('send'),false);assert.equal(s.calls.includes('review'),false);}finally{s.close();}});
 test('Close preserves a ready proposal; explicit Apply callback records completion and removes only its request',async()=>{const s=setup();try{s.setRows([{id:'ready',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}]);await s.ui.open();assert.equal(s.$('[data-ai-preview]').hidden,false);s.$('[data-ai-close]').click();assert.equal(s.calls.some(c=>c.startsWith('remove:')),false);await s.ui.open();s.$('[data-ai-preview]').click();await settle();await s.getReview()!.onApplied();assert.equal(s.calls.at(-1),'remove:ready');assert.equal(s.$('[data-ai-outcome]').hidden,false);assert.match(s.$('[data-ai-outcome-text]').textContent!,/applied/);}finally{s.close();}});
 
-test('Cancel generation stops the owned job and removes its one-note request without another transmission',async()=>{const s=setup();try{await s.ui.open();const p=s.$<HTMLTextAreaElement>('[data-ai-prompt]');p.value='Make bold';p.dispatchEvent(new s.dom.window.Event('input'));s.$('[data-subscription-send]').click();await settle();s.running();await settle();assert.equal(s.$('[data-subscription-stop]').hidden,false);s.$('[data-subscription-stop]').click();await settle();assert.deepEqual(s.calls.slice(-2),['cancel-job','remove:running']);assert.match(s.$('[data-ai-status]').textContent!,/request removed/);assert.equal(s.calls.filter(c=>c==='send').length,1);}finally{s.close();}});
+test('Cancel stays pending until local status resolves and removes only its owned request without another transmission',async()=>{const s=setup();try{await s.ui.open();const p=s.$<HTMLTextAreaElement>('[data-ai-prompt]');p.value='Make bold';p.dispatchEvent(new s.dom.window.Event('input'));s.$('[data-subscription-send]').click();await settle();s.running();await settle();s.$('[data-subscription-stop]').click();s.$('[data-subscription-stop]').click();await settle();assert.deepEqual(s.calls.slice(-2),['cancel-job','remove:running']);assert.match(s.$('[data-ai-status]').textContent!,/Cancellation requested.*Waiting.*request removed/);assert.equal(s.$('[data-activity-state]').textContent,'Cancellation requested');assert.equal(s.$<HTMLButtonElement>('[data-subscription-send]').disabled,true);assert.equal(s.$('[data-activity-dismiss]').hidden,true);s.setJobPhase('cancelled');s.$('[data-ai-close]').click();await settle();await settle();assert.equal(s.$('[data-activity-state]').textContent,'Cancellation reported');assert.match(s.$('[data-activity-message]').textContent!,/local runner.*No proposal was applied.*usage/);assert.equal(s.$('[data-activity-dismiss]').hidden,false);assert.equal(s.calls.filter(c=>c==='send').length,1);assert.equal(s.calls.includes('review'),false);}finally{s.close();}});
+
+test('a completion racing with Cancel never opens or applies the proposal',async()=>{const s=setup();try{await s.ui.open();const p=s.$<HTMLTextAreaElement>('[data-ai-prompt]');p.value='Make bold';p.dispatchEvent(new s.dom.window.Event('input'));s.$('[data-subscription-send]').click();await settle();s.running();await settle();s.$('[data-subscription-stop]').click();await settle();s.setJobPhase('completed');s.$('[data-ai-close]').click();await settle();await settle();assert.match(s.$('[data-activity-message]').textContent!,/finished before cancellation was reported/);assert.equal(s.calls.includes('review'),false);assert.equal(s.calls.filter(c=>c==='send').length,1);}finally{s.close();}});
+
+test('unacknowledged cancellation preserves the active job and allows an explicit retry',async()=>{const s=setup();try{await s.ui.open();const p=s.$<HTMLTextAreaElement>('[data-ai-prompt]');p.value='Make bold';p.dispatchEvent(new s.dom.window.Event('input'));s.$('[data-subscription-send]').click();await settle();s.running();await settle();s.setCancelFailure(true);s.$('[data-subscription-stop]').click();await settle();assert.equal(s.$<HTMLButtonElement>('[data-subscription-send]').disabled,true);assert.equal(s.$<HTMLButtonElement>('[data-subscription-stop]').disabled,false);assert.equal(s.calls.includes('remove:running'),false);assert.match(s.$('[data-activity-message]').textContent!,/could not be confirmed/);s.setCancelFailure(false);s.$('[data-subscription-stop]').click();await settle();assert.equal(s.calls.filter(c=>c==='cancel-job').length,2);assert.equal(s.calls.filter(c=>c==='send').length,1);}finally{s.close();}});
+
+test('failed request removal does not get reported as removed after cancellation',async()=>{const s=setup();try{await s.ui.open();const p=s.$<HTMLTextAreaElement>('[data-ai-prompt]');p.value='Make bold';p.dispatchEvent(new s.dom.window.Event('input'));s.$('[data-subscription-send]').click();await settle();s.running();await settle();s.setRemoveFailure(true);s.$('[data-subscription-stop]').click();await settle();s.setJobPhase('cancelled');s.$('[data-ai-close]').click();await settle();await settle();assert.match(s.$('[data-activity-message]').textContent!,/saved request may remain under Advanced/);assert.doesNotMatch(s.$('[data-activity-message]').textContent!,/Saved request removed/);assert.equal(s.errors.length,1);}finally{s.close();}});
 
 test('an older backend is explained and generation stays disabled until the native app is updated',async()=>{const s=setup();try{s.setRows([{id:'legacy',noteId:'fixture',prompt:'Old',expiresAt:'2099-01-01',status:undefined as unknown as string}]);await s.ui.open();assert.match(s.$('[data-ai-status]').textContent!,/older Noted backend/);assert.equal(s.$<HTMLButtonElement>('[data-subscription-send]').disabled,true);assert.equal(s.calls.includes('send'),false);}finally{s.close();}});
 
@@ -124,13 +131,40 @@ test('a missing request while its job is running keeps cancellation available',a
   f.$('[data-activity-open]').click();await microtasks();await microtasks();
   assert.equal(f.$('[data-subscription-stop]').hidden,false);assert.equal(f.$('[data-activity-dismiss]').hidden,true);
   assert.equal(f.$<HTMLButtonElement>('[data-subscription-send]').disabled,true);
-  f.$('[data-subscription-stop]').click();await microtasks();assert.equal(f.calls.includes('cancel-job'),true);assert.equal(f.$('.ai-job-status').hidden,true);
+  f.$('[data-subscription-stop]').click();await microtasks();assert.equal(f.calls.includes('cancel-job'),true);assert.equal(f.$('.ai-job-status').hidden,false);assert.equal(f.$('[data-activity-state]').textContent,'Cancellation requested');
+ }finally{f.close();}
+});
+test('closing and reopening a pending cancellation retains its status after its saved request is removed',async()=>{
+ const f=setup();try{
+  await startRunning(f);f.$('[data-subscription-stop]').click();await microtasks();
+  f.$('[data-ai-close]').click();await microtasks();assert.equal(f.$('[data-activity-state]').textContent,'Cancellation requested');
+  f.$('[data-activity-open]').click();await microtasks();await microtasks();
+  assert.equal(f.$<HTMLDialogElement>('dialog').open,true);assert.match(f.$('[data-ai-status]').textContent!,/Waiting for local runner status/);
+  assert.equal(f.$<HTMLButtonElement>('[data-subscription-send]').disabled,true);assert.equal(f.$<HTMLButtonElement>('[data-subscription-stop]').disabled,true);
+  assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal(f.calls.includes('review'),false);
+ }finally{f.close();}
+});
+test('reopening a reported cancellation shows its outcome and cannot select another saved proposal',async()=>{
+ const f=setup();try{
+  await startRunning(f);f.$('[data-subscription-stop]').click();await microtasks();f.setJobPhase('cancelled');f.$('[data-ai-close]').click();await microtasks();await microtasks();
+  f.setRows([{id:'other-ready',noteId:'fixture',prompt:'Different old proposal',expiresAt:'2099-01-01',status:'ready'}]);f.$('[data-activity-open]').click();await microtasks();await microtasks();
+  assert.match(f.$('[data-ai-status]').textContent!,/Cancellation reported by the local runner/);assert.match(f.$('[data-ai-status]').textContent!,/Already processed usage/);
+  assert.equal(f.dom.window.document.activeElement,f.$('[data-ai-status]'));
+  assert.equal(f.$('[data-ai-preview]').hidden,true);assert.equal(f.$<HTMLSelectElement>('[data-ai-existing]').value,'');assert.equal(f.calls.includes('review'),false);
  }finally{f.close();}
 });
 test('opening AI on another note identifies the actual running job origin',async()=>{
  const f=setup();try{
   await startRunning(f);f.$('[data-ai-close]').click();await microtasks();f.setNote('other');await f.ui.open();await microtasks();
   assert.match(f.$('[data-ai-status]').textContent!,/Synthetic job note/);assert.equal(f.calls.filter(c=>c==='send').length,1);
+ }finally{f.close();}
+});
+test('a ready proposal on another note cannot replace the active job or redirect its cancellation',async()=>{
+ const f=setup();try{
+  await startRunning(f);f.$('[data-ai-close]').click();await microtasks();f.setNote('other');
+  f.setRows([{id:'other-ready',noteId:'other',prompt:'Different saved proposal',expiresAt:'2099-01-01',status:'ready'}]);await f.ui.open();await microtasks();
+  assert.equal(f.$('[data-activity-state]').textContent,'Generating proposal');assert.equal(f.$('[data-activity-note]').textContent,'Synthetic job note');assert.equal(f.$('[data-ai-preview]').hidden,true);
+  f.$('[data-subscription-stop]').click();await microtasks();assert.equal(f.calls.includes('remove:running'),true);assert.equal(f.calls.includes('remove:other-ready'),false);
  }finally{f.close();}
 });
 test('owned-job polling cannot replace a private-note denial with a generation message',async()=>{
