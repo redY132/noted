@@ -240,3 +240,26 @@ benchmark-control visibility. Its default closed-dock mode requires eight
 visible controls; dock-open mode exercises the visible subset of eight stored
 instances. New results must be identified as this protocol. Offscreen gating
 remains active. A corrected fresh run is required before claiming completion.
+
+## Corrected eight-minute dock-open run
+
+The matching `5b6ed26` package and corrected visible-subset protocol completed
+eight minutes with Browse open and a 280px writing area. It saved and restored
+369 edits across 369 switches, created 185 workers with zero active afterward,
+and passed all ten media-lifetime checks. All 185 component observations saw
+one to four genuine visible controls among eight stored instances. Automation
+disconnected before preparation; sharing and the model runner stayed disabled.
+The owned app closed after the run.
+
+Renderer private-memory minute medians were 273.6, 292.3, 298.7, 299.8, 298.0,
+296.6, 301.5 and 302.2 MiB. App medians warmed from 15.4 to 76.8 MiB. Peak sampled
+process-tree private memory was 756.1 MiB. After diagnostic collection, renderer
+memory was 126.4 MiB and main JS heap 10.9 MiB, with 6,927 DOM nodes and 800
+listeners. Page Visibility observed 495,876ms with zero browser-reported hidden
+time; this does not certify foreground focus or animation throughput.
+
+The completed source/report metadata is preserved in
+`output/resource-release-widget-dock-8min-state.json`. This replaces the failed
+setup as evidence for this corrected protocol. It differs from the previous
+dock-open and closed-dock protocols, so no controlled speedup, stable ceiling,
+physical input timing or inexpensive-hardware acceptance is claimed.

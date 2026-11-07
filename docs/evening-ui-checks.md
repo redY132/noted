@@ -354,3 +354,20 @@ worker after enabling. This used injected candidate CSS against a generated
 fixture, not a newly built production executable. Matching-build and corrected
 resource runs remain separate verification steps. Toggle labels receive the
 minimum hit area without enlarging their native checkbox glyph.
+
+The matching `5b6ed26` production executable subsequently passed all 24 grid
+checks across eight profiles without injected CSS. The saved revision and
+fingerprint stayed unchanged; disabling or leaving removed its worker. Its
+prewritten native AI-proposal workflow also passed ten checks, six Light/Dark
+layouts and 200% text with the long synthetic title, Apply, Undo and saved-draft
+return. The runner and sharing stayed disabled and both owned apps closed.
+Per-fixture screenshots are recorded by
+`output/packaged-cached-proposal-state.json`; the grid log is recorded by
+`output/component-grid-native-state.json`. Neither run called a model.
+
+Fresh 20-second resource controls passed with Browse open and closed. Each
+completed 16 switches, saved edits and restored edits, nine created workers with
+zero active, and all ten media checks. The closed mode observed eight visible
+controls; the docked mode observed a one-to-four visible subset of eight stored
+instances. These confirm corrected preparation, not endurance or inexpensive
+hardware acceptance.
