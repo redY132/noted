@@ -452,3 +452,24 @@ field-boundary contrast 6.03:1; viewing preserved the document. Narrow and
 large-text screenshots were inspected. The delayed-reply control uses a
 browser-only API stub; native checks use the actual local picker and separate
 generated workspaces, with packaged evidence recorded in the current state file.
+
+The matching `684b907` package completed the native cache flow (ten checks/six
+profiles), Find (37/ten), web links (13) and local-note links (33/ten). The local
+picker used the actual native API; the late-response stub remains browser-only.
+The runner and sharing stayed disabled and the fixture app closed. Its
+source-specific state is retained in `output/packaged-links-684-state.json`.
+
+A subsequent generated probe found both link controls enabled on a code-block
+selection even though the editor reported that links were unsupported. Apply
+closed without adding a link. Controls now use the editor's mark capability;
+the keyboard shortcut explains choosing ordinary text and cannot mutate that
+unsupported selection. Returning to ordinary text restores both controls.
+
+Another focused regression reproduced the dialog closing for an address rejected
+by the existing stored-link validator. The dialog now uses that validator before
+applying: rejected addresses stay editable with feedback, and valid targets are
+canonicalized while selected wording is preserved. These checks do not visit
+external URLs or change the stored-link policy. All 322 frontend tests and type
+checking passed, including 19 editing tests. The rendered browser flows passed
+19 web-link checks and 35 local-note checks/ten layout profiles. Both new focused
+regressions failed before their fixes. Matching-package results remain separate.

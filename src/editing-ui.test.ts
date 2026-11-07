@@ -336,3 +336,40 @@ test('reopening a link dialog clears validation from an earlier rejected URL', (
     assert.equal(field.validationMessage,'');
   } finally { h.dispose(); }
 });
+
+test('link controls reject code selections and recover in ordinary text', () => {
+  const h=harness([{type:'codeBlock',content:[text('const value = true;')]},paragraph(text('Ordinary text'))]);
+  try {
+    h.editor.commands.setTextSelection({from:1,to:6});const before=h.editor.getJSON();
+    assert.equal(h.button('url').disabled,true);
+    assert.equal(h.element<HTMLButtonElement>('#insert-link').disabled,true);
+    h.editor.view.dom.dispatchEvent(new h.dom.window.KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true,cancelable:true}));
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,false);
+    assert.match(String(h.errors[0]),/ordinary text/i);
+    assert.deepEqual(h.editor.getJSON(),before);
+    h.editor.commands.setTextSelection(h.editor.state.doc.firstChild!.nodeSize+1);
+    assert.equal(h.button('url').disabled,false);
+    assert.equal(h.element<HTMLButtonElement>('#insert-link').disabled,false);
+    h.button('url').click();assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,true);
+  } finally { h.dispose(); }
+});
+
+test('URL validation keeps rejected addresses open and applies a canonical valid address', () => {
+  const h=harness([paragraph(text('Alpha Beta'))]);
+  try {
+    h.editor.commands.setTextSelection({from:1,to:6});h.button('url').click();const before=h.editor.getJSON();
+    const field=h.element<HTMLInputElement>('#url-value');
+    for(const value of ['https://user:password@example.com/','https://example.com/'+ 'a'.repeat(2048)]){
+      field.value=value;field.dispatchEvent(new h.dom.window.Event('input'));
+      h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+      assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,true,'the rejected address must remain editable');
+      assert.equal(field.validity.customError,true);assert.deepEqual(h.editor.getJSON(),before);
+    }
+    field.value='HTTPS://EXAMPLE.COM/path';field.dispatchEvent(new h.dom.window.Event('input'));
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,false);
+    assert.equal(h.editor.getAttributes('link').href,'https://example.com/path');
+    assert.equal(h.editor.state.doc.textContent,'Alpha Beta');
+    h.button('url').click();assert.equal(field.value,'https://example.com/path');
+  } finally { h.dispose(); }
+});

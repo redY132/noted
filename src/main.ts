@@ -489,6 +489,7 @@ $('#link-dialog').addEventListener('cancel',()=>clearInlineLink());
 $('#link-dialog').addEventListener('keydown',event=>{if(event.key==='Escape'&&!event.isComposing){event.preventDefault();event.stopPropagation();closeInlineLink();}});
 $('#insert-link').onclick = () => {
   if(!editor || editor.isDestroyed || !editor.isEditable || !session || navigating || document.querySelector('dialog[open]'))return;
+  if(!editor.can().setMark('link')){error('Choose ordinary text to add a link.');return;}
   clearInlineLink();
   linkSelection={from:editor.state.selection.from,to:editor.state.selection.to,editor,doc:editor.state.doc,noteId:session.note.id};
   $<HTMLInputElement>('#link-search').value='';$<HTMLDialogElement>('#link-dialog').showModal();$('#link-search').focus();void linkResults();

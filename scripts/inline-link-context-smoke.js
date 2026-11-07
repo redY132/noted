@@ -63,6 +63,10 @@ async page=>{
     }
   }
   await page.evaluate(()=>document.documentElement.style.fontSize='');record('picker layout checks preserve the document',await snapshot()===prior);
+  await writer.evaluate(el=>{el.editor.commands.setCodeBlock();el.editor.commands.setTextSelection({from:1,to:6});});const code=await snapshot();
+  await page.locator('#insert-link').evaluate(el=>el.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  record('unsupported code selections cannot open the note-link picker',!await dialog.isVisible()&&await snapshot()===code&&(await page.locator('#error-message').textContent()).toLowerCase().includes('ordinary text'));
+  await writer.evaluate(el=>el.editor.commands.setParagraph());
   await page.keyboard.press('Control+s');record('no uncaught errors or open dialogs remain',errors.length===0&&!await page.locator('dialog[open]').count());
   return{passed:true,native,syntheticOnly:true,noGenerationRequested:true,lateResponseChecked:!native,checks,profiles,screenshots,errors};
 }

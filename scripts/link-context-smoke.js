@@ -33,11 +33,18 @@ async page=>{
   await writer.evaluate(el=>{el.editor.commands.setTextSelection(3);el.focus();});await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
   await url.fill('ftp://example.com/');await apply.click();
   record('unsupported URLs remain in the dialog with validation feedback',await dialog.isVisible()&&await url.evaluate(field=>field.validity.customError));
+  const beforeInvalid=await snapshot();
+  for(const[name,value]of[['embedded sign-in details','https://user:password@example.com/'],['oversized address','https://example.com/'+ 'a'.repeat(2048)]]){
+    await url.fill(value);await apply.click();record(`${name} stays editable without changing the note`,await dialog.isVisible()&&await url.evaluate(field=>field.validity.customError)&&await snapshot()===beforeInvalid);
+  }
   await page.locator('#url-cancel').click();
   await writer.evaluate(el=>{el.editor.commands.setTextSelection(3);el.focus();});await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
   record('reopening a saved link clears the previous validation error',await url.inputValue()==='https://example.com/'&&await url.evaluate(field=>field.checkValidity()));
   await apply.click();await dialog.waitFor({state:'hidden'});
   await writer.press('Control+z');record('one Undo removes the explicit link',await writer.textContent()==='Gamma Delta'&&await writer.locator('a').count()===0);
+  await open();await url.fill('HTTPS://EXAMPLE.COM/path');await apply.click();await dialog.waitFor({state:'hidden'});
+  record('a valid mixed-case address stores its canonical target',await writer.textContent()==='Gamma Delta'&&await writer.locator('a').getAttribute('href')==='https://example.com/path');
+  await writer.press('Control+z');record('one Undo removes the canonical link',await writer.textContent()==='Gamma Delta'&&await writer.locator('a').count()===0);
   await open();const beforeCancel=await snapshot();await page.locator('#url-cancel').click();
   record('Cancel preserves the note',await snapshot()===beforeCancel&&!await dialog.isVisible());
   await open();await page.keyboard.press('Escape');
@@ -52,6 +59,11 @@ async page=>{
   await url.fill('https://example.com/');await page.locator('#url-label').fill('Example');await apply.click();await dialog.waitFor({state:'hidden'});
   record('caret insertion uses the explicit label',await writer.textContent()==='Example'&&await writer.locator('a').textContent()==='Example');
   await writer.press('Control+z');record('one Undo removes the caret insertion',await writer.textContent()==='');
+  await writer.evaluate(el=>{const e=el.editor;e.commands.setCodeBlock();e.commands.insertContent('const value = true;');e.commands.setTextSelection({from:1,to:6});el.focus();});const code=await snapshot();
+  await page.keyboard.press('Control+k');
+  record('unsupported code selections disable link controls and explain the shortcut',!await dialog.isVisible()&&await page.locator('[data-edit=url]').isDisabled()&&await page.locator('#insert-link').isDisabled()&&await snapshot()===code&&(await page.locator('#error-message').textContent()).toLowerCase().includes('ordinary text'));
+  await writer.evaluate(el=>{el.editor.commands.setParagraph();el.editor.commands.setTextSelection(2);el.focus();});await page.keyboard.press('Control+k');await dialog.waitFor({state:'visible'});
+  record('ordinary text re-enables the link controls',!await page.locator('[data-edit=url]').isDisabled()&&!await page.locator('#insert-link').isDisabled());await page.locator('#url-cancel').click();
   await page.keyboard.press('Control+s');
   record('link checks finish without uncaught browser errors or open dialogs',errors.length===0&&!await page.locator('dialog[open]').count());
   return{passed:true,native,syntheticOnly:true,noGenerationRequested:true,checks,errors};

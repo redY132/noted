@@ -3,6 +3,7 @@ import { closeHistory } from '@tiptap/pm/history';
 import type { SchemaId } from './model.ts';
 import { indentationHint, normalizeTextColor } from './editor-extensions.ts';
 import { findInDocument, type Match } from './editor-search.ts';
+import { normalizeNoteLink } from './note-links.ts';
 
 const button = (action: string, label: string, content: string, shortcut = '') => `<button type="button" data-edit="${action}" aria-label="${label}" title="${label}${shortcut ? ` (${shortcut})` : ''}">${content}</button>`;
 export const editingMarkup = `
@@ -69,9 +70,10 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  }
  function openURL() {
    const editor = getEditor(); if (!editor || editor.isDestroyed || !editor.isEditable) return;
+   if(!editor.can().setMark('link')){error('Choose ordinary text to add a link.');return;}
    if (editor.isActive('link')) editor.commands.extendMarkRange('link');
    linkRange = {from:editor.state.selection.from,to:editor.state.selection.to,editor,doc:editor.state.doc};
-   const href = editor.getAttributes('link').href ?? '';
+   const href = normalizeNoteLink(editor.getAttributes('link').href) ?? '';
    $('#url-label-row').hidden = linkRange.from !== linkRange.to;
    $<HTMLInputElement>('#url-value').value = /^https?:/.test(href) ? href : '';
    $<HTMLInputElement>('#url-value').setCustomValidity('');
@@ -162,12 +164,12 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
      closeURL(); error('The note changed or is no longer editable. Reopen the link dialog and choose the text again.'); return;
    }
    try {
-     const value=$<HTMLInputElement>('#url-value').value.trim(); const url=new URL(value);
-     if(!['http:','https:'].includes(url.protocol) || /[\u0000-\u001f\u007f]/.test(value)) throw new Error('Use an http:// or https:// web address.');
+     const value=$<HTMLInputElement>('#url-value').value.trim(), href=normalizeNoteLink(value);
+     if(!href || !/^https?:/.test(href)) throw new Error('Enter an http:// or https:// address of at most 2,048 characters, without a username or password.');
      editor.view.dispatch(closeHistory(editor.state.tr));
      const chain=editor.chain().focus().setTextSelection({from:context.from,to:context.to});
-     if(context.from===context.to) chain.insertContent({type:'text',text:$<HTMLInputElement>('#url-label').value || value,marks:[{type:'link',attrs:{href:value}}]}).run();
-     else chain.setLink({href:value}).run();
+     if(context.from===context.to) chain.insertContent({type:'text',text:$<HTMLInputElement>('#url-label').value || value,marks:[{type:'link',attrs:{href}}]}).run();
+     else chain.setLink({href}).run();
      editor.view.dispatch(closeHistory(editor.state.tr));
      closeURL();sync();
    } catch(reason) {
@@ -191,6 +193,8 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  });
  function sync(editor: Editor | null = getEditor(), docChanged=false) {
    if(!editor || editor.isDestroyed) return;
+   const linkAllowed=editor.isEditable&&editor.can().setMark('link');
+   $<HTMLButtonElement>('#insert-link').disabled=!linkAllowed;
    const nearestList=(position: typeof editor.state.selection.$from)=>{
      for(let depth=position.depth;depth>0;depth--) if(['bulletList','orderedList','taskList'].includes(position.node(depth).type.name)) return position.node(depth).type.name;
      return null;
@@ -211,6 +215,7 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
     if(action==='indent') enabled &&= editor.can().indent();
     if(action==='outdent') enabled &&= editor.can().outdent();
     if(action==='unlink') enabled &&= editor.isActive('link');
+    if(action==='url') enabled &&= linkAllowed;
     if(marks.includes(action)) enabled &&= editor.can().toggleMark(action);
     b.disabled=!enabled;
    }
