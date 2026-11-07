@@ -176,3 +176,14 @@ latency comparison. Longer endurance, actual inexpensive hardware and agreed
 whole-app resource budgets remain separate gates. The ignored
 `output/resource-release-8min-state.json` records the local report and exact
 kit/source provenance; the transferable kit contains no run profiles or reports.
+
+The subsequent matching `d0d7f7d` package completed a 15-minute disconnected
+control: 693 switches and edit/restore pairs, 347 created workers and zero left
+active, followed by ten passing media checks. Renderer minute medians ranged
+from 263.9 to 291.1 MiB; after diagnostic GC it was 127.8 MiB with 11.0 MiB main
+JS heap. DOM counters were again 7,044 nodes and 829 listeners, matching the
+eight-minute control. The native app's minute medians warmed from 13.5 MiB to
+roughly 79-81 MiB from minute six onward. Peak sampled private memory across the
+process tree was 954.9 MiB. These are observations of this generated resource
+protocol, not continuous visibility/animation-throughput or hardware-budget
+certification. `output/resource-release-15min-state.json` preserves provenance.

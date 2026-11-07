@@ -114,6 +114,19 @@ These are local runner reports, not provider confirmation that remote processing
 or account usage stopped. Already processed usage cannot be recalled. No historic
 job outcome can be reconstructed from this UI change.
 
+The accepted desktop exit event explicitly requests cancellation of the owned
+local runner before Tauri exits. Process creation and ownership registration
+share the cancellation lock; cancelled work rechecks before writing the approved
+input. Incomplete pipe setup kills and reaps its owned child. This does not claim
+provider-side cancellation or coverage of forced termination/OS crashes.
+
+Native verification: 113 tests passed, with four optional model/corpus tests
+ignored. Eleven runner-focused tests include cancellation racing with process
+creation, refusing a pre-cancelled factory, cleanup after incomplete pipe setup
+and the process-local no-model fuse. Child-process cases launch only this test
+binary with the runner disabled, never Codex. The accepted-exit callback is
+compiled in the desktop suite; a live model shutdown test is not claimed.
+
 Earlier November 7 checkpoint: 285 frontend tests and type-checking passed. The
 browser-only harness passed 17 workflow checks over 16 theme/window profiles
 plus large text; cancellation passed nine checks over 18 profiles, including

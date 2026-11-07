@@ -1019,8 +1019,17 @@ mod desktop {
                 export_relations,
                 restore_dismissed
             ])
-            .run(tauri::generate_context!())
-            .expect("Noted could not start its local workspace");
+            .build(tauri::generate_context!())
+            .expect("Noted could not start its local workspace")
+            .run(|app, event| {
+                // Tauri's run path exits the process directly; managed-state
+                // destructors are not the shutdown contract for an owned client.
+                if matches!(event, tauri::RunEvent::Exit) {
+                    if let Some(service) = app.try_state::<Arc<crate::subscription::Service>>() {
+                        let _ = service.cancel(None);
+                    }
+                }
+            });
     }
 }
 
