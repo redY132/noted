@@ -88,6 +88,11 @@ can still be checked. A job's reported completion or failure remains visible
 when saved-request loading fails. Reopening failed work shows its own message
 without substituting a different request or hiding it behind a list-read error.
 
+Changing the goal or selected saved request supersedes pending local reads.
+An older response cannot replace the newer choice or open its comparison.
+The newly selected request continues polling locally; changing these controls
+does not start another generation.
+
 ### Cancellation status
 
 Advanced saved requests keep their exact identity through creation, polling and

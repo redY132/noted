@@ -8,12 +8,12 @@ function setup(){
  let rows:{id:string;noteId:string;prompt:string;expiresAt:string;status:string;kind?:'component'}[]=[],review:ProposalReview|null=null,release:((j:unknown)=>void)|undefined;
  const calls:string[]=[],errors:unknown[]=[],contexts:unknown[]=[],requestReads:string[]=[],externalTargets:string[]=[];
  let aiAllowed=true,jobResponse:any=null,jobFailure=false,cancelFailure=false,removeFailure=false,requestsFailure=false,accountFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
- let eligibilityGate:Promise<void>|null=null,flushGate:Promise<void>|null=null,createGate:Promise<void>|null=null;
+ let eligibilityGate:Promise<void>|null=null,flushGate:Promise<void>|null=null,createGate:Promise<void>|null=null,nextRequestsGate:Promise<void>|null=null;
  const api={
   async noteAIAllowed(){if(eligibilityGate)await eligibilityGate;return aiAllowed;},
   async schemaGuidanceCapabilities(){return{formattingProtocol:4,perRequestGuidanceConsent:true,componentSuggestions:true};},
   async subscriptionStatus(){calls.push('account');if(accountFailure)throw new Error('Synthetic account discovery failure');return{available:true,authentication:'chatgpt',message:'Signed in'};},
-  async formattingRequests(id:string){requestReads.push(id);if(requestsFailure)throw new Error('Synthetic saved-request read failure');return rows.filter(r=>r.noteId===id);},
+  async formattingRequests(id:string){requestReads.push(id);const snapshot=rows.filter(r=>r.noteId===id).map(row=>({...row})),gate=nextRequestsGate;nextRequestsGate=null;if(gate)await gate;if(requestsFailure)throw new Error('Synthetic saved-request read failure');return snapshot;},
   async startSubscription(_n:Note,_p:string,context?:unknown){startedNoteId=_n.id;contexts.push(context);calls.push('send');return await new Promise<any>(r=>release=r);},
   async subscriptionJob(){statusReads++;if(jobFailure||!jobResponse)throw new Error('Synthetic local status failure');return jobResponse;},
   async cancelSubscription(){calls.push('cancel-job');if(cancelFailure)throw new Error('Synthetic cancellation was not acknowledged');},
@@ -35,6 +35,7 @@ function setup(){
   holdEligibility(){let release!:()=>void;eligibilityGate=new Promise<void>(resolve=>release=resolve);return()=>{eligibilityGate=null;release();};},
   holdFlush(){let release!:()=>void;flushGate=new Promise<void>(resolve=>release=resolve);return()=>{flushGate=null;release();};},
   holdCreate(){let release!:()=>void;createGate=new Promise<void>(resolve=>release=resolve);return()=>{createGate=null;release();};},
+  holdNextRequests(){let release!:()=>void;nextRequestsGate=new Promise<void>(resolve=>release=resolve);return()=>release();},
   completeBackground(kind?:'component'){rows=[{kind,id:'running',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];jobResponse={id:'job',requestId:'running',noteId:'fixture',phase:'completed',message:'Proposal received'};},
   running(){rows=[{id:'running',noteId:note.id,prompt:'Make bold',expiresAt:'2099-01-01',status:'waiting'}];jobResponse={id:'job',requestId:'running',noteId:note.id,phase:'running',message:'Generating'};release!(jobResponse);},
   finish(kind?:'component'){rows=[{kind,id:'ready',noteId:startedNoteId,prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];release!({id:'job',requestId:'ready',noteId:startedNoteId,phase:'completed',message:'Cached proposal ready'});},
@@ -207,6 +208,29 @@ test('local proposal reload rechecks privacy and saved-note freshness before rev
    if(mode==='private'){assert.equal(f.requestReads.length,reads);assert.match(f.$('[data-ai-status]').textContent!,/excluded from all AI access/);}
    else assert.match(f.$('[data-ai-status]').textContent!,/[Oo]utdated/);
   }finally{f.close();}
+ }
+});
+
+test('a delayed completed-result read cannot replace a newer goal or saved-request selection',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const mode of ['goal','selection']){
+  const f=setup();let release:(()=>void)|undefined;try{
+   const other={id:'other-pending',noteId:'fixture',prompt:'Other pending request',expiresAt:'2099-01-01',status:'waiting'};
+   if(mode==='selection')f.setRows([other]);await startRunning(f);f.completeBackground();
+   if(mode==='selection')f.setRows([{id:'running',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'},other]);
+   release=f.holdNextRequests();t.mock.timers.tick(2000);await microtasks();await microtasks();
+   assert.equal(f.$<HTMLSelectElement>('[data-ai-goal]').disabled,false);
+   if(mode==='goal'){const goal=f.$<HTMLSelectElement>('[data-ai-goal]');goal.value='schema';goal.dispatchEvent(new f.dom.window.Event('change'));}
+   else{const select=f.$<HTMLSelectElement>('[data-ai-existing]');select.value='other-pending';select.dispatchEvent(new f.dom.window.Event('change'));}
+   await microtasks();await microtasks();release();await microtasks();await microtasks();
+   assert.equal(f.$('[data-ai-preview]').hidden,true,mode);assert.equal(f.calls.includes('review'),false);assert.equal(f.calls.filter(call=>call==='send').length,1);
+   if(mode==='goal')assert.equal(f.$<HTMLSelectElement>('[data-ai-goal]').value,'schema');
+   else{
+    assert.equal(f.$<HTMLSelectElement>('[data-ai-existing]').value,'other-pending');const reads=f.requestReads.length;
+    f.setRows([{...other,status:'ready'}]);t.mock.timers.tick(2000);await microtasks();await microtasks();
+    assert.ok(f.requestReads.length>reads);assert.equal(f.$<HTMLSelectElement>('[data-ai-existing]').value,'other-pending');assert.equal(f.$('[data-ai-preview]').hidden,false);assert.equal(f.calls.includes('review'),false);
+   }
+  }finally{release?.();f.close();}
  }
 });
 test('closed-dialog polling reads only the owned local job and resumes its original note and component goal',async t=>{

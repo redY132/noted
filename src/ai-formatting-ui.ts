@@ -216,10 +216,20 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   const current=selected as RequestEntry|null; // requests/check update this closure across awaits.
   if(ticket===epoch&&dialog.open&&(!current||current.status==='waiting'))status(current?'Request saved for the external agent. Ask it to check Noted formatting requests.':'Request saved for the external agent. Ask it to check Noted, then use Refresh request under Advanced to find this request.');
  });
- $('[data-ai-existing]').onchange=()=>void run(async()=>{terminalMessage=null;selected=entries.find(r=>r.id===$<HTMLSelectElement>('[data-ai-existing]').value)??null;reply=null;componentReply=null;autoReview=false;if(selected)$<HTMLTextAreaElement>('[data-ai-prompt]').value=selected.prompt;await check();});
+ $('[data-ai-existing]').onchange=()=>void run(async()=>{
+  epoch++;clearTimeout(timer);terminalMessage=null;
+  selected=entries.find(r=>r.id===$<HTMLSelectElement>('[data-ai-existing]').value)??null;reply=null;componentReply=null;autoReview=false;
+  if(selected)$<HTMLTextAreaElement>('[data-ai-prompt]').value=selected.prompt;await check();poll();
+ });
  $('[data-ai-check]').onclick=()=>void run(async()=>{const id=selected?.id,ticket=epoch;await requests(id,Boolean(id));if(ticket!==epoch||!dialog.open)return;if(!id||!missingRequest(id))await check();});
  $('[data-ai-cancel]').onclick=()=>void run(async()=>{terminalMessage=null;if(selected){await api.cancelFormattingRequest(selected.id);clearActivity(selected.id);}selected=null;reply=null;componentReply=null;autoReview=false;await requests('');selected=null;$<HTMLSelectElement>('[data-ai-existing]').value='';status('Request removed. Your note is unchanged.');});
- $('[data-ai-goal]').onchange=()=>void run(async()=>{$<HTMLInputElement>('[data-ai-include-guide]').checked=false;schemaState();await schemaCapabilities();selected=null;reply=null;componentReply=null;await requests('');await check();if(component()&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest one useful interactive component for this note, preserving the original note.';if(goal()&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';});
+ $('[data-ai-goal]').onchange=()=>void run(async()=>{
+  epoch++;clearTimeout(timer);selected=null;reply=null;componentReply=null;autoReview=false;
+  $<HTMLInputElement>('[data-ai-include-guide]').checked=false;schemaState();await schemaCapabilities();await requests('');await check();
+  if(component()&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest one useful interactive component for this note, preserving the original note.';
+  if(goal()&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';
+  poll();
+ });
  $('[data-subscription-refresh]').onclick=()=>void run(accountStatus);$('[data-ai-prompt]').oninput=sync;
  $('[data-ai-include-guide]').onchange=sync;
  $('[data-ai-dismiss]').onclick=()=>{$('[data-ai-outcome]').hidden=true;};$('[data-ai-undo]').onclick=()=>void run(async()=>{const p=applied;if(!p||o.editor()!==p.editor||p.editor.state.doc!==p.doc){throw new Error('The note changed after formatting. Use the editor Undo controls to step back through later edits.');}if(!p.editor.commands.undo())throw new Error('Nothing to undo.');await o.flush();$('[data-ai-outcome-text]').textContent='Formatting undone. ';$<HTMLButtonElement>('[data-ai-undo]').disabled=true;applied=null;});

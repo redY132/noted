@@ -108,6 +108,10 @@ new generation stays disabled until sign-in is known. Preserve exact request
 identity, note eligibility, freshness, explicit Apply and Undo. Use the existing
 plain controls and status area; no new section, assets or animation.
 
+Changing the goal or selected saved request supersedes pending local reads.
+Ignore responses from the earlier dialog context, turn off automatic review
+for the deliberate change, and continue polling only the current selection.
+
 # Workspace recovery refinement
 
 Preserve the existing local Create → Inspect → Restore as a new workspace flow and separate-copy opening. Prevent late default paths from replacing a chosen path, disable operations during initial setup, release the form for manual paths if defaults fail, and invalidate inspection after every restore attempt. Ignore UI continuations after disposal without claiming to cancel a native copy already underway. Make the named Workspace dialog's Close stay reachable while scrolling; use existing plain controls, text-relative sizes, 44px targets, visible focus and 3:1 field boundaries. Check asynchronous failure/disposal with fake APIs, then actual Create/Inspect/Restore in guarded native fixtures and responsive themes/200% text. No changes to archive format, source workspaces, imported data, permissions or AI. ENERGY 1, RHYTHM 2, MOTION 2; no new assets or decorative sections.

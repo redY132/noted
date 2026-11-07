@@ -240,3 +240,11 @@ The final rendered regression also passed 17 normal workflow checks/16 profiles
 plus large text, eight external-request checks, four approval-scope checks and
 ten cancellation checks/18 strip plus ten dialog profiles. No new surface,
 palette, animation, sidebar section or access grant was added.
+
+Context-ordering follow-up: a standalone simulated API reproduced delayed
+completed-result reads replacing a newer goal and saved-request selection.
+Explicit changes now invalidate those responses and turn off automatic review
+for the superseded context. All 303 frontend tests, 51 focused controller tests,
+type checking and four rendered ordering checks passed. The selected request
+continues receiving local replies without another generation. No markup,
+palette, animation or permission change was needed.
