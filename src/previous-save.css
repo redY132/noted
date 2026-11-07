@@ -1,5 +1,6 @@
 .previous-save-dialog { width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 18px; color: var(--ui-text); background: var(--ui-surface); font: .875rem/1.5 system-ui, sans-serif; }
-.previous-save-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.previous-save-dialog { flex-direction: column; gap: 10px; }
+.previous-save-dialog[open] { display: flex; }
 .previous-save-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 1; background: var(--ui-surface); }
 .previous-save-dialog h2 { margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
 .previous-save-dialog h3 { margin: 0 0 6px; font: 600 1rem/1.4 system-ui, sans-serif; }

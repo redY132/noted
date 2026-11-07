@@ -1,5 +1,6 @@
 .quick-open-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); }
-.quick-open-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.quick-open-dialog { flex-direction: column; gap: 10px; }
+.quick-open-dialog[open] { display: flex; }
 .quick-open-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .quick-open-dialog h2 { font: 600 1.125rem/1.4 system-ui; margin: 0; }
 .quick-open-dialog button { min-width: 44px; min-height: 44px; cursor: pointer; border-radius: 4px; padding: 8px; }

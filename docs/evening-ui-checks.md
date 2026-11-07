@@ -162,3 +162,33 @@ Result: **PASS** under the same manual During rules. The existing form and separ
 | R-37, R-40, C-1 Scope | PASS | Recorded before implementation. No archive-format, import, permissions, model or original-workspace changes. A completed native copy is not claimed cancelled by UI disposal. |
 
 Final narrow-layout follow-up: native save-error recovery passed 175 checks over 12 Light/Dark window/dock profiles plus 200% text, including the 390px stacked dock. Workspace passed 13 native and 13 browser checks, with an additional 390px/200% text case and keyboard access to bottom actions. Those final screenshots were inspected. No import, generation or personal note access occurred.
+
+## November 7 continuation
+
+The earlier During rules were applied manually; anti-slop tools were unavailable
+in this session. Existing neutral surfaces, typography and dock composition
+remain. No new assets or animation were added.
+
+- AI cancellation acknowledgement remains pending until owned local job status
+  resolves. The browser-only controller regression passed nine checks and 18
+  activity-strip layout profiles. Separate dialog checks passed ten Light/Dark,
+  narrow/short-window and 200% text profiles: outcome details receive focus,
+  scroll independently when needed, and keep Close visible. Screenshot review
+  included the 390px/200% text case. Tests stub all account and AI APIs; no
+  model, native IPC or note transmission occurs.
+- A generated CSS-only fixture reproduced Open note changing from a column to
+  a row during its existing closing fade. Column direction and gap now persist
+  for Open note, headings, history, help, review and previous-save dialogs.
+  The rendered regression passed 96 profiles across those six dialogs, both
+  themes, desktop/short/narrow windows, 200% text and reduced motion. It checks
+  closing-frame geometry, eventual hiding and native focus return; it does not
+  claim application-controller coverage. Short-window block layouts remain.
+  Separate slowed diagnostic captures support visual inspection.
+- The activity happy-path fixture passed its existing 17 checks/16 layout
+  profiles. Controller changes passed all 285 frontend tests and type checking
+  before the CSS follow-ups; the latter are covered by rendered checks.
+
+No private Logseq source, imported notes or source assets were opened or changed.
+No persistent connection, permission or actual model cancellation is inferred
+from these UI simulations. The historical two live attempts still have an
+unverified terminal outcome.

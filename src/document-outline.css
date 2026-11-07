@@ -1,5 +1,6 @@
 .document-outline-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); }
-.document-outline-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.document-outline-dialog { flex-direction: column; gap: 10px; }
+.document-outline-dialog[open] { display: flex; }
 .document-outline-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .document-outline-dialog h2 { min-width: 0; overflow-wrap: anywhere; font: 600 1.125rem/1.4 system-ui; margin: 0; }
 .document-outline-dialog header button { flex-shrink: 0; }

@@ -1,5 +1,6 @@
 .help-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); font: .875rem/1.5 system-ui, sans-serif; overflow: auto; }
-.help-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.help-dialog { flex-direction: column; gap: 10px; }
+.help-dialog[open] { display: flex; }
 .help-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 0 0 auto; }
 .help-dialog h2 { margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
 .help-dialog p { margin: 0; font-size: .8125rem; color: var(--ui-muted); overflow-wrap: anywhere; }

@@ -1,5 +1,6 @@
 .review-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; color: var(--ui-text); background: var(--ui-surface); font: .875rem/1.5 system-ui, sans-serif; overflow: auto; }
-.review-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.review-dialog { flex-direction: column; gap: 10px; }
+.review-dialog[open] { display: flex; }
 .review-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .review-dialog h2 { margin: 0; font: 600 1.125rem/1.4 system-ui, sans-serif; }
 .review-dialog p { margin: 0; color: var(--ui-muted); font-size: .8125rem; overflow-wrap: anywhere; }
