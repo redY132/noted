@@ -147,3 +147,16 @@ Result: **PASS** under the same manual During rules. The existing inline alert a
 | R-32, R-39 Keyboard | PASS | Named scrollable diagnostics, PageDown, sequential Tab access to every action, visible focus and automatic scroll to focused recovery controls. No automatic focus theft. |
 | R-33, R-35, R-36, C-5 Verification | PASS | Direct CSS/markup edits, browser 151/native 149 checks, frontend and Windows builds, manually inspected screenshots. Native download execution is not claimed. |
 | R-37, R-40, C-1 Scope | PASS | Measured defect and intended correction recorded in DESIGN before implementation. No new polling, note retrieval route, generation or permissions. |
+
+## Workspace backup and recovery controls
+
+Result: **PASS** under the same manual During rules. The existing form and separate-workspace restore remain. The named dialog has a plain sticky heading/Close; controls and explanatory text follow relative sizing, without new assets, effects, animation or dock changes.
+
+| Rules/checks | Result | Evidence |
+| --- | --- | --- |
+| R-03, R-05, C-3 Reflow | PASS | Native/browser six Light/Dark profiles plus 200% text. Sticky Close covers scrolling content; bottom actions remain reachable and all explanations scale. Screenshots inspected. |
+| R-24, R-26, R-27, C-2, C-4 States | PASS | Delayed defaults, manual-path fallback, duplicate actions, failed draft save, consumed restore inspection, native operation completion after disposal and prevention of new operations after disposal. |
+| R-25, R-34 Contrast/targets | PASS | Native minimum text 6.029:1 Light, 7.822:1 Dark. Active controls at least 44px; focus/field borders at least 3:1. |
+| R-32, R-39 Keyboard | PASS | Named native Workspace dialog, one Close, first Escape, keyboard-accessible bottom actions and preserved note/dock state. |
+| R-33, R-35, R-36, C-5 Verification | PASS | Eight controller tests, full 277 frontend tests, production/Windows builds, 12 browser and 12 native layout checks; actual native backup/restore preserved all 117 fixture notes and 32 connections. |
+| R-37, R-40, C-1 Scope | PASS | Recorded before implementation. No archive-format, import, permissions, model or original-workspace changes. A completed native copy is not claimed cancelled by UI disposal. |

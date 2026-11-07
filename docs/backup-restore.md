@@ -9,6 +9,8 @@ Open **View → Workspace details → Backup and restore** in the desktop app.
 
 Browser preview storage is separate; these controls are disabled there.
 
+The form waits for its default paths before enabling actions. If defaults fail, enter full paths manually; an already chosen path is preserved. Every restore attempt consumes its inspection, so inspect again before retrying a failed restore. The named Workspace dialog keeps Close visible while scrolling, and its fields and actions follow large text and keyboard focus.
+
 ## Snapshot contents and consistency
 
 The version 1 archive is one SQLite file, identified by a Noted application ID and an exact, inert three-table schema. It streams authoritative files into bounded BLOBs and stores relationship rows as typed data, rather than copying a live SQLite WAL file.

@@ -1,0 +1,41 @@
+#workspace-dialog {
+  width:min(760px,calc(100vw - 32px));
+  max-height:calc(100dvh - 32px);
+  padding:18px;
+  font:.875rem/1.5 system-ui,sans-serif;
+  overflow:auto;
+  scroll-padding-block:calc(44px + 2rem) 16px;
+}
+.workspace-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  position:sticky;
+  top:-18px;
+  z-index:2;
+  margin:-18px -18px 12px;
+  padding:12px 18px;
+  background:var(--ui-surface);
+}
+.workspace-header h2 { margin:0; font:600 1.125rem/1.4 system-ui,sans-serif; }
+#workspace-dialog :is(button,input:not([type=checkbox]):not([type=radio]),select,summary) {
+  min-height:44px;
+  min-width:44px;
+  max-width:100%;
+  font:inherit;
+}
+#workspace-dialog button { padding:8px 10px; overflow-wrap:anywhere; }
+#workspace-dialog :is(button,input,select,summary):focus-visible { outline:2px solid var(--accent-text); outline-offset:-2px; }
+#workspace-dialog :is(input:not([type=checkbox]):not([type=radio]),select) { border-color:var(--ui-muted); }
+#workspace-dialog input::placeholder { color:var(--ui-muted); opacity:1; }
+#workspace-dialog :is(p,summary,h3) { overflow-wrap:anywhere; }
+#workspace-dialog :is(p,label,summary) { font-size:inherit; }
+#workspace-dialog h3 { font:600 1rem/1.4 system-ui,sans-serif; }
+#workspace-dialog .migration-tools { font:inherit; }
+#workspace-dialog .dialog-actions { flex-wrap:wrap; }
+#workspace-dialog .backup-tools { font:inherit; }
+#workspace-dialog .backup-tools label { margin-block:12px; }
+#workspace-dialog .backup-tools button { margin:0; }
+#workspace-dialog .backup-tools>button { margin:0 6px 6px 0; }
+#workspace-dialog .backup-actions { gap:8px; }
