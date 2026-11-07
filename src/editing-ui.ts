@@ -46,7 +46,7 @@ type Options = { getEditor: () => Editor | null; getSchema: () => SchemaId; erro
 export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
  const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-edit]')];
- let linkRange: {from:number;to:number} | null = null;
+ let linkRange: {from:number;to:number;editor:Editor;doc:Editor['state']['doc']} | null = null;
  let matches: Match[] = []; let current = -1; let truncated = false;
  let searchTimer: ReturnType<typeof setTimeout> | undefined;
  const marks = ['bold','italic','underline','strike','highlight','code','subscript','superscript'];
@@ -68,9 +68,9 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
    }
  }
  function openURL() {
-   const editor = getEditor(); if (!editor) return;
+   const editor = getEditor(); if (!editor || editor.isDestroyed || !editor.isEditable) return;
    if (editor.isActive('link')) editor.commands.extendMarkRange('link');
-   linkRange = {from:editor.state.selection.from,to:editor.state.selection.to};
+   linkRange = {from:editor.state.selection.from,to:editor.state.selection.to,editor,doc:editor.state.doc};
    const href = editor.getAttributes('link').href ?? '';
    $('#url-label-row').hidden = linkRange.from !== linkRange.to;
    $<HTMLInputElement>('#url-value').value = /^https?:/.test(href) ? href : '';
@@ -151,17 +151,24 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  $('#text-align').onchange=()=>{getEditor()?.chain().focus().setTextAlign($<HTMLSelectElement>('#text-align').value).run();sync();};
  $('#text-color').onchange=()=>{const editor=getEditor(),value=$<HTMLSelectElement>('#text-color').value;if(!editor)return; if(value) editor.chain().focus().setColor(value).run();else editor.chain().focus().unsetColor().run(); sync();};
  $('#table-action').onchange=()=>{const editor=getEditor(), select=$<HTMLSelectElement>('#table-action');if(editor)tableCommand(editor,select.value);select.value='';sync();};
- $('#url-cancel').onclick=()=>{$<HTMLDialogElement>('#url-dialog').close();getEditor()?.commands.focus();};
+ function closeURL() { linkRange=null; $<HTMLDialogElement>('#url-dialog').close(); }
+ $('#url-dialog').addEventListener('close',()=>{if(!$<HTMLDialogElement>('#url-dialog').open)linkRange=null;});
+ $('#url-cancel').onclick=()=>{closeURL();getEditor()?.commands.focus();};
  $('#url-value').oninput=()=> $<HTMLInputElement>('#url-value').setCustomValidity('');
  $('#url-form').onsubmit=event=>{
-   event.preventDefault(); const editor=getEditor(); if(!editor || !linkRange) return;
+   event.preventDefault(); const editor=getEditor(), context=linkRange; if(!context) return;
+   if(!editor || editor.isDestroyed || editor!==context.editor || !editor.isEditable || !editor.state.doc.eq(context.doc)) {
+     closeURL(); error('The note changed or is no longer editable. Reopen the link dialog and choose the text again.'); return;
+   }
    try {
      const value=$<HTMLInputElement>('#url-value').value.trim(); const url=new URL(value);
      if(!['http:','https:'].includes(url.protocol) || /[\u0000-\u001f\u007f]/.test(value)) throw new Error('Use an http:// or https:// web address.');
-     const chain=editor.chain().focus().setTextSelection(linkRange);
-     if(linkRange.from===linkRange.to) chain.insertContent({type:'text',text:$<HTMLInputElement>('#url-label').value || value,marks:[{type:'link',attrs:{href:value}}]}).run();
+     editor.view.dispatch(closeHistory(editor.state.tr));
+     const chain=editor.chain().focus().setTextSelection({from:context.from,to:context.to});
+     if(context.from===context.to) chain.insertContent({type:'text',text:$<HTMLInputElement>('#url-label').value || value,marks:[{type:'link',attrs:{href:value}}]}).run();
      else chain.setLink({href:value}).run();
-     $<HTMLDialogElement>('#url-dialog').close();sync();
+     editor.view.dispatch(closeHistory(editor.state.tr));
+     closeURL();sync();
    } catch(reason) {
      const field=$<HTMLInputElement>('#url-value');
      field.setCustomValidity(reason instanceof Error ? reason.message : 'Enter a valid web address.');

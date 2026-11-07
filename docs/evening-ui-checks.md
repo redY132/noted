@@ -401,3 +401,20 @@ by the time a stale keyboard-scroll assertion ran during a theme/layout change.
 The driver now uses reduced motion, waits two layout frames, rechecks actual
 overflow and retains failure diagnostics. This corrects the test's preparation;
 it is not a new application fix or input-latency claim.
+
+Link-dialog follow-up: focused tests reproduced a saved selection range being
+applied to changed words or another editor. Apply now requires the originating
+editable editor and an equal document. Otherwise it closes the dialog and asks
+the user to reopen and choose the text again. Closing releases the retained
+editor/document context; a delayed close event cannot erase a newer opening.
+The dialog cannot open on a noneditable editor.
+
+A rendered caret-insertion check also reproduced Undo merging the link with an
+immediately preceding edit. Explicit history boundaries now make the link one
+Undo step. The regression failed before the change and passed afterward.
+All 319 frontend tests and type checking passed, including 16 editing tests.
+The generated browser fixture passed 11 checks for stale document/editor
+refusal, read-only refusal, normal selected-text links, insertion, Cancel,
+Escape and Undo. No external URL was followed and no model was called. The
+reusable `link-context-smoke.js` requires the same exact disabled generated
+native fixture as the Find check; packaged evidence is recorded separately.

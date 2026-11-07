@@ -22,6 +22,8 @@ function harness(content: JSONContent[]) {
   // jsdom has no layout; transaction/selection logic is real, geometry is not.
   dom.window.Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   dom.window.Range.prototype.getBoundingClientRect = () => new dom.window.DOMRect();
+  dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new dom.window.Event('close')); };
   let editor: Editor | null = null;
   const errors: unknown[] = [];
   const ui = initializeEditingUI({ getEditor: () => editor, getSchema: () => 'default', error: value => errors.push(value) });
@@ -37,6 +39,7 @@ function harness(content: JSONContent[]) {
   const element = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
   return {
     editor: currentEditor, dom, ui, errors, element,
+    useEditor(next: Editor | null) { editor = next; ui.sync(); },
     button: (name: string) => element<HTMLButtonElement>(`[data-edit="${name}"]`),
     find(query: string) {
       element('[data-edit="find"]').click();
@@ -207,5 +210,115 @@ test('find Enter and Escape leave composition alone and retain normal match navi
     assert.equal(h.element('#find-count').textContent, '1 of 2');
     assert.equal(key('Escape'), true);
     assert.equal(h.element('#find-panel').hidden, true);
+  } finally { h.dispose(); }
+});
+
+test('a link dialog cannot apply stale positions after the open document changes', () => {
+  const h = harness([paragraph(text('Alpha Beta'))]);
+  try {
+    h.editor.commands.setTextSelection({ from: 1, to: 6 });
+    h.button('url').click();
+    h.editor.commands.insertContentAt(1, 'Changed ');
+    const before = h.editor.getJSON();
+    h.element<HTMLInputElement>('#url-value').value = 'https://example.com/';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    assert.deepEqual(h.editor.getJSON(), before, 'the stale range must not mark different words');
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open, false);
+    assert.match(String(h.errors[0]), /changed.*reopen/i);
+  } finally { h.dispose(); }
+});
+
+test('a link dialog cannot redirect its selection into another editor', () => {
+  const h = harness([paragraph(text('Alpha Beta'))]);
+  const otherRoot = document.createElement('div'); document.body.append(otherRoot);
+  const other = new Editor({ element: otherRoot, extensions: createEditorExtensions(), content: { type: 'doc', content: [paragraph(text('Other note'))] } });
+  try {
+    h.editor.commands.setTextSelection({ from: 1, to: 6 });
+    h.button('url').click();
+    h.useEditor(other);
+    const before = other.getJSON();
+    h.element<HTMLInputElement>('#url-value').value = 'https://example.com/';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    assert.deepEqual(other.getJSON(), before, 'another note must remain unchanged');
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open, false);
+    assert.match(String(h.errors[0]), /changed.*reopen/i);
+  } finally { h.useEditor(h.editor); other.destroy(); h.dispose(); }
+});
+
+test('an unchanged link context preserves its chosen text and closes after applying', () => {
+  const h = harness([paragraph(text('Alpha Beta'))]);
+  try {
+    h.editor.commands.setTextSelection({ from: 1, to: 6 });
+    h.button('url').click();
+    h.editor.commands.setTextSelection(10);
+    h.element<HTMLInputElement>('#url-value').value = 'https://example.com/';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    assert.equal(h.editor.state.doc.textContent, 'Alpha Beta');
+    assert.equal(h.editor.state.doc.rangeHasMark(1, 6, h.editor.schema.marks.link), true);
+    assert.equal(h.editor.state.doc.rangeHasMark(7, 11, h.editor.schema.marks.link), false);
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open, false);
+    const before = h.editor.getJSON();
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    assert.deepEqual(h.editor.getJSON(), before, 'a closed dialog cannot replay its old range');
+    assert.deepEqual(h.errors, []);
+  } finally { h.dispose(); }
+});
+
+test('a link dialog refuses a no-longer-editable or closed note', () => {
+  const h = harness([paragraph(text('Alpha Beta'))]);
+  try {
+    h.editor.commands.setTextSelection({ from: 1, to: 6 }); h.button('url').click();
+    h.editor.setEditable(false); const before=h.editor.getJSON();
+    h.element<HTMLInputElement>('#url-value').value='https://example.com/';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.deepEqual(h.editor.getJSON(),before);
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,false);
+    assert.match(String(h.errors[0]),/no longer editable/i);
+    h.editor.setEditable(true); h.ui.sync(); h.button('url').click(); h.useEditor(null);
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.deepEqual(h.editor.getJSON(),before);
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,false);
+    assert.equal(h.errors.length,2);
+  } finally { h.useEditor(h.editor); h.dispose(); }
+});
+
+test('a link inserted at the caret remains one undoable edit', () => {
+  const h = harness([paragraph()]);
+  try {
+    const before=h.editor.getJSON(); h.button('url').click();
+    h.element<HTMLInputElement>('#url-value').value='https://example.com/';
+    h.element<HTMLInputElement>('#url-label').value='Example';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.equal(h.editor.state.doc.textContent,'Example');
+    assert.equal(h.editor.state.doc.rangeHasMark(1,8,h.editor.schema.marks.link),true);
+    h.button('undo').click(); assert.deepEqual(h.editor.getJSON(),before);
+    assert.deepEqual(h.errors,[]);
+  } finally { h.dispose(); }
+});
+
+test('a delayed close event cannot clear a newly opened link context', () => {
+  const h=harness([paragraph(text('Alpha Beta'))]);
+  try {
+    h.editor.commands.setTextSelection({from:1,to:6}); h.button('url').click();
+    h.element('#url-cancel').click(); h.button('url').click();
+    h.element('#url-dialog').dispatchEvent(new h.dom.window.Event('close'));
+    h.element<HTMLInputElement>('#url-value').value='https://example.com/';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.equal(h.editor.state.doc.rangeHasMark(1,6,h.editor.schema.marks.link),true);
+    assert.equal(h.element<HTMLDialogElement>('#url-dialog').open,false);
+  } finally { h.dispose(); }
+});
+
+test('undoing an inserted link preserves immediately preceding typing', () => {
+  const h=harness([paragraph(text('Before'))]);
+  try {
+    h.editor.commands.setTextSelection(7); h.editor.commands.insertContent(' more');
+    const beforeLink=h.editor.getJSON(); h.button('url').click();
+    h.element<HTMLInputElement>('#url-value').value='https://example.com/';
+    h.element<HTMLInputElement>('#url-label').value='Example';
+    h.element('#url-form').dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.equal(h.editor.state.doc.textContent,'Before moreExample');
+    h.button('undo').click(); assert.deepEqual(h.editor.getJSON(),beforeLink);
+    h.button('undo').click(); assert.equal(h.editor.state.doc.textContent,'Before');
   } finally { h.dispose(); }
 });
