@@ -390,3 +390,14 @@ was observed. Narrow and large-text screenshots were inspected. The reusable
 `find-keyboard-smoke.js` also requires an exact generated native workspace plus
 disabled runner/sharing before native commands; native package evidence is
 recorded separately in `output/packaged-cached-proposal-state.json`.
+
+The `05649ca` Windows package passed the native Find fixture: 37 checks across
+ten profiles, minimum measured text/field-boundary contrast 5.34:1, plus the
+cached-proposal flow's ten checks/six layouts and 200% text. Sharing and the
+runner remained disabled; the owned app closed. Screenshots are beside the
+exact generated fixture, recorded in the state file above. Two earlier Find
+attempts were incomplete. Added diagnostics showed the panel had zero overflow
+by the time a stale keyboard-scroll assertion ran during a theme/layout change.
+The driver now uses reduced motion, waits two layout frames, rechecks actual
+overflow and retains failure diagnostics. This corrects the test's preparation;
+it is not a new application fix or input-latency claim.

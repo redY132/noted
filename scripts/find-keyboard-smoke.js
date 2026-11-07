@@ -5,8 +5,11 @@ async page => {
     if(!allowed)throw new Error('Exact disabled generated native find fixture required');
   }else if(new URL(page.url()).origin!=='http://127.0.0.1:1436'||!await page.evaluate(()=>Boolean(localStorage.getItem('noted-sidebar-fixture'))))throw new Error('Generated browser find fixture required');
   const screenshots=native?await page.evaluate(()=>window.notedCachedFixture.workspace.replace(/[\\/]workspace$/,'/ui-evidence')):'output/playwright';
-  const checks = [], errors = [], record = (name, value) => { if (!value) throw new Error(name); checks.push(name); };
+  let stage='starting',profiles=[];
+  const checks = [], errors = [], record = (name, value) => { if (!value) throw new Error(name); checks.push(name); stage=name; };
   page.on('pageerror', error => errors.push(error.message));
+  try {
+  await page.emulateMedia({reducedMotion:'reduce'});
   await page.setViewportSize({width:1200,height:800});
   await page.reload(); await page.waitForFunction(() => document.querySelector('#header-connection-handle button'));
   const note = await page.evaluate(async native => {const title=`Synthetic find keyboard ${Date.now()}`;return native?window.__TAURI_INTERNALS__.invoke('create_note',{title,folderId:null}):(await import('/src/api.ts')).api.createNote(title,null);},native);
@@ -34,14 +37,16 @@ async page => {
   record('explicit Replace all changes both matches', await writer.textContent() === body.replaceAll('needle','thread'));
   await page.locator('#find-close').click(); await writer.press('Control+z');
   record('one Undo restores the original words', await writer.textContent() === body);
-  const profiles=[];
   for (const mode of ['light','dark']) {
+    stage=`${mode} appearance transition`;
     await page.setViewportSize({width:1200,height:800});
     await page.locator('#appearance-toggle').click(); await page.locator('#appearance-mode').selectOption(mode); await page.keyboard.press('Escape');
     for (const [width,height,large] of [[1200,800,false],[800,560,false],[390,840,false],[800,360,false],[800,600,true]]) {
+      stage=`${mode} ${width}x${height}${large?' large text':''} layout`;
       await page.setViewportSize({width,height});
       await page.evaluate(large => document.documentElement.style.fontSize=large?'200%':'',large);
       await page.keyboard.press('Control+f');
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       const measured=await panel.evaluate(panel=>{
         const bounds=panel.getBoundingClientRect(),targets=[...panel.querySelectorAll('button:not(:disabled),input:not([type=checkbox]),label')];
         const rgb=value=>value.match(/[\d.]+/g).map(Number),lum=values=>values.slice(0,3).map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;}).reduce((sum,n,i)=>sum+n*[.2126,.7152,.0722][i],0),background=el=>{for(let p=el;p;p=p.parentElement){const c=rgb(getComputedStyle(p).backgroundColor);if(c.length<4||c[3]===1)return c;}return[255,255,255];};
@@ -57,7 +62,8 @@ async page => {
         const reachable=await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect(),b=el.closest('#find-panel').getBoundingClientRect();return r.top>=b.top-.5&&r.bottom<=b.bottom+.5&&r.left>=b.left-.5&&r.right<=b.right+.5;});
         if(!reachable)throw new Error(`Find control clipped: ${mode} ${width} ${height} ${large} ${selector}`);
       }
-      if(measured.scrollable){await panel.evaluate(el=>el.scrollTop=0);await panel.focus();await panel.press('PageDown');await page.waitForFunction(()=>document.querySelector('#find-panel').scrollTop>0);record(`${mode} ${width}x${height} panel scrolls by keyboard`,await panel.evaluate(el=>el.scrollTop>0));}
+      const needsScroll=await panel.evaluate(el=>el.scrollHeight>el.clientHeight+1);
+      if(needsScroll){stage=`${mode} ${width}x${height} keyboard scrolling`;await panel.evaluate(el=>el.scrollTop=0);await panel.focus();await panel.press('PageDown');await page.waitForFunction(()=>document.querySelector('#find-panel').scrollTop>0,null,{timeout:3000});record(`${mode} ${width}x${height} panel scrolls by keyboard`,await panel.evaluate(el=>el.scrollTop>0));}
       await panel.evaluate(el=>el.scrollTop=0);
       await page.screenshot({path:`${screenshots}/find-${native?'native':'preview'}-${mode}-${width}-${height}${large?'-text-200':''}.png`});
       profiles.push({mode,width,height,large,...measured});
@@ -70,4 +76,8 @@ async page => {
   record('normal Escape closes Find and returns to writing', !await panel.isVisible() && await writer.evaluate(field => field === document.activeElement));
   record('find keyboard workflow finishes without uncaught browser errors', errors.length === 0 && !await page.locator('dialog[open]').count());
   return {passed:true,native,syntheticOnly:true,noGenerationRequested:true,checks,profiles,screenshots,errors};
+  } catch(reason) {
+    const diagnostic=await page.evaluate(()=>{const p=document.querySelector('#find-panel');return{panelOpen:p&&!p.hidden,scrollTop:p?.scrollTop,scrollHeight:p?.scrollHeight,clientHeight:p?.clientHeight,focusInPanel:p?.contains(document.activeElement),focusedId:document.activeElement?.id,rootFont:getComputedStyle(document.documentElement).fontSize,theme:document.documentElement.dataset.theme};});
+    return {passed:false,native,syntheticOnly:true,noGenerationRequested:true,stage,checks,profiles,screenshots,diagnostic,error:String(reason),errors};
+  }
 }
