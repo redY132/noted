@@ -54,6 +54,12 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
  async function accountStatus(){if(!o.native){account=false;$('[data-subscription-status]').textContent='AI formatting is available in the desktop app.';return;}const s=await api.subscriptionStatus();account=s.authentication==='chatgpt';$('[data-subscription-status]').textContent=s.message;}
  async function requests(preferred=selected?.id,exact=false){if(!o.native){entries=[];selected=null;return;}const n=o.note();if(!n)throw new Error('Open a saved note first.');const ticket=epoch;const list=await api.formattingRequests(n.id);if(ticket!==epoch||o.note()?.id!==n.id)return;if(list.some(r=>typeof r.status!=='string')){account=false;entries=[];selected=null;reply=null;componentReply=null;throw new Error('This window is running an older Noted backend. Save your work, close Noted, and open the updated desktop build.');}entries=list;selected=entries.find(r=>r.id===preferred)??(exact?null:entries.find(r=>eligible(r)&&matchesGoal(r)))??null;const select=$<HTMLSelectElement>('[data-ai-existing]');select.replaceChildren();const empty=host.ownerDocument.createElement('option');empty.value='';empty.textContent='No request selected';select.append(empty);for(const r of entries){const option=host.ownerDocument.createElement('option');option.value=r.id;option.textContent=`${r.status} · ${r.prompt.slice(0,80)}`;select.append(option);}select.value=selected?.id??'';sync();}
  function clearActivity(id:string){if(activity?.requestId===id){activity=null;syncActivity();}}
+ function missingRequest(id:string){
+  if(selected)return false;
+  reply=null;componentReply=null;autoReview=false;
+  const message='The selected request is no longer available. Refresh the list or create a new request for this saved note.';
+  terminalMessage=message;if(activity?.requestId===id)activity={...activity,phase:'failed',message};status(message);sync();return true;
+ }
  async function showReview(){
   if(reviewing||!selected||(!reply&&!componentReply))return;
   const request=selected,proposal=reply,widget=componentReply;
@@ -136,7 +142,7 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   void(async()=>{
    try{
     if(ownedJob){const j=await api.subscriptionJob(ownedJob);if(destroyed||ownedJob!==jobId)return;pollErrors=0;await job(j,ticket===epoch&&dialog.open&&aiAllowed);}
-    else if(dialog.open&&eligible(selected)){await requests(selected!.id);if(ticket!==epoch||!dialog.open||destroyed)return;await check();}
+    else if(dialog.open&&eligible(selected)){const id=selected!.id;await requests(id,true);if(ticket!==epoch||!dialog.open||destroyed)return;if(!missingRequest(id))await check();}
    }catch(e){
     const message=e instanceof Error?e.message:String(e);
     if(ownedJob&&ownedJob===jobId){pollErrors++;if(activity)activity={...activity,phase:'unknown',message:'Could not refresh local job status. Open generation to retry or cancel.'};if(pollErrors>=3)pollPaused=true;syncActivity();}
@@ -169,9 +175,20 @@ export function initializeAIFormatting(host:HTMLElement,o:{api:API;native:boolea
   terminalMessage=cancellationMessage();status(terminalMessage);poll();
  });
  $('[data-ai-preview]').onclick=()=>void run(showReview);
- $('[data-ai-request]').onclick=()=>void run(async()=>{const approved=approval();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;const n=await savedForAI(approved.noteId);terminalMessage=null;const r=await api.createFormattingRequest(n.id,approved.prompt,approved.context);autoReview=true;await requests(r.id);await check();status('Request saved for the external agent. Ask it to check Noted formatting requests.');});
+ $('[data-ai-request]').onclick=()=>void run(async()=>{
+  const ticket=epoch,approved=approval();$<HTMLInputElement>('[data-ai-include-guide]').checked=false;
+  selected=null;reply=null;componentReply=null;autoReview=false;
+  const n=await savedForAI(approved.noteId);terminalMessage=null;
+  const r=await api.createFormattingRequest(n.id,approved.prompt,approved.context);
+  if(ticket!==epoch||!dialog.open||o.note()?.id!==n.id)return;
+  await requests(r.id,true);
+  if(ticket!==epoch||!dialog.open||o.note()?.id!==n.id)return;
+  autoReview=selected!==null;await check();
+  const current=selected as RequestEntry|null; // requests/check update this closure across awaits.
+  if(ticket===epoch&&dialog.open&&(!current||current.status==='waiting'))status(current?'Request saved for the external agent. Ask it to check Noted formatting requests.':'Request saved for the external agent. Ask it to check Noted, then use Refresh request under Advanced to find this request.');
+ });
  $('[data-ai-existing]').onchange=()=>void run(async()=>{terminalMessage=null;selected=entries.find(r=>r.id===$<HTMLSelectElement>('[data-ai-existing]').value)??null;reply=null;componentReply=null;autoReview=false;if(selected)$<HTMLTextAreaElement>('[data-ai-prompt]').value=selected.prompt;await check();});
- $('[data-ai-check]').onclick=()=>void run(async()=>{await requests();await check();});
+ $('[data-ai-check]').onclick=()=>void run(async()=>{const id=selected?.id,ticket=epoch;await requests(id,Boolean(id));if(ticket!==epoch||!dialog.open)return;if(!id||!missingRequest(id))await check();});
  $('[data-ai-cancel]').onclick=()=>void run(async()=>{terminalMessage=null;if(selected){await api.cancelFormattingRequest(selected.id);clearActivity(selected.id);}selected=null;reply=null;componentReply=null;autoReview=false;await requests('');selected=null;$<HTMLSelectElement>('[data-ai-existing]').value='';status('Request removed. Your note is unchanged.');});
  $('[data-ai-goal]').onchange=()=>void run(async()=>{$<HTMLInputElement>('[data-ai-include-guide]').checked=false;schemaState();await schemaCapabilities();selected=null;reply=null;componentReply=null;await requests('');await check();if(component()&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest one useful interactive component for this note, preserving the original note.';if(goal()&&!prompt())$<HTMLTextAreaElement>('[data-ai-prompt]').value='Suggest formatting that adheres to the selected schema, preserving all wording and reading order.';});
  $('[data-subscription-refresh]').onclick=()=>void run(accountStatus);$('[data-ai-prompt]').oninput=sync;

@@ -217,3 +217,12 @@ layout profiles plus large text, including comparison, Reject, Apply, saved
 Undo, background activity and stale-proposal rejection. Undo now compares the
 original rendered formatting rather than assuming a reused fixture began with
 no bold marks. All account/model methods remain explicit local stubs.
+
+External-request follow-up: three targeted tests reproduced delayed creation
+reading another note and automatic substitution of an older proposal for a
+missing request. The corrected flow passed all 294 frontend tests, 42 focused
+controller/activity tests, type checking and eight rendered request checks.
+Creation, polling and explicit refresh retain the exact request ID; closed or
+superseded dialogs ignore late UI continuations. Missing IDs clear preview and
+explain recovery, preserving other saved requests. The browser queue is entirely
+simulated: no native request, live agent access or model call was created.

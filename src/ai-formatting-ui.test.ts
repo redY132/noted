@@ -6,9 +6,9 @@ function setup(){
  const host=dom.window.document.querySelector<HTMLElement>('#host')!;
  let note={id:'fixture',title:'Synthetic job note',revision:1,revisionToken:'saved'} as Note;
  let rows:{id:string;noteId:string;prompt:string;expiresAt:string;status:string;kind?:'component'}[]=[],review:ProposalReview|null=null,release:((j:unknown)=>void)|undefined;
- const calls:string[]=[],errors:unknown[]=[],contexts:unknown[]=[],requestReads:string[]=[];
+ const calls:string[]=[],errors:unknown[]=[],contexts:unknown[]=[],requestReads:string[]=[],externalTargets:string[]=[];
  let aiAllowed=true,jobResponse:any=null,jobFailure=false,cancelFailure=false,removeFailure=false,requestsFailure=false,accountFailure=false,statusReads=0,openFailure=false,startedNoteId='fixture',invalidateOnReviewFlush=false;
- let eligibilityGate:Promise<void>|null=null,flushGate:Promise<void>|null=null;
+ let eligibilityGate:Promise<void>|null=null,flushGate:Promise<void>|null=null,createGate:Promise<void>|null=null;
  const api={
   async noteAIAllowed(){if(eligibilityGate)await eligibilityGate;return aiAllowed;},
   async schemaGuidanceCapabilities(){return{formattingProtocol:4,perRequestGuidanceConsent:true,componentSuggestions:true};},
@@ -20,7 +20,7 @@ function setup(){
   async componentReply(){return {summary:'Counter',definition:counterComponent,properties:{label:'Fixture'}};},
   async formattingReply(){return rows.some(r=>r.status==='ready')?{summary:'Clearer layout',operations:[]}:null;},
   async cancelFormattingRequest(id:string){calls.push('remove:'+id);if(removeFailure)throw new Error('Synthetic request removal failed');rows=rows.filter(r=>r.id!==id);},
-  async createFormattingRequest(){calls.push('external');return{id:'external',noteId:note.id,expiresAt:'2099-01-01'};},
+  async createFormattingRequest(id:string){calls.push('external');externalTargets.push(id);if(createGate)await createGate;return{id:'external',noteId:id,expiresAt:'2099-01-01'};},
  };
  const ui=initializeAIFormatting(host,{
   api,native:true,schema:()=>({formatVersion:2,id:'guide',version:1,name:'Guide',rules:{body:{}},guide:{title:'Synthetic guide',document:{version:2,objects:{},readingOrder:[],layout:{id:'root',kind:'free',children:[]},styles:{}}}}),
@@ -28,12 +28,13 @@ function setup(){
   async componentProposal(_value,settings){calls.push('component-review');review=settings;},async proposal(_ops,settings){calls.push('review');review=settings;},
  });
  return{
-  dom,host,ui,calls,contexts,errors,requestReads,setAIAllowed:(value:boolean)=>aiAllowed=value,
+  dom,host,ui,calls,contexts,errors,requestReads,externalTargets,setAIAllowed:(value:boolean)=>aiAllowed=value,
   $:<T extends HTMLElement>(s:string)=>host.querySelector<T>(s)!,setRows:(r:typeof rows)=>rows=r,getReview:()=>review,
   setNote(id:string){note={...note,id,title:'Synthetic other note'};},setOpenFailure(value:boolean){openFailure=value;},setJobFailure(value:boolean){jobFailure=value;},invalidateReviewFlush(){invalidateOnReviewFlush=true;},statusReads:()=>statusReads,
   setJobPhase(phase:string){jobResponse={...jobResponse,phase};},setCancelFailure(value:boolean){cancelFailure=value;},setRemoveFailure(value:boolean){removeFailure=value;},setRequestsFailure(value:boolean){requestsFailure=value;},setAccountFailure(value:boolean){accountFailure=value;},
   holdEligibility(){let release!:()=>void;eligibilityGate=new Promise<void>(resolve=>release=resolve);return()=>{eligibilityGate=null;release();};},
   holdFlush(){let release!:()=>void;flushGate=new Promise<void>(resolve=>release=resolve);return()=>{flushGate=null;release();};},
+  holdCreate(){let release!:()=>void;createGate=new Promise<void>(resolve=>release=resolve);return()=>{createGate=null;release();};},
   completeBackground(kind?:'component'){rows=[{kind,id:'running',noteId:'fixture',prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];jobResponse={id:'job',requestId:'running',noteId:'fixture',phase:'completed',message:'Proposal received'};},
   running(){rows=[{id:'running',noteId:note.id,prompt:'Make bold',expiresAt:'2099-01-01',status:'waiting'}];jobResponse={id:'job',requestId:'running',noteId:note.id,phase:'running',message:'Generating'};release!(jobResponse);},
   finish(kind?:'component'){rows=[{kind,id:'ready',noteId:startedNoteId,prompt:'Make bold',expiresAt:'2099-01-01',status:'ready'}];release!({id:'job',requestId:'ready',noteId:startedNoteId,phase:'completed',message:'Cached proposal ready'});},
@@ -86,6 +87,37 @@ test('an approved guidance snapshot survives closing during save without borrowi
   assert.equal(f.calls.filter(call=>call==='send').length,1);assert.equal((f.contexts[0] as any).includeGuidance,true);assert.equal((f.contexts[0] as any).schema.guide.title,'Synthetic guide');
   f.finish();await microtasks();
  }finally{f.close();}
+});
+
+test('a late external-request response cannot read or preview another note after navigation',async()=>{
+ const f=setup();try{
+  await f.ui.open();const prompt=f.$<HTMLTextAreaElement>('[data-ai-prompt]');prompt.value='Approved original note';prompt.dispatchEvent(new f.dom.window.Event('input'));
+  const release=f.holdCreate();f.$('[data-ai-request]').click();await microtasks();assert.deepEqual(f.externalTargets,['fixture']);
+  f.$('[data-ai-close]').click();f.setNote('other');f.setRows([{id:'other-ready',noteId:'other',prompt:'Unrelated ready proposal',expiresAt:'2099-01-01',status:'ready'}]);const reads=f.requestReads.length;
+  await f.ui.open();release();await microtasks();await microtasks();
+  assert.equal(f.requestReads.length,reads);assert.equal(f.calls.includes('review'),false);assert.equal(f.calls.includes('send'),false);assert.equal(f.$('[data-ai-preview]').hidden,true);
+ }finally{f.close();}
+});
+
+test('creating an external request cannot automatically review an older proposal if the new ID is not listed',async()=>{
+ const f=setup();try{
+  f.setRows([{id:'older',noteId:'fixture',prompt:'Older proposal',expiresAt:'2099-01-01',status:'ready'}]);await f.ui.open();
+  const prompt=f.$<HTMLTextAreaElement>('[data-ai-prompt]');prompt.value='A new request';prompt.dispatchEvent(new f.dom.window.Event('input'));f.$('[data-ai-request]').click();await microtasks();await microtasks();
+  assert.equal(f.calls.includes('review'),false);assert.equal(f.$('[data-ai-preview]').hidden,true);assert.equal(f.$<HTMLSelectElement>('[data-ai-existing]').value,'');
+ }finally{f.close();}
+});
+
+test('refresh and polling never substitute an older proposal for a missing selected request',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const action of ['refresh','poll']){
+  const f=setup();try{
+   f.setRows([{id:'external',noteId:'fixture',prompt:'Owned pending request',expiresAt:'2099-01-01',status:'waiting'},{id:'older',noteId:'fixture',prompt:'Older proposal',expiresAt:'2099-01-01',status:'ready'}]);
+   await f.ui.open();const prompt=f.$<HTMLTextAreaElement>('[data-ai-prompt]');prompt.value='Owned pending request';prompt.dispatchEvent(new f.dom.window.Event('input'));f.$('[data-ai-request]').click();await microtasks();await microtasks();
+   f.setRows([{id:'older',noteId:'fixture',prompt:'Older proposal',expiresAt:'2099-01-01',status:'ready'}]);
+   if(action==='refresh')f.$('[data-ai-check]').click();else t.mock.timers.tick(2000);await microtasks();await microtasks();
+   assert.equal(f.calls.includes('review'),false,action);assert.equal(f.$('[data-ai-preview]').hidden,true);assert.match(f.$('[data-ai-status]').textContent!,/no longer available/);
+  }finally{f.close();}
+ }
 });
 
 test('explicit schema adherence does not reuse an owned ordinary-formatting proposal',async()=>{

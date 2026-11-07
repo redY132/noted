@@ -78,6 +78,13 @@ Private imports cannot be sent through either the one-note Generate flow or the 
 
 ### Cancellation status
 
+Advanced saved requests keep their exact identity through creation, polling and
+Refresh. If a selected request disappears, the dialog explains its absence;
+it does not automatically substitute or preview an older proposal. Other saved
+requests remain available for deliberate selection. A successfully created
+request stays with its original note if you close or navigate before its
+response arrives; the late response does not inspect the newly opened note.
+
 Cancel requests a stop and removes only the job's own saved request. Generation
 remains disabled while local job status is still running. You can close the
 dialog and keep writing; the status strip retains the pending cancellation.
@@ -107,7 +114,7 @@ These are local runner reports, not provider confirmation that remote processing
 or account usage stopped. Already processed usage cannot be recalled. No historic
 job outcome can be reconstructed from this UI change.
 
-November 7 verification: 285 frontend tests and type-checking passed. The
+Earlier November 7 checkpoint: 285 frontend tests and type-checking passed. The
 browser-only harness passed 17 workflow checks over 16 theme/window profiles
 plus large text; cancellation passed nine checks over 18 profiles, including
 280px writing width, 390px windows and 200% text. Outcome details receive focus
