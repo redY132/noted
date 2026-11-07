@@ -1,6 +1,6 @@
 async page => {
   const input = await page.evaluate(() => window.notedBenchmarkOptions ?? {});
-  const options = { workspace: input.fixtureWorkspace, case: input.resourceCase, seconds: input.resourceSeconds };
+  const options = { workspace: input.fixtureWorkspace, case: input.resourceCase, seconds: input.resourceSeconds, navigationOpen: input.resourceNavigationOpen === true };
   if (!['full', 'components', 'text', 'images', 'mixed'].includes(options.case) || !Number.isInteger(options.seconds) || options.seconds < 20 || options.seconds > 3600) throw new Error('Invalid resource workload');
   const allowed = typeof options.workspace === 'string' && await page.evaluate(async expected => {
     if (!window.__TAURI_INTERNALS__) return false;
@@ -31,7 +31,7 @@ async page => {
       constructor(url, settings) { super(url, settings); this.counted = String(url).includes('component-runtime-worker'); this.stopped = false; if (this.counted) { workers.created++; workers.active++; } }
       terminate() { if (this.counted && !this.stopped) { this.stopped = true; workers.active--; } return super.terminate(); }
     };
-    const browse = document.querySelector('[data-panel-toggle=navigation]'); if (browse.getAttribute('aria-expanded') === 'true') browse.click();
+    const browse = document.querySelector('[data-panel-toggle=navigation]'); if ((browse.getAttribute('aria-expanded') === 'true') !== options.navigationOpen) browse.click();
     // The driver disconnects before this starts. These DOM-driven interactions
     // measure resource ownership; they are not physical-input latency samples.
     setTimeout(() => { void (async () => {
@@ -48,6 +48,7 @@ async page => {
       const text = 'ordinary-100-paragraphs', components = 'eight-active-components';
       const cases = { text: [text, 'long-1000-paragraphs'], images: [text, 'artistic-100-panels'], mixed: [text, 'mixed-free-media-100-panels'], components: [text, components], full: [text, components, 'long-1000-paragraphs', components, 'artistic-100-panels', components, 'mixed-free-media-100-panels', components] };
       result.phase = 'running'; result.startedAt = Date.now(); const until = Date.now() + options.seconds * 1000;
+      result.navigation = { requestedOpen: options.navigationOpen, initiallyOpen: browse.getAttribute('aria-expanded') === 'true', initialWritingWidth: Math.round(document.querySelector('.document-scroll').getBoundingClientRect().width) };
       const visibility = result.documentVisibility = { source: 'page-visibility-api', scope: 'workload-and-idle', initiallyHidden: document.hidden, changes: 0, observedMs: 0, hiddenMs: 0 };
       let visibilityAt = performance.now(), hidden = document.hidden;
       const recordVisibility = () => {
@@ -78,8 +79,9 @@ async page => {
       }
       await open(text); result.workloadFinishedAt = Date.now(); result.phase = 'idle'; await sleep(15000);
       const policy = await window.__TAURI_INTERNALS__.invoke('agent_access'); result.sharingDisabled = !policy.enabled && !policy.allowHosted && !policy.folderIds.length;
+      result.navigation.finallyOpen = browse.getAttribute('aria-expanded') === 'true';
       result.componentWorkers = { ...workers }; result.domElements = document.querySelectorAll('*').length; result.stage = 'done';
-      result.phase = result.sharingDisabled && workers.active === 0 && result.edits === result.restoredEdits ? 'complete' : 'failed';
+      result.phase = result.sharingDisabled && workers.active === 0 && result.edits === result.restoredEdits && result.navigation.initiallyOpen === options.navigationOpen && result.navigation.finallyOpen === options.navigationOpen ? 'complete' : 'failed';
     })().catch(error => { result.phase = 'failed'; result.error = error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : 'RESOURCE_FAILURE'; result.componentWorkers = { ...workers }; }).finally(() => finishVisibility()); }, result.startDelayMs);
   }, options);
   return { started: true, syntheticOnly: true, noModelCalls: true };

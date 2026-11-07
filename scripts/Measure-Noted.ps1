@@ -8,11 +8,13 @@ param(
  [switch]$ResourceOnly,
  [ValidateSet('full','components','text','images','mixed')][string]$ResourceCase='full',
  [ValidateRange(20,3600)][int]$ResourceSeconds=180,
- [switch]$ResourceDebuggerAttached
+ [switch]$ResourceDebuggerAttached,
+ [switch]$ResourceNavigationOpen
 )
 $ErrorActionPreference='Stop'
 if($ResourceOnly -and $CpuSlowdown -ne 1){throw 'Resource mode uses native CPU speed. Run timing sensitivity checks separately.'}
 if($ResourceDebuggerAttached -and -not $ResourceOnly){throw 'ResourceDebuggerAttached requires ResourceOnly.'}
+if($ResourceNavigationOpen -and -not $ResourceOnly){throw 'ResourceNavigationOpen requires ResourceOnly.'}
 function Get-NotedSha256([string]$Path){
  $stream=[IO.File]::OpenRead($Path);$algorithm=[Security.Cryptography.SHA256]::Create()
  try {return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose();$stream.Dispose()}
@@ -77,7 +79,7 @@ try{
  $endpointReadyMs=$clock.ElapsedMilliseconds
  & $node $PlaywrightCLI "-s=$session" attach "--cdp=http://127.0.0.1:$Port" *> (Join-Path $run 'attach.log');if($LASTEXITCODE -ne 0){throw 'Playwright attachment failed. Read attach.log.'}
  $sessionAttached=$true
- $options=@{minutes=$Minutes;cpuSlowdown=$CpuSlowdown;fixtureWorkspace=$workspace;resourceCase=$ResourceCase;resourceSeconds=$ResourceSeconds}|ConvertTo-Json -Compress
+ $options=@{minutes=$Minutes;cpuSlowdown=$CpuSlowdown;fixtureWorkspace=$workspace;resourceCase=$ResourceCase;resourceSeconds=$ResourceSeconds;resourceNavigationOpen=[bool]$ResourceNavigationOpen}|ConvertTo-Json -Compress
  $optionScript=Join-Path $run 'set-options.js';[IO.File]::WriteAllText($optionScript,"async page=>{await page.waitForFunction(()=>document.querySelector('#header-connection-handle button'));await page.evaluate(options=>window.notedBenchmarkOptions=options,$options);return true;}")
  & $node $PlaywrightCLI "-s=$session" run-code --filename $optionScript *> (Join-Path $run 'ready.log');if($LASTEXITCODE -ne 0){throw 'The editor did not become ready. Read ready.log.'}
  $editorReadyMs=$clock.ElapsedMilliseconds

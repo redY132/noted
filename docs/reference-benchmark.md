@@ -64,6 +64,13 @@ foreground focus, unobscured pixels, animation throughput or physical rendering.
 Earlier reports without these counters cannot be given visibility evidence
 retroactively.
 
+Add `-ResourceNavigationOpen` to run a separate resource case with Browse open.
+The result records the requested and actual initial/final dock state and initial
+writing width, and refuses completion if the dock changed state. This exercises
+the directory and saved-connections graph during repeated note navigation.
+Keep its results separate from the default closed-dock controls; the narrower
+writing area and graph work make them different protocols.
+
 Every native run disables the subscription runner, strips API credentials from
 the child environment and uses empty client/config directories. The runner
 copies only checksummed generated fixture payloads, rejecting unsafe paths and
