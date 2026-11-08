@@ -1,6 +1,7 @@
 async page=>{
  const native=await page.evaluate(()=>Boolean(window.__TAURI_INTERNALS__));
- if(native){if(!await page.evaluate(async()=>{const status=await window.__TAURI_INTERNALS__.invoke('workspace_status');return status.path.includes('noted-sidebar-ui-');}))throw new Error('Disposable native workspace required');}
+ const fixture=native?await page.evaluate(()=>window.notedCachedFixture):null;
+ if(native){if(!fixture?.workspace||!/noted-simple-ai-[A-Za-z0-9]+[\\/]workspace$/i.test(fixture.workspace)||!await page.evaluate(async expected=>{const norm=v=>String(v).replaceAll('\\','/').replace(/^\/\/\?\//,'').toLowerCase();const [s,r,p]=await Promise.all(['workspace_status','subscription_status','agent_access'].map(c=>window.__TAURI_INTERNALS__.invoke(c)));return norm(s.path)===norm(expected)&&r.authentication==='disabled'&&!r.available&&!p.enabled&&!p.allowHosted&&!p.folderIds.length;},fixture.workspace))throw new Error('Exact disabled generated recovery workspace required');}
  else if(new URL(page.url()).origin!=='http://127.0.0.1:1436'||!await page.evaluate(()=>localStorage.getItem('noted-sidebar-fixture')))throw new Error('Synthetic preview required');
  const checks=[],errors=[],record=(name,value)=>{if(!value)throw new Error(name);checks.push(name);};page.on('pageerror',error=>errors.push(error.message));
  const call=(command,args={})=>page.evaluate(async({command,args,native})=>{if(native)return window.__TAURI_INTERNALS__.invoke(command,args);const {api}=await import('/src/api.ts');if(command==='load_note')return api.load(args.id);if(command==='save_note')return api.save(args.note,args.expectedRevision);throw new Error('Unknown fixture command');},{command,args,native});
@@ -43,6 +44,22 @@ async page=>{
  await browse(false);await page.setViewportSize({width:800,height:600});await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});
  const largeText=await measure();if(largeText.failures.length)throw new Error(JSON.stringify({largeText}));await focusChecks();await page.screenshot({path:`output/playwright/error-recovery-${native?'native':'preview'}-text-200.png`});await page.evaluate(()=>{document.documentElement.style.fontSize='';});await page.setViewportSize({width:1200,height:800});
  await page.evaluate(message=>{document.querySelector('#error-message').textContent=message;},realError);
+ if(native){
+  const snapshot=()=>page.locator('#editor .tiptap').evaluate(el=>JSON.stringify(el.editor.getJSON()));
+  const original=await snapshot(),externalBefore=await call('load_note',{id});
+  await page.locator('#editor .tiptap').evaluate(el=>el.editor.commands.insertContent(' Unicode caf\u00e9 \u65e5\u672c\u8a9e \ud83d\ude00.'));
+  const before=await snapshot(),title=await page.locator('#note-title').inputValue();
+  // WebView2 writes the file without emitting Playwright's download event.
+  // The host verifies its exact target from this fresh profile after closure.
+  await page.locator('#download-draft').click();
+  record('native export preserves mounted content and title',await snapshot()===before&&await page.locator('#note-title').inputValue()===title);
+  record('native export preserves saved external version',JSON.stringify(await call('load_note',{id}))===JSON.stringify(externalBefore));
+  await page.locator('#editor .tiptap').press('Control+z');record('native export preserves one-step Undo',await snapshot()===original);
+  await page.locator('#editor .tiptap').press('Control+Shift+z');record('native export preserves Redo',await snapshot()===before);
+  await page.locator('#editor .tiptap').press('Control+z');record('native export restores original content again',await snapshot()===original);
+  await page.evaluate(value=>window.notedDraftExportEvidence=value,{id,title,content:JSON.parse(before),externalBefore,fileName:`${id}.draft.json`});
+ }
+
  if(!native){
   const downloading=page.waitForEvent('download');await page.locator('#download-draft').click();const download=await downloading,stream=await download.createReadStream();let text='';for await(const chunk of stream)text+=chunk.toString();const draft=JSON.parse(text);
   record('Download draft retains the unsaved title and identity',draft.id===id&&draft.title==='Synthetic recovery local draft'&&Boolean(draft.document));
@@ -59,5 +76,5 @@ async page=>{
   } finally {await page.evaluate(async()=>{const {api}=await import('/src/api.ts');api.load=window.__recoveryOriginalLoad;});}
  }
  record('no uncaught UI errors',errors.length===0);
- return {passed:true,native,syntheticOnly:true,noGenerationRequested:true,renderedDiagnosticIsSynthetic:true,checks,profiles,largeText,errors};
+ return {passed:true,native,syntheticOnly:true,noGenerationRequested:true,renderedDiagnosticIsSynthetic:true,checks,profiles,largeText,errors,draftExportAscii:native?await page.evaluate(()=>JSON.stringify(window.notedDraftExportEvidence).replace(/[^\x00-\x7f]/g,char=>'\\u'+char.charCodeAt(0).toString(16).padStart(4,'0'))):null};
 }
