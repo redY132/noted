@@ -9,12 +9,14 @@ param(
  [ValidateSet('full','components','text','images','mixed')][string]$ResourceCase='full',
  [ValidateRange(20,3600)][int]$ResourceSeconds=180,
  [switch]$ResourceDebuggerAttached,
- [switch]$ResourceNavigationOpen
+ [switch]$ResourceNavigationOpen,
+ [switch]$NavigationSoak
 )
 $ErrorActionPreference='Stop'
 if($ResourceOnly -and $CpuSlowdown -ne 1){throw 'Resource mode uses native CPU speed. Run timing sensitivity checks separately.'}
 if($ResourceDebuggerAttached -and -not $ResourceOnly){throw 'ResourceDebuggerAttached requires ResourceOnly.'}
 if($ResourceNavigationOpen -and -not $ResourceOnly){throw 'ResourceNavigationOpen requires ResourceOnly.'}
+if($NavigationSoak -and (-not $ResourceOnly -or $ResourceDebuggerAttached -or $ResourceCase -ne 'full' -or $ResourceNavigationOpen -or $ResourceSeconds -ne 900)){throw 'NavigationSoak requires disconnected full resource mode, initially closed navigation and 900 seconds.'}
 function Get-NotedSha256([string]$Path){
  $stream=[IO.File]::OpenRead($Path);$algorithm=[Security.Cryptography.SHA256]::Create()
  try {return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose();$stream.Dispose()}
@@ -46,10 +48,10 @@ $oldEnvironment=@{};foreach($name in 'NOTED_WORKSPACE','WEBVIEW2_USER_DATA_FOLDE
 $session='noted-bench-'+[guid]::NewGuid().ToString('N').Substring(0,10)
 $app=$null;$worker=$null;$sessionAttached=$false;$memory=[Collections.Generic.List[object]]::new()
 function Read-TreeMemory([int]$RootId){
- $all=@(Get-CimInstance Win32_Process);$ids=[Collections.Generic.HashSet[int]]::new();[void]$ids.Add($RootId)
+ $all=@();$pendingIds=[Collections.Generic.Queue[int]]::new();$pendingIds.Enqueue($RootId);$seenIds=[Collections.Generic.HashSet[int]]::new();[void]$seenIds.Add($RootId);while($pendingIds.Count){$parent=$pendingIds.Dequeue();$children=@(Get-CimInstance Win32_Process -Filter "ParentProcessId=$parent" -Property ProcessId,ParentProcessId);foreach($child in $children){if(-not $seenIds.Add([int]$child.ProcessId)){continue};$all+=$child;$pendingIds.Enqueue([int]$child.ProcessId)}};$ids=[Collections.Generic.HashSet[int]]::new();[void]$ids.Add($RootId)
  do{$added=$false;foreach($process in $all){if($ids.Contains([int]$process.ParentProcessId)-and $ids.Add([int]$process.ProcessId)){$added=$true}}}while($added)
  $private=0L;$working=0L;$count=0;$roles=@{};$metadata=@{}
- foreach($entry in $all){$metadata[[int]$entry.ProcessId]=$entry}
+ foreach($entry in $all){$metadata[[int]$entry.ProcessId]=Get-CimInstance Win32_Process -Filter "ProcessId=$($entry.ProcessId) AND ParentProcessId=$($entry.ParentProcessId)" -Property ProcessId,ParentProcessId,CommandLine}
  foreach($processId in $ids){
   $item=Get-Process -Id $processId -ErrorAction SilentlyContinue
   if($item){
@@ -57,8 +59,8 @@ function Read-TreeMemory([int]$RootId){
    if($processId -ne $RootId -and [string]$metadata[$processId].CommandLine -match '(?:^|\s)--type="?([a-z-]+)'){
     $role=if($Matches[1] -in @('renderer','gpu-process','utility','crashpad-handler')){$Matches[1]}else{'other'}
    }
-   if(-not $roles.ContainsKey($role)){$roles[$role]=@{processes=0;privateBytes=0L;workingSetBytes=0L}}
-   $roles[$role].processes++;$roles[$role].privateBytes+=$item.PrivateMemorySize64;$roles[$role].workingSetBytes+=$item.WorkingSet64
+   if(-not $roles.ContainsKey($role)){$roles[$role]=@{processes=0;privateBytes=0L;workingSetBytes=0L;cpuSeconds=0.0}}
+   $roles[$role].cpuSeconds+=$item.CPU;$roles[$role].processes++;$roles[$role].privateBytes+=$item.PrivateMemorySize64;$roles[$role].workingSetBytes+=$item.WorkingSet64
    $private+=$item.PrivateMemorySize64;$working+=$item.WorkingSet64;$count++
   }
  }
@@ -79,7 +81,7 @@ try{
  $endpointReadyMs=$clock.ElapsedMilliseconds
  & $node $PlaywrightCLI "-s=$session" attach "--cdp=http://127.0.0.1:$Port" *> (Join-Path $run 'attach.log');if($LASTEXITCODE -ne 0){throw 'Playwright attachment failed. Read attach.log.'}
  $sessionAttached=$true
- $options=@{minutes=$Minutes;cpuSlowdown=$CpuSlowdown;fixtureWorkspace=$workspace;resourceCase=$ResourceCase;resourceSeconds=$ResourceSeconds;resourceNavigationOpen=[bool]$ResourceNavigationOpen}|ConvertTo-Json -Compress
+ $options=@{minutes=$Minutes;cpuSlowdown=$CpuSlowdown;fixtureWorkspace=$workspace;resourceCase=$ResourceCase;resourceSeconds=$ResourceSeconds;resourceNavigationOpen=[bool]$ResourceNavigationOpen;navigationSoak=[bool]$NavigationSoak}|ConvertTo-Json -Compress
  $optionScript=Join-Path $run 'set-options.js';[IO.File]::WriteAllText($optionScript,"async page=>{await page.waitForFunction(()=>document.querySelector('#header-connection-handle button'));await page.evaluate(options=>window.notedBenchmarkOptions=options,$options);return true;}")
  & $node $PlaywrightCLI "-s=$session" run-code --filename $optionScript *> (Join-Path $run 'ready.log');if($LASTEXITCODE -ne 0){throw 'The editor did not become ready. Read ready.log.'}
  $editorReadyMs=$clock.ElapsedMilliseconds
@@ -89,7 +91,7 @@ try{
   $disconnectedEpochMs=$null
   if(-not $ResourceDebuggerAttached){& $node $PlaywrightCLI "-s=$session" detach *> (Join-Path $run 'resource-detach.log');if($LASTEXITCODE -ne 0){throw 'Resource debugger disconnect failed.'};$sessionAttached=$false;$disconnectedEpochMs=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
   $sampleStarted=$clock.ElapsedMilliseconds
-  while($clock.ElapsedMilliseconds-$sampleStarted -lt ($ResourceSeconds+45)*1000){if($app.HasExited){throw 'The disposable app exited during resource sampling.'};$memory.Add((Read-TreeMemory $app.Id));Start-Sleep -Milliseconds 1500}
+  while($clock.ElapsedMilliseconds-$sampleStarted -lt ($ResourceSeconds+45)*1000){if($app.HasExited){throw 'The disposable app exited during resource sampling.'};$memory.Add((Read-TreeMemory $app.Id));if($NavigationSoak){$checkpoint=& $node (Join-Path $kitRoot 'read-resource-result.mjs') "http://127.0.0.1:$Port" $workspace --checkpoint;if($LASTEXITCODE -ne 0){throw 'CHECKPOINT_FAILED'};$checkpoint|Add-Content -LiteralPath (Join-Path $run 'checkpoints.jsonl');$checked=$checkpoint|ConvertFrom-Json;if($checked.phase -in @('complete','failed')){break}};Start-Sleep -Milliseconds 1500}
   $mode=if($ResourceDebuggerAttached){'resource diagnostic; automation attached comparison'}else{'resource diagnostic; automation disconnected during workload'}
   $report=[pscustomobject]@{formatVersion=1;source=$manifest.source;hardware=$hardware;classification=$mode;launchEpochMs=$launchEpochMs;automationDisconnectedEpochMs=$disconnectedEpochMs;disconnectPrecededPreparation=$false;sampleStartedElapsedMs=$sampleStarted;sampledMemory=$memory.ToArray();maxSampledPrivateBytes=($memory|Measure-Object sumPrivateBytes -Maximum).Maximum;resourceResult=$null;postCollectionMemory=$null;workloadPassed=$false;allRequestedChecksPassed=$false;mediaLifetimeRequested=[bool]$CheckMediaLifetime;mediaLifetime=$null;acceptance='NOT CERTIFIED: review actual reference hardware and budgets separately. DOM-driven generated edits are not physical-input latency measurements.'}
   $report|ConvertTo-Json -Depth 30|Set-Content -LiteralPath (Join-Path $run 'report.json') -Encoding utf8
@@ -101,6 +103,7 @@ try{
   $r=$report.resourceResult.resource
   $report.disconnectPrecededPreparation=-not $ResourceDebuggerAttached -and $null -ne $disconnectedEpochMs -and $r.preparationStartedAt -ge $disconnectedEpochMs
   $report.workloadPassed=$r.phase -eq 'complete' -and $r.sharingDisabled -and $r.componentWorkers.active -eq 0 -and $r.edits -eq $r.restoredEdits -and ($ResourceDebuggerAttached -or $report.disconnectPrecededPreparation)
+  if($NavigationSoak){$report.workloadPassed=$report.workloadPassed -and $r.switches -eq 336 -and $r.uiChecks -eq 42 -and $r.checkpoints.Count -eq 4}
   $report|ConvertTo-Json -Depth 30|Set-Content -LiteralPath (Join-Path $run 'report.json') -Encoding utf8
   if(-not $report.workloadPassed){throw 'Resource workload did not complete its scope/restore/worker checks. Read report.json.'}
   if($CheckMediaLifetime){
@@ -138,6 +141,7 @@ try{
  foreach($group in $browser.results|Group-Object workload){$p95=@($group.Group.inputToNextFrameMs.p95|Sort-Object);Write-Host ("{0}: median run p95 {1:N1} ms ({2} runs)" -f $group.Name,$p95[[int][math]::Floor($p95.Count/2)],$p95.Count)}
 }finally{
  if($app -and -not $app.HasExited){[void]$app.CloseMainWindow();if(-not $app.WaitForExit(10000)){Write-Warning 'The disposable test window is still open. Close it normally after checking the saved note.'}}
+ if($NavigationSoak){@{source=$manifest.source;diagnostics=$manifest.diagnostics;sampledMemory=$memory.ToArray();ownedAppClosed=($app -and $app.HasExited)}|ConvertTo-Json -Depth 30|Set-Content -LiteralPath (Join-Path $run 'interruption-safe-samples.json') -Encoding utf8}
  if($sessionAttached){& $node $PlaywrightCLI "-s=$session" detach *> (Join-Path $run 'detach.log')}
  foreach($name in $oldEnvironment.Keys){[Environment]::SetEnvironmentVariable($name,$oldEnvironment[$name],'Process')}
 }
