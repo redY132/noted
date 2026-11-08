@@ -98,7 +98,28 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
    const editor=getEditor(), match=matches[current]; if(!editor || !match) return;
    editor.chain().setTextSelection(match).scrollIntoView().run(); updateFindControls();
  }
- function openFind() { $('#find-panel').hidden=false; refreshMatches(); $('#find-query').focus(); $<HTMLInputElement>('#find-query').select(); }
+ // Keep reveal local: scrollIntoView would also move the document's ancestors.
+ const findPanel = $('#find-panel');
+ function revealFindControl() {
+   const control = document.activeElement;
+   if(findPanel.hidden || !(control instanceof HTMLElement) || control===findPanel || !findPanel.contains(control)) return;
+   const target=control.matches('input[type=checkbox]') ? control.closest('label')! : control;
+   const bounds=findPanel.getBoundingClientRect(), rect=target.getBoundingClientRect();
+   const top=bounds.top+findPanel.clientTop, left=bounds.left+findPanel.clientLeft;
+   if(rect.top<top) findPanel.scrollTop+=rect.top-top;
+   else if(rect.bottom>top+findPanel.clientHeight) findPanel.scrollTop+=rect.bottom-top-findPanel.clientHeight;
+   if(rect.left<left) findPanel.scrollLeft+=rect.left-left;
+   else if(rect.right>left+findPanel.clientWidth) findPanel.scrollLeft+=rect.right-left-findPanel.clientWidth;
+ }
+ findPanel.addEventListener('focusin',revealFindControl);
+ // Wrapping changes both the viewport and content geometry, including text zoom.
+ new ResizeObserver(revealFindControl).observe(findPanel);
+ window.addEventListener('resize',revealFindControl);
+ function openFind() {
+   findPanel.hidden=false; refreshMatches(); $('#find-query').focus({preventScroll:true}); $<HTMLInputElement>('#find-query').select();
+   revealFindControl();
+   requestAnimationFrame(revealFindControl);
+ }
  function closeFind() { $('#find-panel').hidden=true; clearTimeout(searchTimer); getEditor()?.commands.focus(); }
  function replacement(all: boolean) {
    const editor=getEditor(); if(!editor) return;

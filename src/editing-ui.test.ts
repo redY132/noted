@@ -15,6 +15,7 @@ function harness(content: JSONContent[]) {
     HTMLElement: { value: dom.window.HTMLElement, configurable: true },
     Element: { value: dom.window.Element, configurable: true },
     MutationObserver: { value: dom.window.MutationObserver, configurable: true },
+    ResizeObserver: { value: class { observe() {} }, configurable: true },
     getComputedStyle: { value: dom.window.getComputedStyle.bind(dom.window), configurable: true },
     requestAnimationFrame: { value: () => 0, configurable: true },
     cancelAnimationFrame: { value: () => {}, configurable: true },

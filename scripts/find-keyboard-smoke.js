@@ -62,6 +62,18 @@ async page => {
         const reachable=await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect(),b=el.closest('#find-panel').getBoundingClientRect();return r.top>=b.top-.5&&r.bottom<=b.bottom+.5&&r.left>=b.left-.5&&r.right<=b.right+.5;});
         if(!reachable)throw new Error(`Find control clipped: ${mode} ${width} ${height} ${large} ${selector}`);
       }
+      // Retained scrolling with an already-focused query reproduced the short-window failure.
+      await query.focus();
+      await panel.evaluate(el=>el.scrollTop=29);
+      const documentScroll=await page.locator('.document-scroll').evaluate(el=>el.scrollTop);
+      for(let repeat=0;repeat<2;repeat++) {
+        await page.keyboard.press('Control+f');
+        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+        record(`${mode} ${width}x${height} repeated Find reveals query ${repeat}`,await query.evaluate(el=>{const r=el.getBoundingClientRect(),p=el.closest('#find-panel').getBoundingClientRect();return el===document.activeElement&&r.top>=p.top-.5&&r.bottom<=p.bottom+.5;}));
+      }
+      record(`${mode} ${width}x${height} reveal preserves document scroll`,await page.locator('.document-scroll').evaluate((el,expected)=>Math.abs(el.scrollTop-expected)<.5,documentScroll));
+      await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+      record(`${mode} ${width}x${height} keyboard returns to visible query`,await query.evaluate(el=>{const r=el.getBoundingClientRect(),p=el.closest('#find-panel').getBoundingClientRect();return el===document.activeElement&&r.top>=p.top-.5&&r.bottom<=p.bottom+.5;}));
       const needsScroll=await panel.evaluate(el=>el.scrollHeight>el.clientHeight+1);
       if(needsScroll){stage=`${mode} ${width}x${height} keyboard scrolling`;await panel.evaluate(el=>el.scrollTop=0);await panel.focus();await panel.press('PageDown');await page.waitForFunction(()=>document.querySelector('#find-panel').scrollTop>0,null,{timeout:3000});record(`${mode} ${width}x${height} panel scrolls by keyboard`,await panel.evaluate(el=>el.scrollTop>0));}
       await panel.evaluate(el=>el.scrollTop=0);
