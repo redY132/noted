@@ -22,6 +22,7 @@ use std::{
 };
 type Result<T> = std::result::Result<T, String>;
 const RUNNER_DISABLED: &str = "Subscription runner is disabled for this isolated process. No note was sent.";
+pub const CLIENT_HOST_PROTOCOL: u32 = 1;
 /// A process-local fuse for disposable native UI tests. Any presence disables
 /// runner discovery, authentication probes and generation; it grants no access.
 pub fn ensure_runner_enabled() -> Result<()> {
@@ -112,6 +113,51 @@ fn command(exe: &Path) -> Command {
         c.creation_flags(0x08000000);
     }
     c
+}
+/// Internal transport for an already approved request. It does not discover or
+/// sign in to an account and exposes no additional MCP tools or note access.
+pub fn run_client_host(args: Vec<std::ffi::OsString>) -> ! {
+    fn fail(message: &str) -> ! {
+        println!("{}", json!({"type":"noted_client_error","message":message}));
+        std::process::exit(1)
+    }
+    if ensure_runner_enabled().is_err() { fail(RUNNER_DISABLED); }
+    let Some(exe) = args.first().map(PathBuf::from) else { fail("The prepared Codex command is missing. No note was sent."); };
+    if !exe.is_absolute() || !exe.file_name().and_then(|value| value.to_str()).is_some_and(|value| value.eq_ignore_ascii_case("codex.exe"))
+        || args.get(1).is_none_or(|value| value != "exec") || ordinary(&exe, false).is_err() {
+        fail("The prepared Codex command is invalid. No note was sent.");
+    }
+    #[cfg(windows)]
+    match crate::process_tree::run(|| {
+        match command(&exe).args(&args[1..]).spawn() {
+            Ok(mut child) => match wait_client(&mut child, Duration::from_secs(180)) {
+                Ok(status) => status.code().unwrap_or(1),
+                Err(message) => { println!("{}", json!({"type":"noted_client_error","message":message})); 1 }
+            },
+            Err(_) => { println!("{}", json!({"type":"noted_client_error","message":"Cannot start the signed-in Codex client. No note was sent."})); 1 }
+        }
+    }) {
+        Ok(never) => match never {},
+        Err(_) => fail("Cannot establish owned process cleanup for this request. No note was sent."),
+    }
+    #[cfg(not(windows))]
+    fail("The owned subscription client host requires Windows. No note was sent.");
+}
+#[cfg(windows)]
+fn wait_client(child: &mut Child, limit: Duration) -> Result<std::process::ExitStatus> {
+    let started=Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {},
+            Err(_) => {let _=child.kill();let _=child.wait();return Err("Cannot read the local Codex client status. No changes were applied.".into());}
+        }
+        if started.elapsed()>=limit {
+            let _=child.kill();let _=child.wait();
+            return Err("The local Codex request timed out. No changes were applied.".into());
+        }
+        thread::sleep(Duration::from_millis(80));
+    }
 }
 fn locate() -> Result<PathBuf> {
     let base = std::env::var_os("LOCALAPPDATA")
@@ -313,6 +359,7 @@ fn validate_bridge_capabilities(v: Option<&Value>) -> Result<()> {
             && v["formattingProtocol"] == crate::agent::FORMATTING_PROTOCOL
             && v["hostedAudience"] == true
             && v["privateNoteExclusion"] == true
+            && v["subscriptionClientHost"] == CLIENT_HOST_PROTOCOL
     }) {
         Ok(())
     } else {
@@ -340,25 +387,16 @@ fn client_failure(output: &[u8]) -> Option<String> {
         let Ok(event) = serde_json::from_slice::<Value>(line) else {
             continue;
         };
-        if event["type"] != "item.completed" || event["item"]["type"] != "agent_message" {
-            continue;
-        }
-        let Some(text) = event["item"]["text"].as_str() else {
-            continue;
-        };
-        let Ok(v) = serde_json::from_str::<Value>(text) else {
-            continue;
-        };
-        if v["queued"] == false {
-            if let Some(value) = v["summary"].as_str() {
-                let clean: String = value
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .take(600)
-                    .collect();
-                if !clean.trim().is_empty() {
-                    summary = Some(clean);
-                }
+        let message = if event["type"] == "noted_client_error" {
+            event["message"].as_str().map(str::to_owned)
+        } else if event["type"] == "item.completed" && event["item"]["type"] == "agent_message" {
+            event["item"]["text"].as_str().and_then(|text|serde_json::from_str::<Value>(text).ok())
+                .filter(|value|value["queued"]==false).and_then(|value|value["summary"].as_str().map(str::to_owned))
+        } else { None };
+        if let Some(value) = message {
+            let clean: String = value.chars().filter(|c| !c.is_control()).take(600).collect();
+            if !clean.trim().is_empty() {
+                summary = Some(clean);
             }
         }
     }
@@ -419,7 +457,10 @@ fn generate(
     if component {
         configs.as_object_mut().unwrap().remove("mcp_servers.noted");
     }
-    let mut c = command(exe);
+    // The dedicated host establishes its Windows job before starting Codex.
+    // Killing this registered host also closes its owned descendants' pipes.
+    let mut c = command(bridge);
+    c.arg("--subscription-client-host").arg(exe);
     c.current_dir(temp.path())
         .args([
             "exec",
@@ -566,8 +607,122 @@ mod tests {
     fn inert_process_child() {
         if std::env::var_os("NOTED_INERT_PROCESS_CHILD").is_some() {
             assert_eq!(ensure_runner_enabled().unwrap_err(), RUNNER_DISABLED);
-            thread::sleep(Duration::from_secs(10));
+            #[cfg(windows)]
+            if std::env::var_os("NOTED_INERT_TREE_ROLE").is_some_and(|value| value == "root") {
+                match crate::process_tree::run(inert_tree_body) {
+                    Ok(never) => match never {}, Err(error) => panic!("Inert process scope failed: {error}"),
+                }
+            }
+            let code=inert_tree_body();
+            if std::env::var_os("NOTED_INERT_ECHO").is_some(){std::process::exit(code);}
         }
+    }
+    fn inert_tree_body() -> i32 {
+        let root = std::env::var_os("NOTED_INERT_TREE_ROLE").is_some_and(|value| value == "root");
+        let marker = std::env::var_os("NOTED_INERT_TREE_READY").map(PathBuf::from);
+        if !root && std::env::var_os("NOTED_INERT_ECHO").is_some(){
+            let (tx,rx)=std::sync::mpsc::channel();
+            thread::spawn(move||{let mut bytes=Vec::new();let _=std::io::stdin().take(2048).read_to_end(&mut bytes);let _=tx.send(bytes);});
+            let bytes=rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            std::io::stdout().write_all(&bytes).unwrap();eprintln!("INERT_STDERR");return 37;
+        }
+        let mut descendant = if let Some(marker) = marker.as_ref() {
+            if root {
+                Some(inert_command().env("NOTED_INERT_TREE_ROLE", "leaf")
+                    .stdin(Stdio::inherit()).stdout(Stdio::inherit()).stderr(Stdio::inherit())
+                    .spawn().unwrap())
+            } else { fs::write(marker, b"ready").unwrap(); None }
+        } else { None };
+        if root && std::env::var_os("NOTED_INERT_ECHO").is_some(){return descendant.as_mut().unwrap().wait().unwrap().code().unwrap_or(1);}
+        if root && std::env::var_os("NOTED_INERT_TREE_EXIT_EARLY").is_some() {
+            let deadline=Instant::now()+Duration::from_secs(5);
+            while !marker.as_ref().is_some_and(|path| path.is_file()) && Instant::now()<deadline {thread::sleep(Duration::from_millis(10));}
+            return if marker.is_some_and(|path| path.is_file()) {0} else {3};
+        }
+        thread::sleep(Duration::from_secs(10)); 0
+    }
+    #[cfg(windows)]
+    #[test]
+    fn cancellation_closes_output_inherited_by_inert_descendants() {
+        use std::sync::mpsc;
+        let temp = tempfile::Builder::new().prefix("noted owned process test ").tempdir().unwrap();
+        let marker = temp.path().join("descendant.ready");
+        let job = inert_job(); let _lease = ProcessLease(&job.process);
+        let service = Service { current: Mutex::new(Some(job.clone())) };
+        let (stdin, mut stdout, stderr) = spawn_registered(&job, || {
+            inert_command().current_dir(temp.path()).env("NOTED_INERT_TREE_READY", &marker)
+                .env("NOTED_INERT_TREE_ROLE", "root").spawn()
+        }).unwrap();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let reader = thread::spawn(move || {
+            let mut output = Vec::new(); let _ = stdout.read_to_end(&mut output);
+            let _ = closed_tx.send(());
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !marker.is_file() && Instant::now() < deadline { thread::sleep(Duration::from_millis(10)); }
+        let ready = marker.is_file();
+        let mut outsider = inert_command().spawn().unwrap();
+        service.cancel(None).unwrap();
+        let closed_promptly = closed_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        let outsider_survived=outsider.try_wait().unwrap().is_none();
+        let _=outsider.kill();let _=outsider.wait();
+        // Both helpers have a hard ten-second lifetime. Wait for cleanup before
+        // asserting, so the baseline failure leaves no inert descendant behind.
+        if !closed_promptly { closed_rx.recv_timeout(Duration::from_secs(12)).unwrap(); }
+        reader.join().unwrap(); drop(stdin);
+        let status=job.process.lock().unwrap().as_mut().unwrap().wait().unwrap();
+        let mut diagnostic=String::new();let _=stderr.take(8192).read_to_string(&mut diagnostic);
+        assert!(ready, "Inert readiness failed: exit={:?}, scope_error={}, spawn_error={}, panic={}",status.code(),diagnostic.contains("scope failed"),diagnostic.contains("Os {"),diagnostic.contains("panicked"));
+        assert!(outsider_survived, "An unrelated inert process must not be part of the owned job");
+        assert!(closed_promptly, "Cancellation left an inert descendant holding the output pipe");
+    }
+    #[cfg(windows)]
+    #[test]
+    fn successful_host_exit_closes_inert_descendants_and_preserves_exit_code() {
+        let temp=tempfile::Builder::new().prefix("noted finished process test ").tempdir().unwrap();let marker=temp.path().join("descendant.ready");
+        let mut child=inert_command().current_dir(temp.path()).env("NOTED_INERT_TREE_READY",&marker)
+            .env("NOTED_INERT_TREE_ROLE","root").env("NOTED_INERT_TREE_EXIT_EARLY","1").spawn().unwrap();
+        let mut stdout=child.stdout.take().unwrap();
+        let (tx,rx)=std::sync::mpsc::channel();
+        let reader=thread::spawn(move||{let mut bytes=Vec::new();stdout.read_to_end(&mut bytes).unwrap();let _=tx.send(());});
+        let status=child.wait().unwrap();
+        let closed_promptly=rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        if !closed_promptly {rx.recv_timeout(Duration::from_secs(12)).unwrap();}
+        reader.join().unwrap();
+        assert!(status.success(),"The dedicated host must preserve the child exit code");
+        assert!(marker.is_file());assert!(closed_promptly,"A finished host left an inert descendant behind");
+    }
+    #[test]
+    fn synthetic_fuse_blocks_the_client_host_before_command_discovery() {
+        if std::env::var_os("NOTED_CLIENT_HOST_GUARD_CHILD").is_some() {
+            run_client_host(vec!["MUST_NOT_RUN.exe".into(),"exec".into()]);
+        }
+        let output=Command::new(std::env::current_exe().unwrap())
+            .args(["--exact","subscription::tests::synthetic_fuse_blocks_the_client_host_before_command_discovery","--nocapture"])
+            .env("NOTED_CLIENT_HOST_GUARD_CHILD","1").env("NOTED_DISABLE_SUBSCRIPTION_RUNNER","1").output().unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains(RUNNER_DISABLED));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn owned_host_forwards_streams_and_nonzero_exit_in_a_spaced_directory(){
+        let temp=tempfile::Builder::new().prefix("noted stream test ").tempdir().unwrap();
+        let mut child=inert_command().current_dir(temp.path()).env("NOTED_INERT_TREE_READY",temp.path().join("unused"))
+            .env("NOTED_INERT_TREE_ROLE","root").env("NOTED_INERT_ECHO","1").spawn().unwrap();
+        let payload="INERT_UNICODE_é_日本語\n";
+        child.stdin.take().unwrap().write_all(payload.as_bytes()).unwrap();
+        let output=child.wait_with_output().unwrap();
+        assert_eq!(output.status.code(),Some(37));
+        assert!(String::from_utf8_lossy(&output.stdout).contains(payload));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("INERT_STDERR"));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn the_client_deadline_reaps_an_inert_process() {
+        let mut child=inert_command().spawn().unwrap();
+        let result=wait_client(&mut child,Duration::from_millis(40));
+        assert!(result.unwrap_err().contains("timed out"));
+        assert!(child.try_wait().unwrap().is_some());
     }
     #[test]
     fn cancelled_job_never_calls_the_process_factory() {
@@ -645,6 +800,9 @@ mod tests {
             Some("Schema proposal was refused")
         );
         assert!(client_failure(tool.to_string().as_bytes()).is_none());
+        let host=json!({"type":"noted_client_error","message":"\n".repeat(50)+&"x".repeat(700)});
+        let clean=client_failure(host.to_string().as_bytes()).unwrap();
+        assert_eq!(clean.len(),600);assert!(!clean.contains('\n'));
     }
     #[test]
     fn static_snapshot_cap_rejects_dynamic_or_oversized_notes_before_any_client_call() {
@@ -714,6 +872,8 @@ mod tests {
         ))
         .is_err());
         assert!(validate_bridge_capabilities(Some(&crate::agent::capabilities())).is_ok());
+        let mut old=crate::agent::capabilities();old.as_object_mut().unwrap().remove("subscriptionClientHost");
+        assert!(validate_bridge_capabilities(Some(&old)).is_err());
         let t = tempfile::tempdir().unwrap();
         let e = prepare_bridge(&t.path().join("missing/noted-agent.exe")).unwrap_err();
         assert!(e.contains("No note was sent"));

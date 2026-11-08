@@ -10,6 +10,8 @@ pub mod library;
 pub mod links;
 pub mod migration;
 pub mod private_import;
+#[cfg(windows)]
+mod process_tree;
 pub mod relations;
 pub mod schema_ai;
 #[cfg(feature = "semantic")]

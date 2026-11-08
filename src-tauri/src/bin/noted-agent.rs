@@ -1,5 +1,8 @@
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--subscription-client-host") {
+        noted_core::subscription::run_client_host(args.into_iter().skip(1).collect());
+    }
     if args.len() == 1 && args[0] == "--capabilities" {
         println!("{}", noted_core::agent::capabilities());
         return;

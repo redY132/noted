@@ -16,7 +16,7 @@ use std::{
 };
 pub const FORMATTING_PROTOCOL: u32 = 5;
 pub fn capabilities() -> Value {
-    json!({"schemaVersion":1,"formattingProtocol":FORMATTING_PROTOCOL,"hostedAudience":true,"privateNoteExclusion":true})
+    json!({"schemaVersion":1,"formattingProtocol":FORMATTING_PROTOCOL,"hostedAudience":true,"privateNoteExclusion":true,"subscriptionClientHost":crate::subscription::CLIENT_HOST_PROTOCOL})
 }
 type Result<T> = std::result::Result<T, String>;
 fn err(e: impl std::fmt::Display) -> String {

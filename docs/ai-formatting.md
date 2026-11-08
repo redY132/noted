@@ -34,6 +34,24 @@ approved scope; the next request still needs fresh guidance consent.
 
 ## Progress, cancellation and local recovery
 
+Generation uses an internal local helper in the matching `noted-agent` companion.
+On Windows, that helper joins an unnamed job object before starting Codex.
+Closing its sole job handle terminates its normal child processes, including
+descendants holding output pipes. Other app/client processes are outside that
+job. This uses [Windows job-object ownership](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects);
+it does not confirm that remote inference stopped. The helper also enforces the
+existing three-minute local deadline. Older companions are rejected before
+transmission; use the complete matching package. The synthetic-process fuse
+also blocks this internal entry point before command discovery.
+
+Verification uses only inert test executables, including cancellation, normal
+and nonzero exit, streams, an unrelated surviving process and paths with spaces.
+A previous full-suite run missed the five-second readiness marker; subsequent
+parallel core and desktop runs passed without relaxing that assertion. Fixed
+failure diagnostics remain for recurrence. Its original cause is unresolved.
+No live Codex generation or remote cancellation verification was performed for
+this change, and earlier historical cancellation outcomes remain unverified.
+
 An explicitly started job keeps a status strip below the writing toolbar after
 you close the dialog or visit another note. **Open generation** returns to its
 note and goal; **Review proposal** checks the exact saved request before opening
