@@ -43,6 +43,8 @@ async page => {
   await page.setViewportSize({width:800,height:600});await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});
   await page.waitForFunction(()=>{const r=document.querySelector('[data-activity-open]').getBoundingClientRect(),b=document.querySelector('.ai-job-status').getBoundingClientRect();return r.top>=b.top-1&&r.bottom<=b.bottom+1;});
   const largeText=await measure();if(largeText.failures.length)throw new Error(JSON.stringify({largeText}));await page.screenshot({path:`${artifacts}/activity-native-text-200.png`});
+  await page.setViewportSize({width:800,height:350});
+  await page.waitForFunction(()=>document.querySelector('.workspace').clientHeight<360&&document.querySelector('.note-product-actions').hidden);
   record('short writing areas retain note commands under View',await page.locator('.note-product-actions').isHidden());
   await page.locator('#view-toggle').click();if(!await page.locator('.shell-note-actions').evaluate(el=>el.open))await page.locator('.shell-note-actions summary').click();await page.locator('#shell-action-open-ai-formatting').click();
   await page.locator('.ai-formatting-dialog').waitFor({state:'visible'});await page.locator('[data-ai-preview]:not([hidden])').waitFor();await page.locator('[data-ai-close]').click();
