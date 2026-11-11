@@ -62,212 +62,274 @@ interface NavigationOptions {
   close(): void;
   focusEditor(): void;
   edges(ids: string[]): Promise<PairState[]>;
+  parentNotes?(folder: string, cursor: number): Promise<{items: NoteSummary[]; total: number; nextCursor: number | null}>;
 }
 export function initializeNavigation(root: HTMLElement, options: NavigationOptions) {
   const $ = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
-  const text = (selector: string, value: string) => { const element = $(selector); if (element.textContent !== value) element.textContent = value; };
-  const popup = $('#notes-panel'), graph = $('#folder-graph'), canvas = $('#folder-graph-canvas');
-  let folders: Folder[] = [], selected: Collection = 'all', notes: NoteSummary[] = [], total = 0;
-  let active: string | null = null, highlighted: string | null = null, shown: NoteSummary[] = [], edges: PairState[] = [];
-  let open = true, expanded = new Set<string>(), ticket = 0, frame = 0, edgeTimer: ReturnType<typeof setTimeout> | undefined;
-  let edgeKey = '', edgeError = false, loading = false;
-  let positionsKey = '', positions: { x: number; y: number }[] = [];
-  let renderedNodes = '', renderedEdges = '';
-  function focusId() {
-    const el = document.activeElement as HTMLElement | null;
-    return el?.closest<HTMLElement>('[data-note],[data-folder-graph-note]')?.dataset.note ?? el?.closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null;
+  const directory = $('.navigation-tree'), popup = $('#notes-panel'), graph = $('#folder-graph'), canvas = $('#folder-graph-canvas');
+  const children = document.createElement('nav'); children.id = 'folder-children'; children.className = 'folders'; children.setAttribute('aria-label','Child folders');
+  popup.querySelector('.collection-actions')!.before(children);
+  const parentButton = document.createElement('button'); parentButton.type = 'button'; parentButton.id = 'directory-parent'; parentButton.textContent = 'Back';
+  directory.querySelector('.navigation-heading')!.after(parentButton);
+  let folders: Folder[] = [], selected: Collection = 'all', notes: NoteSummary[] = [], total = 0, active: string | null = null, highlighted: string | null = null;
+  let open = false, browsing = false, epoch = 0, frame = 0, edgeKey = '', layoutKey = '', edgeError = false, loading = false, destroyed = false;
+  let edgeTimer: ReturnType<typeof setTimeout> | undefined;
+  let edges: PairState[] = [], shown: NoteSummary[] = [];
+  type GraphNode = {id:string;x:number;y:number;vx?:number;vy?:number;fx?:number|null;fy?:number|null};
+  let nodes: GraphNode[] = [], simulation: ReturnType<typeof forceSimulation<GraphNode>> | null = null;
+  let drag: {id:string;pointer:number;x:number;y:number;moved:boolean} | null = null, suppressClick: string | null = null;
+  const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const animations = new Set<Animation>(), ghosts = new Set<HTMLElement>(), cleanup: (()=>void)[] = [];
+  let transitionEpoch = 0;
+  let restoringFolderFocus = false;
+  type DirectoryPage = {folder: string; items: NoteSummary[]; total: number; nextCursor: number | null; loading: boolean; failed: boolean};
+  let parentPage: DirectoryPage | null = null, currentCursor: number | null = null, currentLoaded = false;
+  function listen(target: EventTarget, name: string, action: EventListener) { target.addEventListener(name,action); cleanup.push(()=>target.removeEventListener(name,action)); }
+  function text(selector:string,value:string) { if($(selector).textContent!==value) $(selector).textContent=value; }
+  function stopMotion() {
+    ++transitionEpoch;
+    for(const animation of animations) animation.cancel(); animations.clear();
+    for(const ghost of ghosts) ghost.remove(); ghosts.clear();
+  }
+  function animate(element:HTMLElement, frames:Keyframe[], duration=380) {
+    if(motion?.matches || !element.animate) return;
+    const animation=element.animate(frames,{duration,easing:'cubic-bezier(.22,.8,.25,1)'});
+    animations.add(animation); void animation.finished.catch(()=>{}).finally(()=>animations.delete(animation));
+    return animation;
+  }
+  function stopGraph() { simulation?.stop(); simulation=null; canvas.dataset.simulating='false'; drag=null; }
+  function ghostOf(element:HTMLElement) {
+    const ghost=element.cloneNode(true) as HTMLElement;
+    ghost.removeAttribute('id'); for(const child of ghost.querySelectorAll('[id]')) child.removeAttribute('id');
+    for(const child of [ghost,...ghost.querySelectorAll<HTMLElement>('*')]) {
+      for(const attr of ['data-folder','data-note','data-explorer-parent-note','data-parent-more','data-folder-graph-note','data-note-target','data-connect-source','aria-controls','aria-labelledby','for'])child.removeAttribute(attr);
+    }
+    ghost.inert=true; ghost.setAttribute('aria-hidden','true'); ghost.classList.add('explorer-ghost'); ghosts.add(ghost); return ghost;
+  }
+  function graphArrival() {
+    if(!open || !browsing || destroyed || motion?.matches || !canvas.animate) return;
+    const source=document.querySelector<HTMLElement>('#header-connection-handle button'), target=canvas.getBoundingClientRect();
+    if(!source || !target.width) return;
+    const from=source.getBoundingClientRect(), ghost=ghostOf(source);
+    Object.assign(ghost.style,{position:'fixed',left:from.left+'px',top:from.top+'px',width:from.width+'px',height:from.height+'px',zIndex:'100'});
+    document.body.append(ghost);
+    const dx=target.left+target.width/2-from.left-from.width/2, dy=target.top+target.height/2-from.top-from.height/2;
+    const flight=animate(ghost,[{transform:'translate(0,0) scale(1)',opacity:1},{transform:'translate('+dx+'px,'+dy+'px) scale(1.2)',opacity:1,offset:.65},{transform:'translate('+dx+'px,'+dy+'px) scale(4)',opacity:0}],600);
+    const previous=source.style.visibility; source.style.visibility='hidden';
+    void flight?.finished.catch(()=>{}).finally(()=>{source.style.visibility=previous;ghost.remove();ghosts.delete(ghost);});
+    animate(canvas,[{transform:'scale(.04)',opacity:0},{transform:'scale(.04)',opacity:0,offset:.45},{transform:'scale(1)',opacity:1}],600);
   }
   function paintHighlight() {
-    const id = highlighted ?? active;
-    for (const el of root.querySelectorAll<HTMLElement>('[data-folder-graph-note]')) {
-      const match = el.dataset.folderGraphNote === id;
-      el.classList.toggle('highlighted', match);
-    }
-    for (const el of root.querySelectorAll<HTMLElement>('[data-note]')) el.classList.toggle('graph-highlight', el.dataset.note === id);
-    text('#folder-graph-caption', notes.find(n => n.id === id)?.title || (notes.length ? 'Hover or focus a note to locate it.' : 'Create a note to start this collection.'));
+    const id=highlighted??active;
+    for(const button of root.querySelectorAll<HTMLElement>('[data-folder-graph-note]')) button.classList.toggle('highlighted',button.dataset.folderGraphNote===id);
+    for(const row of root.querySelectorAll<HTMLElement>('[data-note]')) row.classList.toggle('graph-highlight',row.dataset.note===id);
+    text('#folder-graph-caption',notes.find(n=>n.id===id)?.title || (notes.length?'Hover or focus a note to locate it.':'Create a note to start this collection.'));
   }
-  function paintGraph() {
-    const width = canvas.clientWidth || 300, height = canvas.clientHeight || 300;
-    const key = JSON.stringify([width, height, shown.map(n => n.id), edges.map(e => [e.a, e.b])]);
-    if (key !== positionsKey) {
-      const indices = new Map(shown.map((n, i) => [n.id, i]));
-      positions = graphPositions(shown.length, width, height, edges.filter(e => e.connected && indices.has(e.a) && indices.has(e.b)).map(e => ({ a: indices.get(e.a)!, b: indices.get(e.b)! })));
-      positionsKey = key;
+  function draw() {
+    const width=canvas.clientWidth||300,height=canvas.clientHeight||300,byId=new Map(nodes.map(n=>[n.id,n]));
+    for(const node of nodes) {
+      node.x=Math.max(24,Math.min(Math.max(24,width-24),node.x));node.y=Math.max(24,Math.min(Math.max(24,height-24),node.y));
+      const button=root.querySelector<HTMLElement>('[data-folder-graph-note="'+node.id+'"]');
+      if(button){button.style.left=node.x+'px';button.style.top=node.y+'px';}
     }
-    const byId = new Map(shown.map((n, i) => [n.id, positions[i]]));
-    const svg = canvas.querySelector('svg')!;
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    const edgeMarkup = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).map(e => {
-      const a = byId.get(e.a)!, b = byId.get(e.b)!;
-      return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+    const svg=canvas.querySelector('svg')!;svg.setAttribute('viewBox','0 0 '+width+' '+height);
+    svg.innerHTML=edges.filter(e=>e.connected&&byId.has(e.a)&&byId.has(e.b)).map(e=>{
+      const a=byId.get(e.a)!,b=byId.get(e.b)!,dx=b.x-a.x,dy=b.y-a.y;
+      return '<path d="M'+a.x+' '+a.y+' Q'+((a.x+b.x)/2-dy*.12)+' '+((a.y+b.y)/2+dx*.12)+' '+b.x+' '+b.y+'" fill="none"/>';
     }).join('');
-    if (edgeMarkup !== renderedEdges) { svg.innerHTML = edgeMarkup; renderedEdges = edgeMarkup; }
-    const focused = focusId();
-    const nodeMarkup = shown.map((n, i) => `<button type="button" class="folder-graph-node" data-folder-graph-note="${escape(n.id)}" data-note-target="${escape(n.id)}" style="left:${positions[i].x}px;top:${positions[i].y}px" aria-label="Open ${escape(n.title || 'Untitled')}" title="${escape(n.title || 'Untitled')}"><span aria-hidden="true"></span></button>`).join('');
-    if (nodeMarkup !== renderedNodes) { $('#folder-graph-nodes').innerHTML = nodeMarkup; renderedNodes = nodeMarkup; }
-    if (focused && document.activeElement === document.body) root.querySelector<HTMLButtonElement>(`[data-folder-graph-note="${focused}"]`)?.focus({ preventScroll: true });
-    const count = edges.filter(e => e.connected && byId.has(e.a) && byId.has(e.b)).length;
-    text('#folder-graph-summary', edgeError ? 'Connections could not load. Refresh to retry.' : !notes.length ? 'This collection has no notes yet.' : `${shown.length} of ${total} notes · ${count} saved ${count === 1 ? 'connection' : 'connections'}${loading ? ' · Updating' : ''}`);
-    paintHighlight();
   }
-  function updateGraph(force = false) {
-    if (!open || popup.hidden) return;
-    const width = canvas.clientWidth || 300, height = canvas.clientHeight || 300;
-    const capacity = graphCapacity(width, height);
-    shown = graphWindow(notes, highlighted ?? active, capacity);
-    const key = shown.map(n => n.id).join(',');
-    paintGraph();
-    if (key === edgeKey && !force) return;
-    edgeKey = key; const request = ++ticket; clearTimeout(edgeTimer);
-    if (!shown.length) { edges = []; loading = false; paintGraph(); return; }
-    loading = true; edgeError = false; paintGraph();
-    const ids = shown.map(n => n.id);
-    edgeTimer = setTimeout(() => {
-      void options.edges(ids).then(value => {
-        if (request !== ticket || !open || popup.hidden) return;
-        edges = value; loading = false; edgeError = false; paintGraph();
-      }, () => {
-        if (request !== ticket || !open || popup.hidden) return;
-        edges = []; loading = false; edgeError = true; paintGraph();
-      });
-    }, 70);
+  function graphLayout() {
+    if(!open || !browsing || destroyed) return;
+    const width=canvas.clientWidth||300,height=canvas.clientHeight||300;
+    const key=JSON.stringify([width,height,shown.map(n=>[n.id,n.title]),edges.filter(e=>e.connected).map(e=>[e.a,e.b])]);
+    if(layoutKey!==key) {
+      stopGraph();layoutKey=key;
+      const old=new Map(nodes.map(n=>[n.id,n]));
+      nodes=shown.map((n,i)=>({id:n.id,x:old.get(n.id)?.x??width/2+Math.cos(i*2.39996)*Math.sqrt(i)*24,y:old.get(n.id)?.y??height/2+Math.sin(i*2.39996)*Math.sqrt(i)*24}));
+      const focused=(document.activeElement as HTMLElement)?.dataset.folderGraphNote;
+      $('#folder-graph-nodes').innerHTML=shown.map(n=>'<button type="button" class="folder-graph-node" data-folder-graph-note="'+escape(n.id)+'" data-note-target="'+escape(n.id)+'" aria-label="Open '+escape(n.title||'Untitled')+'" title="'+escape(n.title||'Untitled')+'"><span aria-hidden="true"></span></button>').join('');
+      if(focused) root.querySelector<HTMLElement>('[data-folder-graph-note="'+focused+'"]')?.focus({preventScroll:true});
+      const ids=new Set(nodes.map(n=>n.id));
+      simulation=forceSimulation(nodes).stop().alphaDecay(.07)
+        .force('collision',forceCollide(25).iterations(3)).force('charge',forceManyBody().strength(-35))
+        .force('x',forceX(width/2).strength(.025)).force('y',forceY(height/2).strength(.025))
+        .force('links',forceLink(edges.filter(e=>e.connected&&ids.has(e.a)&&ids.has(e.b)).map(e=>({source:e.a,target:e.b}))).id(n=>(n as GraphNode).id).distance(62).strength(.12));
+      if(!nodes.length || motion?.matches || document.hidden){for(let i=0;i<140;i++)simulation.tick();stopGraph();}
+      else {canvas.dataset.simulating='true';simulation.on('tick',draw).on('end',()=>{canvas.dataset.simulating='false';}).restart();}
+    }
+    draw();paintHighlight();
+    const count=edges.filter(e=>e.connected&&shown.some(n=>n.id===e.a)&&shown.some(n=>n.id===e.b)).length;
+    text('#folder-graph-summary',edgeError?'Connections could not load. Refresh to retry.':!notes.length?'This collection has no notes yet.':shown.length+' of '+total+' notes · '+count+' saved connections'+(loading?' · Updating':''));
   }
-  function highlight(id: string | null) {
-    if (highlighted === id) return;
-    highlighted = id;
-    if (id && !shown.some(n => n.id === id)) updateGraph(); else paintHighlight();
+  function updateGraph(force=false) {
+    if(!open||!browsing||destroyed)return;
+    shown=graphWindow(notes,highlighted??active,graphCapacity(canvas.clientWidth||300,canvas.clientHeight||300));
+    const key=shown.map(n=>n.id).join(',');
+    graphLayout();if(key===edgeKey&&!force)return;
+    const changed=key!==edgeKey;
+    edgeKey=key;const request=++epoch;clearTimeout(edgeTimer);if(changed)edges=[];loading=!!shown.length;edgeError=false;graphLayout();
+    if(!shown.length)return;
+    edgeTimer=setTimeout(()=>void options.edges(shown.map(n=>n.id)).then(value=>{
+      if(request!==epoch||!open||!browsing||destroyed)return;
+      edges=value;loading=false;graphLayout();
+    },()=>{if(request!==epoch||!open||!browsing||destroyed)return;edgeError=true;loading=false;graphLayout();}),70);
   }
   function position() {
-    if (!open) return;
-    const depth = Math.max(0, ...[...root.querySelectorAll<HTMLElement>('[data-folder-depth]')].map(el => Number(el.dataset.folderDepth)));
-    root.style.setProperty('--folder-depth-space', `${Math.min(depth, 8) * 6}px`);
-    const compact = innerWidth < 800 || parseFloat(window.getComputedStyle(root).fontSize) > 20;
-    root.dataset.navigationMode = compact ? 'compact' : 'docked';
-    const anchor = selected === 'all' ? $('#all-notes') : root.querySelector<HTMLElement>(`[data-folder="${selected ?? ''}"]`);
-    const branch = root.querySelector<SVGSVGElement>('.directory-branch')!, path = branch.querySelector('path')!;
-    const rect = root.getBoundingClientRect(), anchorRect = anchor?.getBoundingClientRect(), listRect = $('#note-list').getBoundingClientRect();
-    const clip = anchor?.closest('#folders')?.getBoundingClientRect();
-    branch.setAttribute('viewBox', `0 0 ${root.clientWidth} ${root.clientHeight}`);
-    const hidden = compact || !anchorRect || !!clip && (anchorRect.bottom <= clip.top || anchorRect.top >= clip.bottom);
-    branch.toggleAttribute('hidden', hidden);
-    if (!hidden && anchorRect) {
-      const x = anchorRect.right - rect.left, y = Math.max(clip?.top ?? 0, Math.min(anchorRect.top + anchorRect.height / 2, clip?.bottom ?? innerHeight)) - rect.top;
-      const endX = listRect.left - rect.left + 12, endY = listRect.top - rect.top + 1, turnX = (x + endX) / 2;
-      path.setAttribute('d', `M${x} ${y}H${turnX}V${endY}H${endX}`);
-    }
+    if(!open||destroyed)return;
+    root.dataset.navigationMode=innerWidth<800||parseFloat(window.getComputedStyle(root).fontSize)>20?'compact':'docked';
+    const path=root.querySelector<SVGPathElement>('.directory-branch path')!,svg=path.ownerSVGElement!;
+    const anchor=selected==='all'?$('#all-notes'):$('#folders').querySelector<HTMLElement>('[data-folder="'+(selected??'')+'"]');
+    const a=anchor?.getBoundingClientRect(),b=popup.getBoundingClientRect(),r=root.getBoundingClientRect();
+    svg.toggleAttribute('hidden',!browsing||!a);svg.setAttribute('viewBox','0 0 '+root.clientWidth+' '+root.clientHeight);
+    if(a){const x=a.right-r.left,y=a.top+a.height/2-r.top,end=b.left-r.left+8,mid=(x+end)/2;path.setAttribute('d','M'+x+' '+y+' C'+(mid+18)+' '+(y-28)+','+(mid-18)+' '+(y+44)+','+end+' '+(y+14));}
     updateGraph();
   }
-  function layout() { cancelAnimationFrame(frame); frame = requestAnimationFrame(position); }
-  function resizeLayout() {
-    layout();
-    requestAnimationFrame(() => {
-      if (!open) return;
-      root.querySelector<HTMLElement>(selected === 'all' ? '#all-notes' : `[data-folder="${selected ?? ''}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    });
-  }
-  function showNotes() {
-    if (!open) return;
-    popup.hidden = graph.hidden = false; popup.inert = graph.inert = false;
-    layout();
-  }
-  function hideNotes() {
-    popup.hidden = graph.hidden = true; popup.inert = graph.inert = true;
-    ++ticket; clearTimeout(edgeTimer); edgeKey = ''; loading = false;
-    if (popup.contains(document.activeElement) || graph.contains(document.activeElement)) options.focusEditor();
+  function layout(){cancelAnimationFrame(frame);frame=requestAnimationFrame(position);}
+  function showNotes(){root.dataset.explorerExpanded=String(browsing);popup.hidden=graph.hidden=!open||!browsing;popup.inert=graph.inert=popup.hidden;layout();}
+  function focusId(){const el=document.activeElement as HTMLElement;return el?.dataset.folderGraphNote??el?.dataset.note??null;}
+  function highlight(value:string|null){highlighted=value;if(value&&!shown.some(n=>n.id===value))updateGraph();else paintHighlight();}
+  function folderRow(folder:Folder){return '<button type="button" class="folder-row '+(selected===folder.id?'selected':'')+'" data-folder="'+escape(folder.id)+'" aria-current="'+(selected===folder.id)+'">'+folderIconMarkup(folderAppearance.get(folder.id))+'<span>'+escape(folder.name)+'</span></button>';}
+  async function loadParent(page: DirectoryPage) {
+    if(!options.parentNotes || page.loading || page.nextCursor===null)return;
+    page.loading=true;page.failed=false;renderFolders();
+    try {
+      const result=await options.parentNotes(page.folder,page.nextCursor);
+      if(destroyed||parentPage!==page)return;
+      page.items=[...new Map([...page.items,...result.items].map(note=>[note.id,note])).values()];
+      page.total=result.total;page.nextCursor=result.nextCursor;
+    } catch {if(parentPage===page)page.failed=true;}
+    finally {page.loading=false;if(!destroyed&&parentPage===page)renderFolders();}
   }
   function renderFolders() {
-    const focused = (document.activeElement as HTMLElement | null)?.dataset.folder;
-    const seen = new Set<string>();
-    function row(folder: Folder, depth: number): string {
-      if (seen.has(folder.id)) return ''; seen.add(folder.id);
-      const children = folders.filter(f => f.parentId === folder.id), expandedHere = expanded.has(folder.id);
-      return `<div class="folder-branch" data-folder-depth="${depth}" style="--depth:${Math.min(depth, 8)}"><div class="folder-line"><button type="button" class="folder-disclosure" data-folder-expand="${folder.id}" aria-label="${expandedHere ? 'Collapse' : 'Expand'} ${escape(folder.name)}" aria-expanded="${expandedHere}" ${children.length ? '' : 'disabled'}><span aria-hidden="true">${children.length ? expandedHere ? '⌄' : '›' : ''}</span></button><button type="button" class="folder-row ${selected === folder.id ? 'selected' : ''}" data-folder="${folder.id}" aria-current="${selected === folder.id}" title="${escape(folder.name)}">${folderIconMarkup(folderAppearance.get(folder.id))}<span>${escape(folder.name)}</span></button></div>${expandedHere ? children.map(f => row(f, depth + 1)).join('') : ''}</div>`;
+    const focused=(document.activeElement as HTMLElement)?.dataset.folder;
+    const focusedNote=(document.activeElement as HTMLElement)?.dataset.explorerParentNote;
+    const focusedMore=(document.activeElement as HTMLElement)?.hasAttribute('data-parent-more');
+    const parent=selected&&selected!=='all'?folders.find(f=>f.id===selected)?.parentId??null:null;
+    $('#folders').setAttribute('aria-label',parent?'Parent directory':'Folders');
+    if(parentPage?.folder!==parent) {
+      parentPage=parent&&options.parentNotes?{folder:parent,items:[],total:0,nextCursor:0,loading:false,failed:false}:null;
+      if(parentPage){const page=parentPage;queueMicrotask(()=>{if(parentPage===page&&!destroyed)void loadParent(page);});}
     }
-    $('#folders').innerHTML = `<button type="button" class="folder-row unfiled ${selected === null ? 'selected' : ''}" data-folder="" aria-current="${selected === null}">${folderIconMarkup()}<span>Unfiled</span></button>${folders.filter(f => !f.parentId || !folders.some(p => p.id === f.parentId)).map(f => row(f, 0)).join('')}${folders.length ? '' : '<p class="folder-hint">Create a folder to organize your notes.</p>'}`;
-    $('#all-notes').setAttribute('aria-current', String(selected === 'all'));
-    $('#all-notes').classList.toggle('selected', selected === 'all');
-    $('#customize-folder').hidden = !selected || selected === 'all';
-    $('#collection-title').textContent = selected === 'all' ? 'All notes' : selected === null ? 'Unfiled' : folders.find(f => f.id === selected)?.name ?? 'Folder';
-    if (focused !== undefined) root.querySelector<HTMLButtonElement>(`[data-folder="${focused}"]`)?.focus({ preventScroll: true });
+    const files=parentPage;
+    $('#folders').innerHTML=(parent?'':'<button type="button" class="folder-row" data-folder="" aria-current="'+(selected===null)+'">'+folderIconMarkup()+'<span>Unfiled</span></button>')+
+      folders.filter(f=>(f.parentId??null)===parent||!parent&&f.parentId&&!folders.some(p=>p.id===f.parentId)).map(folderRow).join('')+
+      (files?'<p class="parent-files-label">Notes ('+files.items.length+' / '+files.total+')</p>'+files.items.map(n=>'<button type="button" class="folder-row parent-file" data-explorer-parent-note="'+escape(n.id)+'" title="'+escape(n.title||'Untitled')+'"><span aria-hidden="true">·</span><span>'+escape(n.title||'Untitled')+'</span></button>').join('')+(files.loading?'<p class="folder-hint" role="status">Loading notes…</p>':files.nextCursor!==null?'<button type="button" class="folder-row" data-parent-more>'+ (files.failed?'Retry loading notes':'Show more notes')+'</button>':''):'')+
+      (folders.length?'':'<p class="folder-hint">Create a folder to organize your notes.</p>');
+    children.innerHTML=selected&&selected!=='all'?folders.filter(f=>f.parentId===selected).map(folderRow).join(''):'';
+    children.hidden=!children.childElementCount;
+    parentButton.hidden=!parent||browsing;
+    const parentName=parent?folders.find(f=>f.id===parent)?.name??'parent folder':null;
+    parentButton.setAttribute('aria-label','Back to '+(parentName??'folders'));
+    text('#navigation-back',parentName?'Back to '+parentName:'Back to folders');
+    text('.navigation-heading span',parent?folders.find(f=>f.id===parent)?.name??'Folders':'Browse notes');
+    $('#all-notes').setAttribute('aria-current',String(selected==='all'));$('#all-notes').classList.toggle('selected',selected==='all');
+    $('#customize-folder').hidden=!selected||selected==='all';
+    text('#collection-title',selected==='all'?'All notes':selected===null?'Unfiled':folders.find(f=>f.id===selected)?.name??'Folder');
+    if(focused!==undefined||focusedNote||focusedMore){
+      restoringFolderFocus=true;
+      try{root.querySelector<HTMLElement>(focusedNote?'[data-explorer-parent-note="'+focusedNote+'"]':focusedMore?'[data-parent-more]':'[data-folder="'+focused+'"]')?.focus({preventScroll:true});}
+      finally{restoringFolderFocus=false;}
+    }
     layout();
   }
-  $('#navigation-close').onclick = options.close;
-  $('#navigation-back').onclick = () => { root.scrollTop = 0; root.querySelector<HTMLButtonElement>(selected && selected !== 'all' ? `[data-folder="${selected}"]` : '#all-notes')?.focus(); };
-  $('#collection-new-note').onclick = () => $('#new-note').click();
-  $('#folder-graph-refresh').onclick = () => updateGraph(true);
-  function chooseCollection(value: Collection) {
-    if (selected !== value) {
-      notes = []; total = 0; edges = []; highlighted = null; edgeKey = '';
-      $('#note-list').replaceChildren();
+  function choose(value:Collection) {
+    const backward=folderAncestors(folders,value).length<folderAncestors(folders,selected).length,wasBrowsing=browsing;
+    stopMotion();
+    if(open&&browsing&&!motion?.matches&&typeof directory.animate==='function'){
+      const rect=directory.getBoundingClientRect(),r=root.getBoundingClientRect(),ghost=ghostOf(directory);
+      Object.assign(ghost.style,{position:'absolute',left:rect.left-r.left+'px',top:rect.top-r.top+'px',width:rect.width+'px',height:rect.height+'px',zIndex:'3'});
+      root.append(ghost);const exit=animate(ghost,[{transform:'translateX(0)',opacity:1},{transform:'translateX('+(backward?'110%':'-110%')+')',opacity:0}]);
+      void exit?.finished.catch(()=>{}).finally(()=>{ghost.remove();ghosts.delete(ghost);});
     }
-    selected = value;
-    for (const id of folderAncestors(folders, selected)) expanded.add(id);
-    renderFolders(); showNotes();
+    if(selected!==value){
+      if(currentLoaded&&!$<HTMLInputElement>('#search').value&&selected&&selected!=='all'&&folders.find(f=>f.id===value)?.parentId===selected)
+        parentPage={folder:selected,items:[...notes],total,nextCursor:currentCursor,loading:false,failed:false};
+      currentLoaded=false;notes=[];total=0;edges=[];shown=[];highlighted=null;$('#note-list').replaceChildren();++epoch;clearTimeout(edgeTimer);edgeKey='';layoutKey='';stopGraph();
+    }
+    selected=value;browsing=true;renderFolders();showNotes();
+    animate(directory,[{transform:'translateX('+(backward?'-100%':'100%')+')',opacity:.1},{transform:'translateX(0)',opacity:1}]);
+    animate(popup,[{transform:'translateX('+(backward?'-60%':'60%')+')',opacity:0},{transform:'translateX(0)',opacity:1}]);
+    if(!wasBrowsing){const ticket=transitionEpoch;requestAnimationFrame(()=>{if(ticket===transitionEpoch)graphArrival();});}
   }
-  $('#folders').addEventListener('click', event => {
-    const target = (event.target as Element).closest<HTMLButtonElement>('[data-folder],[data-folder-expand]');
-    if (!target) return;
-    if (target.dataset.folderExpand) {
-      const id = target.dataset.folderExpand;
-      if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
-      renderFolders(); root.querySelector<HTMLButtonElement>(`[data-folder-expand="${id}"]`)?.focus({ preventScroll: true });
-    } else {
-      chooseCollection(target.dataset.folder || null); options.select(selected);
+  function back(){
+    const parent=selected&&selected!=='all'?folders.find(f=>f.id===selected)?.parentId:null;
+    if(parent){choose(parent);options.select(parent);}
+    else{choose('all');browsing=false;stopMotion();stopGraph();showNotes();options.select('all');$('#all-notes').focus();}
+  }
+  $('#navigation-close').onclick=options.close;$('#navigation-back').onclick=back;parentButton.onclick=back;
+  $('#collection-new-note').onclick=()=>$('#new-note').click();$('#folder-graph-refresh').onclick=()=>updateGraph(true);
+  listen(root,'click',event=>{
+    if((event.target as Element).closest('[data-parent-more]')){if(parentPage)void loadParent(parentPage);return;}
+    const folder=(event.target as Element).closest<HTMLElement>('[data-folder]');
+    if(folder){choose(folder.dataset.folder||null);options.select(selected);return;}
+    const target=(event.target as Element).closest<HTMLElement>('[data-folder-graph-note],[data-explorer-parent-note]');
+    const id=target?.dataset.folderGraphNote??target?.dataset.explorerParentNote;
+    if(id){if((event as MouseEvent).detail&&suppressClick===id){suppressClick=null;return;}suppressClick=null;void options.open(id).then(success=>{if(success){options.close();options.focusEditor();}});}
+  });
+  listen(root,'focusin',()=>{if(!restoringFolderFocus&&animations.size)stopMotion();});
+  listen(root,'keydown',event=>{
+    const e=event as KeyboardEvent;if(e.isComposing||document.querySelector('dialog[open]'))return;
+    if(e.key==='Escape'){e.preventDefault();options.close();document.querySelector<HTMLElement>('[data-panel-toggle=navigation]')?.focus();return;}
+    const target=(e.target as HTMLElement).closest<HTMLElement>('[data-folder]');if(!target)return;
+    const buttons=[...target.parentElement!.querySelectorAll<HTMLElement>('[data-folder]')],at=buttons.indexOf(target);
+    let next:HTMLElement|undefined;
+    if(e.key==='ArrowDown')next=buttons[Math.min(at+1,buttons.length-1)];
+    if(e.key==='ArrowUp')next=buttons[Math.max(at-1,0)];
+    if(e.key==='Home')next=buttons[0];if(e.key==='End')next=buttons.at(-1);
+    if(e.key==='ArrowRight'){e.preventDefault();choose(target.dataset.folder||null);options.select(selected);next=children.querySelector<HTMLElement>('[data-folder]')??undefined;}
+    if(e.key==='ArrowLeft'){
+      e.preventDefault();
+      const parent=folders.find(f=>f.id===target.dataset.folder)?.parentId;
+      if(parent){if(parent!==selected){choose(parent);options.select(parent);}next=root.querySelector<HTMLElement>('[data-folder="'+parent+'"]')??undefined;}
+      else back();
     }
+    if(next){e.preventDefault();next.focus();}
   });
-  $('#folders').addEventListener('keydown', event => {
-    const target = (event.target as Element).closest<HTMLButtonElement>('[data-folder]');
-    if (!target) return;
-    const buttons = [...root.querySelectorAll<HTMLButtonElement>('[data-folder]')], at = buttons.indexOf(target), id = target.dataset.folder;
-    let next: HTMLButtonElement | undefined;
-    if (event.key === 'ArrowDown') next = buttons[Math.min(buttons.length - 1, at + 1)];
-    if (event.key === 'ArrowUp') next = buttons[Math.max(0, at - 1)];
-    if (event.key === 'Home') next = buttons[0];
-    if (event.key === 'End') next = buttons.at(-1);
-    if (event.key === 'ArrowRight' && id) {
-      event.preventDefault();
-      if (!expanded.has(id)) { expanded.add(id); renderFolders(); next = root.querySelector<HTMLButtonElement>(`[data-folder="${id}"]`) ?? undefined; }
-      else { const child = folders.find(f => f.parentId === id); if (child) next = root.querySelector<HTMLButtonElement>(`[data-folder="${child.id}"]`) ?? undefined; }
-    }
-    if (event.key === 'ArrowLeft' && id) {
-      event.preventDefault();
-      if (expanded.has(id)) { expanded.delete(id); renderFolders(); next = root.querySelector<HTMLButtonElement>(`[data-folder="${id}"]`) ?? undefined; }
-      else { const parent = folders.find(f => f.id === id)?.parentId; if (parent) next = root.querySelector<HTMLButtonElement>(`[data-folder="${parent}"]`) ?? undefined; }
-    }
-    if (next) { event.preventDefault(); next.focus(); }
+  for(const area of [$('#note-list'),$('#folder-graph-nodes')]){
+    for(const name of ['pointerover','focusin'])listen(area,name,event=>{const el=(event.target as Element).closest<HTMLElement>('[data-note],[data-folder-graph-note]');if(el)highlight(el.dataset.note??el.dataset.folderGraphNote??null);});
+    for(const name of ['pointerleave','focusout'])listen(area,name,()=>highlight(focusId()));
+  }
+  listen(canvas,'pointerdown',event=>{
+    const e=event as PointerEvent,id=(e.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote;
+    if(!id||e.button!==0)return;suppressClick=null;drag={id,pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false};
   });
-  for (const name of ['pointerover', 'focusin']) $('#note-list').addEventListener(name, event => {
-    const row = (event.target as Element).closest<HTMLElement>('.note-card-shell');
-    if (row) highlight(row.querySelector<HTMLElement>('[data-note]')?.dataset.note ?? null);
+  listen(canvas,'pointermove',event=>{
+    const e=event as PointerEvent;if(!drag||e.pointerId!==drag.pointer)return;
+    const node=nodes.find(n=>n.id===drag!.id),rect=canvas.getBoundingClientRect();if(!node)return;
+    drag.moved ||= Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>4;
+    if(!drag.moved)return;
+    if(!canvas.hasPointerCapture?.(e.pointerId))canvas.setPointerCapture?.(e.pointerId);
+    node.fx=node.x=e.clientX-rect.left;node.fy=node.y=e.clientY-rect.top;draw();
+    if(!motion?.matches&&simulation){canvas.dataset.simulating='true';simulation.alpha(.35).restart();}
   });
-  for (const name of ['pointerleave', 'focusout']) $('#note-list').addEventListener(name, () => highlight(focusId()));
-  $('#folder-graph-nodes').addEventListener('pointerover', event => highlight((event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null));
-  $('#folder-graph-nodes').addEventListener('focusin', event => highlight((event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote ?? null));
-  for (const name of ['pointerleave', 'focusout']) $('#folder-graph-nodes').addEventListener(name, () => highlight(focusId()));
-  $('#folder-graph-nodes').addEventListener('click', event => {
-    const id = (event.target as Element).closest<HTMLElement>('[data-folder-graph-note]')?.dataset.folderGraphNote;
-    if (id) void options.open(id).then(success => { if (success) options.focusEditor(); });
-  });
-  root.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !event.isComposing && !document.querySelector('dialog[open]')) {
-      event.preventDefault(); options.close(); document.querySelector<HTMLElement>('[data-panel-toggle=navigation]')?.focus();
-    }
-  });
-  $('#folders').addEventListener('scroll', layout);
-  root.querySelector('.navigation-tree')!.addEventListener('scroll', layout);
-  popup.addEventListener('scroll', layout);
-  window.addEventListener('resize', resizeLayout);
-  const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(layout);
-  observer?.observe(root.querySelector('.navigation-tree')!); observer?.observe(popup); observer?.observe(canvas);
+  const endDrag=()=>{if(drag?.moved)suppressClick=drag.id;for(const n of nodes){n.fx=null;n.fy=null;}drag=null;};
+  listen(canvas,'pointerup',endDrag);listen(canvas,'pointercancel',endDrag);listen(canvas,'lostpointercapture',endDrag);
+  const resize=()=>{
+    stopMotion();layout();
+    requestAnimationFrame(()=>{
+      if(!open||destroyed)return;
+      const selectedRow=root.querySelector<HTMLElement>('[data-folder="'+(selected??'')+'"]');
+      if(!selectedRow)return;
+      for(const container of [$('#folders'),directory]) {
+        const bounds=container.getBoundingClientRect(),row=selectedRow.getBoundingClientRect();
+        if(row.top<bounds.top)container.scrollTop+=row.top-bounds.top;
+        else if(row.bottom>bounds.bottom)container.scrollTop+=row.bottom-bounds.bottom;
+      }
+    });
+  };
+  listen(window,'resize',resize);listen(root,'scroll',layout);listen($('#folders'),'scroll',layout);
+  listen(document,'visibilitychange',()=>{if(document.hidden){stopGraph();stopMotion();}else{layoutKey='';layout();}});
+  if(motion)listen(motion,'change',()=>{stopMotion();stopGraph();layoutKey='';layout();});
+  const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(layout);observer?.observe(canvas);observer?.observe(directory);
+  showNotes();
   return {
-    setOpen(value: boolean) { if (open === value) return; open = value; if (open) showNotes(); else hideNotes(); },
-    setFolders(value: Folder[], collection: Collection) { folders = value; selected = collection; for (const id of folderAncestors(folders, selected)) expanded.add(id); renderFolders(); },
-    showNotes,
-    choose: chooseCollection,
-    setNotes(value: NoteSummary[], count: number, current: string | null) { notes = value; total = count; active = current; highlighted = null; edgeKey = ''; popup.removeAttribute('aria-busy'); $('#collection-status').hidden = true; layout(); },
-    loading() { popup.setAttribute('aria-busy', 'true'); $('#collection-status').hidden = false; $('#collection-status').textContent = 'Loading notes in this collection.'; },
-    failed() { popup.removeAttribute('aria-busy'); $('#collection-status').hidden = false; $('#collection-status').textContent = 'Notes could not load. Select the collection again to retry.'; },
-    noteOpened() { options.focusEditor(); },
-    destroy() { observer?.disconnect(); window.removeEventListener('resize', resizeLayout); clearTimeout(edgeTimer); cancelAnimationFrame(frame); ++ticket; },
+    setOpen(value:boolean){open=value;if(!value){browsing=false;++epoch;clearTimeout(edgeTimer);edgeKey='';layoutKey='';stopGraph();stopMotion();}else{directory.scrollTop=0;renderFolders();}showNotes();},
+    setFolders(value:Folder[],collection:Collection){folders=value;selected=collection;renderFolders();},
+    choose,showNotes,
+    setNotes(value:NoteSummary[],count:number,current:string|null,nextCursor:number|null=null){notes=value;total=count;currentCursor=nextCursor;currentLoaded=true;active=current;highlighted=null;popup.removeAttribute('aria-busy');$('#collection-status').hidden=true;layout();updateGraph(true);},
+    loading(){popup.setAttribute('aria-busy','true');$('#collection-status').hidden=false;text('#collection-status','Loading notes in this collection.');},
+    failed(){popup.removeAttribute('aria-busy');$('#collection-status').hidden=false;text('#collection-status','Notes could not load. Select the collection again to retry.');},
+    noteOpened(){options.close();options.focusEditor();},
+    destroy(){destroyed=true;stopMotion();stopGraph();++epoch;clearTimeout(edgeTimer);cancelAnimationFrame(frame);observer?.disconnect();for(const fn of cleanup)fn();},
   };
 }

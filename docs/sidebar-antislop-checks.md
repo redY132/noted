@@ -1,5 +1,24 @@
 # Sidebar delivery checks
 
+## November 11 progressive explorer
+
+During mode follows the existing graphite surfaces, system navigation type and
+single accent. ENERGY 1 / RHYTHM 2 / MOTION 2: directory motion explains changes
+of depth; the graph-control flight identifies the graph's origin. Curves express
+folder parentage and real saved links. No decoration, new icon set, invented
+notes, provider calls or visibility permissions are added.
+
+The progressive fixture records each control action, pointer versus keyboard
+behavior, deep/back/repeated navigation, graph dragging versus opening, transient
+cleanup, empty folders, customization, reduced motion and ten Light/Dark/text-size
+profiles. Measured controls retain 44px targets and at least 6.02:1 text contrast.
+The document remains pushed beside/below navigation. Test images contain only
+generated notes. Native checks use the matching package and explicit no-model
+and disabled-sharing guards. Exact run outcomes are recorded separately; the
+older reports below describe the superseded tree layout.
+
+## Historical checks
+
 Result: **PASS**, November 5, 2026, for the corrected docked layout. This supersedes the earlier popup report. Anti-slop 3.2.25 applied during planning and implementation, as the user selected. This report covers the changed navigation and folder controls. The design direction and reasons are in `DESIGN.md`.
 
 The final Windows release passed 119 recorded interaction checks and 14 theme/window profiles using a fresh synthetic workspace. Frontend: 183 passed, plus six navigation checks after the final label refinement. Native library: 101 passed, four optional model/corpus tests ignored. The private Logseq source, assets, import and imported notes were not used in this work. Existing access and credentials were not changed.

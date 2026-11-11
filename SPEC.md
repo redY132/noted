@@ -29,6 +29,19 @@ Additional features may support note-taking, memory retention, and reflection on
 
 ## Expressive notes and app customization
 
+### Progressive explorer revision, November 11, 2026
+
+The latest folder-explorer feedback supersedes the earlier permanently expanded
+tree and graph-while-writing direction. Browse opens one left directory; folder
+selection reveals a second directory and the current folder's saved-link graph.
+Deeper navigation slides older directories away and shifts the previous right
+directory left. Back reverses the route. Use flowing curved rays, scrollable
+lists, retained names/icons and a settling, draggable force graph with real links.
+Animate the existing top graph control into the explorer graph; reduced motion
+uses immediate transitions. Successful note opening closes the entire explorer
+to maximize editor space. Keep the continuous background and layout that pushes
+the document. See [current navigation behavior](docs/sidebar-navigation.md).
+
 ### Implemented daily-use improvements - November 6, 2026
 
 Add Open note through Ctrl/Cmd P and View. Use local paginated search with folder context, keyboard navigation, visible index/readiness and error states, and the existing save-before-navigation path. Preserve the user's dock visibility and the current editor/Undo when cancelling. AI formatting should identify the note and proposed send scope before generation, distinguish formal rules from separately consented full-document guidance, and retain all existing privacy, preview and approval enforcement. Correct outdated Workspace claims about cloud use. This work does not enable integrations or modify private imports. See [Open note behavior](docs/open-note.md) and the [time-bounded session](docs/improvement-session-2026-11-06.md).

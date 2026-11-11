@@ -1,5 +1,21 @@
 # Navigation direction
 
+## Progressive explorer, November 11
+
+This direction supersedes the older persistent expanded tree below. Keep the
+neutral surface, system navigation type and existing accent. Dials remain
+ENERGY 1 / RHYTHM 2 / MOTION 2. Initially show one directory. Selecting a
+collection reveals its child folders and notes in a second directory, with its
+saved-link graph on the right. Deeper navigation slides the old left directory
+away and brings the previous right directory left; Back reverses the route.
+Use curved rays for parentage and real saved edges. Graph motion should settle,
+be interruptible, and stop when the explorer closes. A temporary copy of the
+existing graph control travels to the graph and spreads into the nodes; it adds
+no persistent decoration. Reduced motion uses an immediate state change.
+Opening a note successfully closes the entire explorer to restore writing
+space. The layout continues to push the document, with scrolling and reflow
+instead of overlaying content. Folder customization remains unchanged.
+
 Source: the approved neutral Noted shell and Redley's November 5 correction to the sidebar. Scope: navigation, not authored note presentation.
 
 Reading this as a docked desktop directory for people organizing connected notes, with a quiet graphite interface and one continuous folder-to-note-to-graph surface. Dials: ENERGY 1 / RHYTHM 2 / MOTION 2.

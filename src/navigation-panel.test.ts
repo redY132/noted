@@ -12,11 +12,12 @@ async function waitUntil(condition: () => boolean) {
   const deadline = Date.now() + 5000;
   while (!condition()) { assert.ok(Date.now() < deadline, 'Navigation fixture did not reach the expected state'); await delay(10); }
 }
-function setup(edges: (ids: string[]) => Promise<PairState[]> = async () => []) {
+function setup(edges: (ids: string[]) => Promise<PairState[]> = async () => [], open: () => Promise<boolean> = async () => true, parentNotes?: (folder:string,cursor:number)=>Promise<{items:NoteSummary[];total:number;nextCursor:number|null}>) {
   const dom = new JSDOM(`${navigationMarkup}<button data-panel-toggle="navigation">Browse</button><main><div id="editor" tabindex="0">Synthetic writer</div></main>`, { url: 'http://localhost', pretendToBeVisual: true });
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, localStorage: dom.window.localStorage, innerWidth: 1200, innerHeight: 800, requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window) })) Object.defineProperty(globalThis, key, { value, configurable: true });
   const root = document.querySelector<HTMLElement>('#navigation-panel')!, selected: unknown[] = [];
-  const ui = initializeNavigation(root, { select: value => selected.push(value), open: async () => true, close: () => ui.setOpen(false), focusEditor: () => document.querySelector<HTMLElement>('#editor')!.focus(), edges });
+  const ui = initializeNavigation(root, { select: value => selected.push(value), open, close: () => ui.setOpen(false), focusEditor: () => document.querySelector<HTMLElement>('#editor')!.focus(), edges, parentNotes });
+  ui.setOpen(true); ui.choose('all');
   return { dom, ui, root, selected, close() { ui.destroy(); dom.window.close(); } };
 }
 test('hierarchy expands at the selected branch and has a keyboard path back to its parent', () => {
@@ -36,6 +37,40 @@ test('hierarchy expands at the selected branch and has a keyboard path back to i
     const composing = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: true }); search.dispatchEvent(composing);
     assert.equal(composing.defaultPrevented, false); assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden, false); assert.equal(document.activeElement, search);
   } finally { h.close(); }
+});
+
+test('progressive directories start collapsed and Back reverses each level without retaining ancestors', () => {
+  const h=setup();
+  try {
+    h.ui.setFolders(folders,'all');h.ui.setOpen(false);h.ui.setOpen(true);
+    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden,true);
+    document.querySelector<HTMLButtonElement>('[data-folder="'+id(1)+'"]')!.click();
+    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden,false);
+    assert.ok(document.querySelector('#folder-children [data-folder="'+id(2)+'"]'));
+    assert.equal(document.querySelector('[data-folder="'+id(3)+'"]'),null);
+    document.querySelector<HTMLButtonElement>('[data-folder="'+id(2)+'"]')!.click();
+    assert.equal(document.querySelector('[data-folder="'+id(1)+'"]'),null);
+    assert.ok(document.querySelector('#folder-children [data-folder="'+id(3)+'"]'));
+    document.querySelector<HTMLButtonElement>('[data-folder="'+id(3)+'"]')!.click();
+    assert.equal(document.querySelector('[data-folder="'+id(2)+'"]'),null);
+    for(const expected of [id(2),id(1),'all']) {
+      document.querySelector<HTMLButtonElement>('#navigation-back')!.click();
+      assert.equal(h.selected.at(-1),expected);
+    }
+    assert.equal(h.root.dataset.explorerExpanded,'false');
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.inert,true);
+  } finally {h.close();}
+});
+
+test('failed note opening retains the explorer and closing stops its graph', async () => {
+  const h=setup(undefined,async()=>false);
+  try {
+    h.ui.setNotes([note(100)],1,null);await delay();
+    document.querySelector<HTMLButtonElement>('[data-folder-graph-note]')!.click();await delay(10);
+    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden,false);
+    h.ui.setOpen(false);
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph-canvas')!.dataset.simulating,'false');
+  } finally {h.close();}
 });
 test('long lists keep the focused note in the bounded graph and survive an async edge refresh', async () => {
   const calls: string[][] = [], h = setup(async ids => { calls.push(ids); return []; });
@@ -63,20 +98,52 @@ test('long lists keep the focused note in the bounded graph and survive an async
     h.ui.setOpen(false); assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.inert, true);
   } finally { h.close(); }
 });
-test('opening a note or returning to the editor keeps the directory and graph visible until navigation closes', async () => {
+test('the previous directory keeps its files, pages them, and closes after opening one', async () => {
+  const requests:unknown[]=[];
+  const h=setup(undefined,async()=>true,async(folder,cursor)=>{requests.push([folder,cursor]);return{items:[note(101)],total:2,nextCursor:null};});
+  try {
+    h.ui.setFolders(folders,id(1));h.ui.choose(id(1));h.ui.setNotes([note(100)],2,null,1);
+    h.ui.choose(id(2));
+    assert.ok(document.querySelector(`[data-explorer-parent-note="${id(100)}"]`));
+    assert.ok(document.querySelector(`[data-folder="${id(2)}"]`));
+    document.querySelector<HTMLButtonElement>('[data-parent-more]')!.click();
+    await waitUntil(()=>document.querySelectorAll('[data-explorer-parent-note]').length===2);
+    assert.deepEqual(requests,[[id(1),1]]);assert.equal(document.querySelector('[data-parent-more]'),null);
+    document.querySelector<HTMLButtonElement>(`[data-explorer-parent-note="${id(101)}"]`)!.click();await delay(10);
+    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden,true);
+  } finally{h.close();}
+});
+
+test('obsolete parent-directory results cannot replace a newer level and failures can retry',async()=>{
+  const pending:Array<{folder:string;resolve(value:{items:NoteSummary[];total:number;nextCursor:number|null}):void;reject(reason:Error):void}>=[];
+  const h=setup(undefined,undefined,folder=>new Promise((resolve,reject)=>pending.push({folder,resolve,reject})));
+  try {
+    h.ui.setFolders(folders,id(2));await waitUntil(()=>pending.length===1);
+    h.ui.choose(id(3));await waitUntil(()=>pending.length===2);
+    pending[0].resolve({items:[note(100)],total:1,nextCursor:null});pending[1].reject(new Error('Synthetic directory failure'));
+    await waitUntil(()=>document.querySelector('[data-parent-more]')?.textContent==='Retry loading notes');
+    assert.equal(document.querySelector('[data-explorer-parent-note]'),null);
+    document.querySelector<HTMLButtonElement>('[data-parent-more]')!.click();await waitUntil(()=>pending.length===3);
+    pending[2].resolve({items:[note(101)],total:1,nextCursor:null});
+    await waitUntil(()=>Boolean(document.querySelector(`[data-explorer-parent-note="${id(101)}"]`)));
+    assert.equal(document.querySelector(`[data-explorer-parent-note="${id(100)}"]`),null);
+  }finally{h.close();}
+});
+
+test('opening a note closes the explorer and reopening starts with one directory', async () => {
   const h = setup();
   try {
     h.ui.setNotes([note(100)], 1, null); await delay();
     document.querySelector<HTMLButtonElement>('[data-folder-graph-note]')!.click(); await delay(10);
     h.ui.noteOpened();
     document.querySelector('#editor')!.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
-    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden, false);
-    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, false);
+    assert.equal(document.querySelector<HTMLElement>('#notes-panel')!.hidden, true);
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, true);
     assert.equal(document.activeElement!.id, 'editor');
     h.ui.setOpen(false);
     assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.inert, true);
     h.ui.setOpen(true);
-    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, false);
+    assert.equal(document.querySelector<HTMLElement>('#folder-graph')!.hidden, true);
   } finally { h.close(); }
 });
 

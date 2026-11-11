@@ -1,5 +1,50 @@
 # Dynamic navigation panel
 
+## Progressive explorer, current behavior
+
+The November 11 feedback replaces the historical tree behavior below. Browse
+starts with one directory. Select a folder to reveal its immediate child folders
+and notes alongside it and its saved-link graph on the right. Further choices
+move the previous right directory left and remove the older level; Back moves
+one level up and eventually returns to the single directory. Arrow keys,
+Home/End, Enter and Escape retain keyboard access. Folder rows and note lists
+scroll; Customize folder preserves stable identity while changing names/icons.
+The previous directory retains its own files alongside child folders. Its file
+list pages independently in groups of eighty; only one parent-directory window
+is retained, and stale responses cannot replace a newly opened level.
+
+Curved rays replace orthogonal branches. The bounded graph shows up to sixty
+loaded notes, includes a hovered/focused note when available, and reports the
+displayed count. It uses collision, repulsion and saved-link springs, settles
+instead of running continuously, and supports node dragging without opening a
+note. Clicking a node opens it. Links remain actual saved relationships, not
+invented edges. The detailed existing connection editor remains available.
+
+A temporary, inert copy of the current top graph control travels into the
+explorer graph and spreads outward. The original control is restored afterward.
+New navigation, closing, resizing, hidden pages, keyboard focus and reduced
+motion cancel obsolete transitions. Graph timers stop on close/disposal. Reduced
+motion solves the layout without animation. Successful note navigation through
+the list, graph, quick-open or history closes the explorer; failed navigation
+preserves it. Closing restores writing space without changing authored data.
+
+The explorer reserves layout width and pushes the document. At small widths or
+large text the two directories sit above the graph, and the document is pushed
+below; no panel overlays the document. Both themes retain 44px controls.
+
+Run the generated browser fixture and `progressive-explorer-smoke.js` through
+Playwright CLI. For a matching clean Windows package, run
+`scripts/Test-ProgressiveExplorer.ps1 -PlaywrightCLI C:\path\to\playwright-cli.js`.
+The native runner verifies the archive, isolates fresh fixture/profile/client
+directories, disables the runner, checks exact workspace identity and disabled
+sharing, seeds only synthetic folders/notes/links, and closes its own app.
+It never opens a native file dialog or invokes a model. Source-specific reports
+are stored in ignored `output/progressive-browser.log` and
+`output/progressive-native-state.json`. The older test totals below apply only
+to their recorded historical layout. These checks do not certify low-end hardware.
+
+## Previous tree layout and evidence
+
 The November 5 correction replaces floating popups with one docked directory controlled by Browse. The project direction is in `DESIGN.md`; acceptance is in `sidebar-goal.md`.
 
 ## Behavior

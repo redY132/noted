@@ -142,6 +142,7 @@ navigationUI = initializeNavigation($('#navigation-panel'), {
   open: async id => { await openNote(id); return session?.note.id === id; },
   close: () => shell.setPanel('navigation', false),
   focusEditor: () => editor?.view.focus(), edges: ids => api.edges(ids),
+  parentNotes: (folder, cursor) => api.pageNotes('', folder, cursor, 80),
 });
 navigationUI.setOpen(shell.isOpen('navigation'));
 quickOpenUI = initializeQuickOpen($('#quick-open-host'), {
@@ -308,7 +309,7 @@ async function renderList(reset = true) {
   $('#list-description').textContent = query ? 'Matching notes' : 'Recently written';
   $('#note-list').innerHTML = loadedList.map(n => `<div class="note-card-shell" data-note-target="${escape(n.id)}"><button type="button" class="note-card ${session?.note.id === n.id ? 'active' : ''}" data-note="${escape(n.id)}"><span class="note-card-title">${escape(n.title || 'Untitled')}</span><span class="note-card-location">${escape(folderPath(n.folderId))}</span><span class="note-card-bottom"><time>${new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time><span>${n.tags.slice(0, 2).map(t => `#${escape(t)}`).join(' ')}</span></span></button>${connectionHandle(n.id,n.title)}</div>`).join('') || `<div class="list-empty"><p>${query ? 'No matching notes.' : 'No notes.'}</p><small>${query ? 'Try a different word or folder.' : 'Create a note from the View menu.'}</small></div>`;
   if (listCursor !== null) $('#note-list').insertAdjacentHTML('beforeend', `<button class="show-more" id="show-more">Show more notes</button>`);
-  navigationUI?.setNotes(loadedList, page.total, session?.note.id ?? null);
+  navigationUI?.setNotes(loadedList, page.total, session?.note.id ?? null, page.nextCursor);
 }
 function refreshMetadata() {
   if (!session) return;
@@ -396,12 +397,13 @@ async function navigate(action: () => Promise<Note>, target?: HistoryTarget) {
       const top = scroll.scrollTop, left = scroll.scrollLeft, ticket = ++readingPositionEpoch;
       requestAnimationFrame(() => { if (editor === currentEditor && ticket === readingPositionEpoch) { scroll.scrollTop = top; scroll.scrollLeft = left; } });
     } else resetReadingPosition();
+    navigationUI?.noteOpened();
     return true;
   }
   catch (reason) { error(reason); return false; }
   finally { navigating = false; $('#note-pane').inert = false; editor?.setEditable(true, false); editingUI.sync(); componentUI.sync(); historyUI?.sync(); outlineUI?.sync(); previousSaveUI?.sync(); }
 }
-async function openNote(id: string) { if (session?.note.id === id) return; await navigate(() => api.load(id)); }
+async function openNote(id: string) { if (session?.note.id === id) { navigationUI?.noteOpened(); return; } await navigate(() => api.load(id)); }
 async function newNote() { const previous = session?.note.id; await navigate(() => api.createNote('Untitled', selectedFolder === 'all' ? null : selectedFolder)); if (session?.note.id !== previous) navigationUI?.noteOpened(); $<HTMLTextAreaElement>('#note-title').focus(); $<HTMLTextAreaElement>('#note-title').select(); }
 async function dailyNote() {
   const now = new Date(), date = localCalendarDate(now)!;
