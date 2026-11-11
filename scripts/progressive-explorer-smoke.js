@@ -68,6 +68,7 @@ async page => {
   await page.waitForFunction(()=>document.querySelector('#list-count').textContent==='95');await settle();
   record('reduced motion leaves no running force animation',await page.locator('#folder-graph-canvas').getAttribute('data-simulating')==='false'&&await page.locator('.explorer-ghost').count()===0);
   if(!await page.locator('[data-note="'+fixture.notes[0]+'"]').count())await page.locator('#show-more').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#note-list [data-note]').length===95);
   record('the scrollable directory loads the full long collection',await page.locator('#note-list [data-note]').count()===95);
   await select(deep[0]);
   record('the shifted parent directory retains its files',await page.locator('[data-explorer-parent-note]').count()===95);
