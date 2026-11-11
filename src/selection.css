@@ -1,0 +1,14 @@
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:is(input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], .tiptap, .rendered-proposal-preview) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:is(button, button *, select, summary, .component-move, .component-resize) {
+  -webkit-user-select: none;
+  user-select: none;
+}

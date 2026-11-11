@@ -120,7 +120,24 @@ async page => {
   record('folder identity and new name survive customization',await folder(fixture.empty).count()===1&&await page.locator('#collection-title').textContent()==='Renamed synthetic collection');
   record('folder icons still customize on this device',await folder(fixture.empty).locator('svg').evaluate(el=>el.outerHTML)!==iconBefore);
   if(native)record('runner and sharing remain disabled',await page.evaluate(async()=>{const [r,p]=await Promise.all(['subscription_status','agent_access'].map(c=>window.__TAURI_INTERNALS__.invoke(c)));return r.authentication==='disabled'&&!r.available&&!p.enabled&&!p.allowHosted&&!p.folderIds.length;}));
-  await close();record('no uncaught browser errors',errors.length===0);
+  await close();
+  const body=page.locator('#editor .tiptap');
+  await body.selectText();
+  record('authored note text remains selectable',Boolean(await page.evaluate(()=>getSelection()?.toString().trim())));
+  const selection=await page.evaluate(()=>{
+    const field=document.createElement('input'),area=document.createElement('textarea');field.value='Synthetic selectable input';area.value='Synthetic selectable textarea';
+    document.body.append(field,area);
+    const selectable=[field,area,document.querySelector('#note-title'),document.querySelector('#editor .tiptap')].every(el=>getComputedStyle(el).userSelect==='text');
+    field.select();const inputWorks=field.selectionEnd===field.value.length;area.select();const areaWorks=area.selectionEnd===area.value.length;
+    field.remove();area.remove();getSelection()?.removeAllRanges();
+    return{selectable,inputWorks,areaWorks,chrome:[document.querySelector('[data-panel-toggle=navigation]'),document.querySelector('.shell-topbar'),document.querySelector('#collection-title'),document.querySelector('#folders [data-folder]'),document.querySelector('#note-list [data-note]')].filter(Boolean).every(el=>getComputedStyle(el).userSelect==='none')};
+  });
+  record('inputs, title and textareas retain text selection',selection.selectable&&selection.inputWorks&&selection.areaWorks);
+  record('folder, file, button and panel chrome disable text highlighting',selection.chrome);
+  await body.focus();await page.keyboard.press('Control+a');
+  record('keyboard note selection remains available',Boolean(await page.evaluate(()=>getSelection()?.toString().trim())));
+  await page.keyboard.press('ArrowRight');
+  record('no uncaught browser errors',errors.length===0);
   return{passed:true,syntheticOnly:true,noGenerationRequested:true,native,checks,profiles,errors};
   } catch(error) {
     const diagnostic=await page.evaluate(()=>({expanded:document.querySelector('#navigation-panel').dataset.explorerExpanded,simulating:document.querySelector('#folder-graph-canvas').dataset.simulating,ghosts:document.querySelectorAll('.explorer-ghost').length,sourceVisibility:document.querySelector('#header-connection-handle button')?.style.visibility}));

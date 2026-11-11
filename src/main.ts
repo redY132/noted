@@ -60,6 +60,7 @@ import { initializePreviousSave } from './previous-save-ui';
 import './previous-save.css';
 import { initializeHelp } from './help-ui';
 import './help.css';
+import './selection.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
