@@ -57,6 +57,11 @@ async page => {
       record(mode+' '+width+' '+height+' retains 44px controls',measured.minimumWidth>=43.9&&measured.minimumHeight>=43.9);
       record(mode+' '+width+' '+height+' retains readable control text',measured.minimumControlTextContrast>=4.5);
       record(mode+' '+width+' '+height+' keeps child folders reachable',await page.locator('#folder-children').evaluate(el=>el.hidden||el.getBoundingClientRect().height>=44));
+      record(mode+' '+width+' '+height+' attaches rays only to visible folders',await root.evaluate(root=>{
+        if(root.querySelector('.directory-branch').hasAttribute('hidden'))return true;
+        const row=root.querySelector('#folders [aria-current=true]'),a=row?.getBoundingClientRect(),d=root.querySelector('.navigation-tree').getBoundingClientRect(),l=root.querySelector('#folders').getBoundingClientRect();
+        return Boolean(a&&a.top>=Math.max(d.top,l.top)&&a.bottom<=Math.min(d.bottom,l.bottom));
+      }));
       await page.screenshot({path:screenshotRoot+'/progressive-'+mode+'-'+width+'-'+height+(large?'-large':'')+'.png'});
     }
   }
