@@ -61,6 +61,9 @@ import './previous-save.css';
 import { initializeHelp } from './help-ui';
 import './help.css';
 import './selection.css';
+import './text-color.css';
+import { initializeWritingWidth } from './writing-width';
+import './writing-width.css';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -146,6 +149,7 @@ navigationUI = initializeNavigation($('#navigation-panel'), {
   parentNotes: (folder, cursor) => api.pageNotes('', folder, cursor, 80),
 });
 navigationUI.setOpen(shell.isOpen('navigation'));
+initializeWritingWidth($('#appearance-popover'));
 quickOpenUI = initializeQuickOpen($('#quick-open-host'), {
   search: (query, cursor) => api.pageNotes(query, undefined, cursor, 40), indexing: async () => Boolean((await api.status()).indexing), folders: () => folders,
   current: () => session?.note.id ?? null,

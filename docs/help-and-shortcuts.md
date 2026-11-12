@@ -1,5 +1,15 @@
 # Help and shortcuts
 
+**Text formatting > Custom color** previews a hex text color on light and dark
+paper, with measured contrast labels. Apply changes the chosen text, or what you
+type next at the caret. Cancel keeps the note unchanged. Apply and Use default
+color participate in editor Undo/Redo; saved colors reopen with the note.
+
+**Appearance > Writing width** chooses Full, Narrow, Comfortable or Wide on this
+device. A bounded column is centered and adapts to small windows. This reading
+preference does not rewrite note layout or history. Free-placement content stays
+scrollable. Reset appearance also restores Full width.
+
 Choose **View > Help & shortcuts** to search the local command and workflow reference. Search titles, command routes, keys or words such as `schema`, `previous save` and `subscription`. Exact key chords take priority; `Ctrl+P` and `Ctrl P` find the same command. Clear search restores every entry.
 
 The reference covers navigation, writing, recovery, appearance and optional AI proposals. Key labels follow the platform. Windows uses Alt Left/Right for note history; Mac users are directed to View so word-navigation keys are not overridden. Slash opens library search only outside editable text. Escape then Tab leaves editor indentation behavior for app controls.

@@ -1,5 +1,24 @@
 # Navigation direction
 
+## Overnight writing refinement, November 12
+
+Antislop active: during (session override). Reading this as a document editor
+for sustained writing, in Noted's existing neutral shell with authored typography.
+ENERGY 1 / RHYTHM 2 / MOTION 2 remain unchanged. Small focused dialogs expose
+meaningful text and writing preferences without adding another sidebar or
+crowding the document. Native labeled fields, 44px actions, keyboard focus and
+the existing Light/Dark tokens serve editing rather than decoration. Changes
+must preserve the progressive explorer and nonselectable interface chrome.
+
+First pass: expose the existing safe custom text-color capability through a
+selection-aware dialog. Preview is local and cancelable; Apply uses editor
+history. Do not infer or change schemas, content or AI permissions.
+
+Writing width belongs to device Appearance preferences, separate from authored
+schema/layout. A centered bounded column serves sustained prose; Full width is
+the compatible default for existing notes and free-placement content remains
+scrollable. No new panel, animation or decoration is needed.
+
 ## Progressive explorer, November 11
 
 This direction supersedes the older persistent expanded tree below. Keep the

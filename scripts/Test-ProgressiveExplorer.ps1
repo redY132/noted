@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$PlaywrightCLI)
+param([Parameter(Mandatory=$true)][string]$PlaywrightCLI,[switch]$WritingCustomization)
 $ErrorActionPreference='Stop'
 $notedRepo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $notedNode=(Get-Command node -ErrorAction Stop).Source
@@ -70,6 +70,15 @@ try {
   if($notedExplorerExit -ne 0 -or -not $notedExplorerJSON){$notedExplorerResult|Select-Object -First 12|Write-Output;throw 'NATIVE_EXPLORER_CHECK_INCOMPLETE'}
   $notedExplorerChecked=$notedExplorerJSON|ConvertFrom-Json;if(-not $notedExplorerChecked.passed -or -not $notedExplorerChecked.native){throw 'NATIVE_EXPLORER_CHECK_FAILED'}
   $notedState.explorerPassed=$true;$notedState.explorerChecks=$notedExplorerChecked.checks.Count;$notedState.explorerProfiles=$notedExplorerChecked.profiles.Count
+ if($WritingCustomization){
+  Push-Location -LiteralPath $notedRepo
+  try{$writingResult=& $notedNode $notedCLI "-s=$notedSession" run-code --filename scripts\writing-customization-smoke.js 2>&1;$writingExit=$LASTEXITCODE}finally{Pop-Location}
+  $writingLog=Join-Path $notedTrial 'writing-customization.log';$writingResult|Set-Content -LiteralPath $writingLog -Encoding utf8;$notedState.writingLog=$writingLog
+  $writingJSON=$writingResult|Where-Object {$_ -match '^\{"passed":'}|Select-Object -First 1
+  if($writingExit -ne 0 -or -not $writingJSON){throw 'WRITING_CHECK_INCOMPLETE'}
+  $writingChecked=$writingJSON|ConvertFrom-Json;if(-not $writingChecked.passed -or -not $writingChecked.native){throw 'WRITING_CHECK_FAILED'}
+  $notedState.writingPassed=$true;$notedState.writingChecks=$writingChecked.checks.Count;$notedState.writingProfiles=$writingChecked.profiles.Count
+ }
  $notedState.status='completed';$notedState.passed=$true;$notedState.log=$notedLog;$notedState.checks=$notedChecked.checks.Count;$notedState.profiles=$notedChecked.profiles.Count
  @{passed=$true;syntheticOnly=$true;native=$true;noModelFuse=$true;sourceCommit=$notedLatest.sourceCommit;cacheChecks=$notedChecked.checks.Count;explorerChecks=$notedExplorerChecked.checks.Count;explorerProfiles=$notedExplorerChecked.profiles.Count;log=$notedExplorerLog} | ConvertTo-Json -Compress
 } catch {$notedState.status='failed-or-incomplete';throw} finally {

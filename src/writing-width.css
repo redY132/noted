@@ -1,0 +1,3 @@
+.workspace .document { max-width:var(--writing-column-width,100%); margin-inline:auto; }
+#writing-width { max-width:150px; min-width:0; min-height:44px; font:inherit; }
+.writing-width-help { color:var(--ui-muted); font-size:.75rem; line-height:1.5; overflow-wrap:anywhere; }

@@ -4,6 +4,7 @@ import type { SchemaId } from './model.ts';
 import { indentationHint, normalizeTextColor } from './editor-extensions.ts';
 import { findInDocument, type Match } from './editor-search.ts';
 import { normalizeNoteLink } from './note-links.ts';
+import { initializeTextColor, textColorMarkup } from './text-color-ui.ts';
 
 const button = (action: string, label: string, content: string, shortcut = '') => `<button type="button" data-edit="${action}" aria-label="${label}" title="${label}${shortcut ? ` (${shortcut})` : ''}">${content}</button>`;
 export const editingMarkup = `
@@ -14,6 +15,7 @@ export const editingMarkup = `
    ${button('bold','Bold','<b>B</b>','Ctrl+B')}${button('italic','Italic','<i>I</i>','Ctrl+I')}${button('underline','Underline','<u>U</u>','Ctrl+U')}${button('strike','Strikethrough','<s>S</s>','Ctrl+Shift+S')}${button('highlight','Highlight','<span class="highlight-icon">H</span>','Ctrl+Shift+H')}${button('code','Inline code','&lt;/&gt;','Ctrl+E')}${button('subscript','Subscript','x<sub>2</sub>')}${button('superscript','Superscript','x<sup>2</sup>')}
   </div>
   <label class="format-select"><span class="sr-only">Text color</span><select id="text-color" aria-label="Text color"><option value="">Default color</option><option value="#365b32">Green</option><option value="#275c98">Blue</option><option value="#98413b">Red</option><option value="#7950a1">Purple</option><option value="#855a14">Amber</option><option value="custom" disabled>Custom color</option><option value="mixed" disabled>Mixed colors</option></select></label>
+  <button type="button" id="custom-color-open" aria-haspopup="dialog" aria-controls="text-color-dialog">Custom color</button>
   ${button('clear','Clear text formatting','T<span aria-hidden="true">×</span>')}
  </div>
  <div class="format-row">
@@ -41,7 +43,7 @@ export const editingMarkup = `
  <div><input id="replace-text" aria-label="Replacement text" placeholder="Replace with" /><button id="replace-one">Replace</button><button id="replace-all">Replace all</button></div>
 </section>
 <dialog id="url-dialog"><form id="url-form"><span class="eyebrow">LINK TO A WEB PAGE</span><h2>Add or edit link</h2><label>URL<input id="url-value" type="url" required placeholder="https://example.com" /></label><label id="url-label-row">Link text<input id="url-label" placeholder="Use URL as text" /></label><p class="dialog-description">Links are stored locally. Click a web link to open it in your browser; no linked content is fetched until you follow it.</p><div class="dialog-actions"><button type="button" id="url-cancel">Cancel</button><button type="submit" class="primary">Apply link</button></div></form></dialog>
-`;
+${textColorMarkup}`;
 
 type Options = { getEditor: () => Editor | null; getSchema: () => SchemaId; error: (message: unknown) => void };
 export function initializeEditingUI({getEditor, getSchema, error}: Options) {
@@ -51,6 +53,8 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  let matches: Match[] = []; let current = -1; let truncated = false;
  let searchTimer: ReturnType<typeof setTimeout> | undefined;
  const marks = ['bold','italic','underline','strike','highlight','code','subscript','superscript'];
+ const customColor = initializeTextColor({getEditor,sync:()=>sync(),error});
+ $('#custom-color-open').onclick=()=>customColor.open();
  function tableCommand(editor: Editor, command: string, dry = false): boolean {
    const chain = dry ? editor.can().chain() : editor.chain().focus();
    switch(command) {
@@ -173,7 +177,7 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
    sync();
  };
  $('#text-align').onchange=()=>{getEditor()?.chain().focus().setTextAlign($<HTMLSelectElement>('#text-align').value).run();sync();};
- $('#text-color').onchange=()=>{const editor=getEditor(),value=$<HTMLSelectElement>('#text-color').value;if(!editor)return; if(value) editor.chain().focus().setColor(value).run();else editor.chain().focus().unsetColor().run(); sync();};
+ $('#text-color').onchange=()=>{const editor=getEditor(),value=$<HTMLSelectElement>('#text-color').value;if(!editor)return;if(value) editor.chain().focus().setColor(value).run();else editor.chain().focus().unsetColor().run(); sync();};
  $('#table-action').onchange=()=>{const editor=getEditor(), select=$<HTMLSelectElement>('#table-action');if(editor)tableCommand(editor,select.value);select.value='';sync();};
  function closeURL() { linkRange=null; $<HTMLDialogElement>('#url-dialog').close(); }
  $('#url-dialog').addEventListener('close',()=>{if(!$<HTMLDialogElement>('#url-dialog').open)linkRange=null;});
@@ -215,6 +219,7 @@ export function initializeEditingUI({getEditor, getSchema, error}: Options) {
  function sync(editor: Editor | null = getEditor(), docChanged=false) {
    if(!editor || editor.isDestroyed) return;
    const linkAllowed=editor.isEditable&&editor.can().setMark('link');
+   $<HTMLButtonElement>('#custom-color-open').disabled=!editor.isEditable||!editor.can().setMark('textStyle');
    $<HTMLButtonElement>('#insert-link').disabled=!linkAllowed;
    const nearestList=(position: typeof editor.state.selection.$from)=>{
      for(let depth=position.depth;depth>0;depth--) if(['bulletList','orderedList','taskList'].includes(position.node(depth).type.name)) return position.node(depth).type.name;

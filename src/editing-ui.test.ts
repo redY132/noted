@@ -80,6 +80,58 @@ test('toolbar follows caret marks, stored marks before typing, and mixed selecti
   } finally { h.dispose(); }
 });
 
+test('custom text color previews without edits, cancels, and applies as one undoable selection change', () => {
+  const h=harness([paragraph(text('Original words'))]);
+  try {
+    h.editor.commands.setTextSelection({from:1,to:9});const before=h.editor.getJSON();
+    h.element('#custom-color-open').click();const field=h.element<HTMLInputElement>('#custom-color-value');
+    field.value='#AbC';field.dispatchEvent(new h.dom.window.Event('input'));
+    assert.deepEqual(h.editor.getJSON(),before);assert.equal(h.element<HTMLInputElement>('#custom-color-picker').value,'#aabbcc');
+    assert.match(h.element('[data-color-ratio=light]').textContent!,/contrast/);
+    h.element('[data-color-close]').click();assert.deepEqual(h.editor.getJSON(),before);
+    assert.equal(document.activeElement?.id,'custom-color-open');
+    h.element('#custom-color-open').click();field.value='#123456';field.dispatchEvent(new h.dom.window.Event('input'));
+    h.element('#text-color-form').dispatchEvent(new h.dom.window.Event('submit',{cancelable:true}));
+    const after=h.editor.getJSON();assert.equal(h.editor.state.doc.textContent,'Original words');
+    assert.equal(h.editor.getAttributes('textStyle').color,'#123456');assert.equal(h.element<HTMLDialogElement>('#text-color-dialog').inert,true);
+    assert.equal(h.editor.commands.undo(),true);assert.deepEqual(h.editor.getJSON(),before);
+    assert.equal(h.editor.commands.redo(),true);assert.deepEqual(h.editor.getJSON(),after);
+    h.element('#custom-color-open').click();assert.equal(field.value,'#123456');
+    h.element('[data-color-default]').click();assert.equal(h.editor.getAttributes('textStyle').color,undefined);
+    h.editor.commands.undo();assert.deepEqual(h.editor.getJSON(),after);
+  }finally{h.dispose();}
+});
+
+test('custom color rejects invalid input and changed or unavailable documents',()=>{
+  const h=harness([paragraph(text('Original words'))]);
+  try{
+    h.editor.commands.setTextSelection({from:1,to:9});h.element('#custom-color-open').click();
+    const field=h.element<HTMLInputElement>('#custom-color-value'),before=h.editor.getJSON();field.value='url(x)';field.dispatchEvent(new h.dom.window.Event('input'));
+    h.element('#text-color-form').dispatchEvent(new h.dom.window.Event('submit',{cancelable:true}));
+    assert.equal(h.element<HTMLButtonElement>('[data-color-apply]').disabled,true);assert.equal(field.getAttribute('aria-invalid'),'true');assert.deepEqual(h.editor.getJSON(),before);
+    field.value='#123456';field.dispatchEvent(new h.dom.window.Event('input'));
+    h.editor.commands.insertContent('Changed');const changed=h.editor.getJSON();
+    h.element('#text-color-form').dispatchEvent(new h.dom.window.Event('submit',{cancelable:true}));
+    assert.deepEqual(h.editor.getJSON(),changed);assert.match(String(h.errors.at(-1)),/note changed/);
+    h.element('#custom-color-open').click();h.useEditor(null);
+    h.element('[data-color-default]').click();assert.deepEqual(h.editor.getJSON(),changed);
+    assert.equal(h.element<HTMLDialogElement>('#text-color-dialog').open,false);
+  }finally{h.dispose();}
+});
+
+test('custom color at the caret affects new typing only and code blocks cannot open it',()=>{
+  const h=harness([paragraph(text('Original')),{type:'codeBlock',content:[text('Code')]}]);
+  try{
+    h.editor.commands.setTextSelection(9);const before=h.editor.getJSON();h.element('#custom-color-open').click();
+    const field=h.element<HTMLInputElement>('#custom-color-value');field.value='#246';field.dispatchEvent(new h.dom.window.Event('input'));
+    h.element('#text-color-form').dispatchEvent(new h.dom.window.Event('submit',{cancelable:true}));
+    assert.deepEqual(h.editor.getJSON(),before);h.editor.commands.insertContent(' new');
+    assert.equal(h.editor.state.doc.firstChild!.lastChild!.marks.find(m=>m.type.name==='textStyle')?.attrs.color,'#224466');
+    h.editor.commands.setTextSelection(h.editor.state.doc.content.size-2);h.ui.sync();
+    assert.equal(h.element<HTMLButtonElement>('#custom-color-open').disabled,true);
+  }finally{h.dispose();}
+});
+
 test('undo and redo buttons track actual history availability', () => {
   const h = harness([paragraph(text('Original'))]);
   try {
